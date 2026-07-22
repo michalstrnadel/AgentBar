@@ -1,0 +1,71 @@
+import Foundation
+
+/// One live agent session, decoded from a `~/.agentbar/state.d/*.json` file
+/// written by the hook scripts in `Scripts/hooks/`.
+struct Session {
+    enum State: String {
+        case idle, thinking, tool, permission, done
+
+        var isWorking: Bool { self == .thinking || self == .tool }
+    }
+
+    let id: String
+    let agentID: String
+    let state: State
+    let label: String
+    let project: String
+    let cwd: String
+    let entrypoint: String   // "cli", "claude-desktop", …
+    let termProgram: String  // TERM_PROGRAM of the hosting terminal, for row clicks
+    let pid: Int32           // the agent process; used for liveness pruning
+    let started: Bool        // false until the session has real activity
+    let ts: TimeInterval
+
+    /// Sort/priority weight: what the menu bar should surface first.
+    var priority: Int {
+        switch state {
+        case .permission:      return 2
+        case .thinking, .tool: return 1
+        case .idle, .done:     return 0
+        }
+    }
+
+    init?(fileURL: URL) {
+        guard let data = try? Data(contentsOf: fileURL),
+              let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        id          = fileURL.deletingPathExtension().lastPathComponent
+        agentID     = o["agent"] as? String ?? "claude"
+        state       = State(rawValue: o["state"] as? String ?? "") ?? .idle
+        label       = o["label"] as? String ?? ""
+        project     = o["project"] as? String ?? ""
+        cwd         = o["cwd"] as? String ?? ""
+        entrypoint  = o["entrypoint"] as? String ?? ""
+        termProgram = o["term_program"] as? String ?? ""
+        pid         = Int32(o["pid"] as? Int ?? 0)
+        started     = o["started"] as? Bool ?? true
+        ts          = o["ts"] as? TimeInterval ?? 0
+    }
+
+    /// Current git branch of the session's project, read straight from `.git/HEAD`
+    /// (no `git` invocation; handles worktrees via the `gitdir:` indirection).
+    var gitBranch: String? {
+        guard !cwd.isEmpty else { return nil }
+        var gitPath = cwd + "/.git"
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: gitPath, isDirectory: &isDir) else { return nil }
+        if !isDir.boolValue { // worktree: .git is a file containing "gitdir: <path>"
+            guard let s = try? String(contentsOfFile: gitPath, encoding: .utf8),
+                  let dir = s.split(separator: ":").dropFirst().joined(separator: ":")
+                    .trimmingCharacters(in: .whitespacesAndNewlines) as String?
+            else { return nil }
+            gitPath = dir
+        }
+        guard let head = try? String(contentsOfFile: gitPath + "/HEAD", encoding: .utf8) else { return nil }
+        let line = head.trimmingCharacters(in: .whitespacesAndNewlines)
+        if line.hasPrefix("ref: refs/heads/") {
+            return String(line.dropFirst("ref: refs/heads/".count))
+        }
+        return String(line.prefix(7)) // detached HEAD: short SHA
+    }
+}

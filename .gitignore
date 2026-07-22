@@ -1,0 +1,8 @@
+build/
+*.dmg
+.DS_Store
+node_modules/
+
+# SPM
+.build/
+.swiftpm/
