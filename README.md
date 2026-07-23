@@ -16,6 +16,20 @@ AI coding sessions — Claude Code today, with Codex, GitHub Copilot, and Google
 Antigravity in the same bar. Each agent gets its own animated mascot; the bar always
 surfaces the session that needs you most.
 
+## Quick start
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/michalstrnadel/AgentBar/main/Scripts/install.sh | bash
+```
+
+1. The app lands in `/Applications`, launches, and installs its Claude Code hooks.
+2. Open a **new** Claude Code session (hooks load at session start) and give it any task.
+3. Watch the menu bar: the mascot animates while the agent works, and the moment it
+   asks for permission you get a yellow **needs approval** row — click **✓ Allow**,
+   **✓ Always**, or **✕ Deny** right there. No terminal switch needed.
+
+That's the whole loop. More install options below; troubleshooting at the bottom.
+
 ## Features
 
 - **Live status per agent** — an animated mascot walks the bar while an agent works
