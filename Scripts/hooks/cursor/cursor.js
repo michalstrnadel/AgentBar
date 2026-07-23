@@ -10,11 +10,11 @@ const BUNDLE_ID = "com.michalstrnadel.agentbar";
 const EXEC = "AgentBar";
 const stateDir = path.join(os.homedir(), ".agentbar", "state.d");
 
-// Cursor event name -> AgentBar state (null = ignore).
+// Cursor event name -> AgentBar state. Exactly the events HookInstaller registers;
+// the permission-gating before* hooks are deliberately not used by this bridge.
 const STATE = {
   sessionStart: "idle", sessionEnd: "end",
-  preToolUse: "tool", beforeShellExecution: "tool", beforeMCPExecution: "tool",
-  postToolUse: "thinking", afterFileEdit: "thinking", afterShellExecution: "thinking",
+  preToolUse: "tool", postToolUse: "thinking",
   stop: "done", afterAgentResponse: "done",
 };
 
@@ -52,6 +52,7 @@ function run() {
       label: j.tool_name ? String(j.tool_name) : (state === "done" ? "Done" : ""),
       project: cwd ? path.basename(cwd) : "", cwd, sessionId: id,
       entrypoint: "cli", term_program: process.env.TERM_PROGRAM || "",
+      // Cursor execs the script directly, so ppid is the agent process (liveness handle).
       pid: process.ppid, started: state !== "idle" ? true : (prev.started || false),
       ts: Math.floor(Date.now() / 1000),
     });

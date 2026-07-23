@@ -15,18 +15,9 @@ let N = 256, ink = CGColor(srgbRed: 0.1, green: 0.1, blue: 0.1, alpha: 1)
 // ---- Gemini: four-point spark (concave star), the real mark shape ----
 do {
     let c = ctx(N); let cx = Double(N)/2, cy = Double(N)/2, R = Double(N)*0.46, r = Double(N)*0.06
-    let p = CGMutablePath()
-    // 8 vertices: outer points at N/E/S/W, inner control near center → concave curves
+    // 8 vertices: outer points at N/E/S/W, inner waist points near center → concave star
     let pts: [(Double, Double)] = [(cx, cy+R), (cx+r, cy+r), (cx+R, cy), (cx+r, cy-r),
                                    (cx, cy-R), (cx-r, cy-r), (cx-R, cy), (cx-r, cy+r)]
-    p.move(to: CGPoint(x: pts[0].0, y: pts[0].1))
-    for k in 1..<pts.count {
-        let prev = pts[k-1], cur = pts[k]
-        // quadratic toward center makes the concave "sparkle" waist
-        p.addQuadCurve(to: CGPoint(x: cur.0, y: cur.1),
-                       control: CGPoint(x: cx + (prev.0+cur.0)/2 - cx*1, y: cy))
-    }
-    // simpler & reliable: rebuild as straight concave star
     let p2 = CGMutablePath()
     p2.move(to: CGPoint(x: pts[0].0, y: pts[0].1))
     for k in 1..<pts.count { p2.addLine(to: CGPoint(x: pts[k].0, y: pts[k].1)) }

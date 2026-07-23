@@ -59,8 +59,9 @@ final class SessionStore {
         }
         sessions.sort { ($0.priority, $0.ts) > ($1.priority, $1.ts) }
 
-        // Only notify when something visible changed, so the menu bar isn't rebuilt every poll.
-        let snapshot = sessions.map { "\($0.id):\($0.state.rawValue):\($0.label)" }
+        // Only notify when something visible changed, so the menu bar isn't rebuilt every
+        // poll. Branch is part of the row, so a checkout must count as a visible change.
+        let snapshot = sessions.map { "\($0.id):\($0.state.rawValue):\($0.label):\($0.project):\($0.gitBranch ?? "")" }
         guard snapshot != lastSnapshot else { return }
         lastSnapshot = snapshot
         onChange?(sessions)

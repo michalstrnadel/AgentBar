@@ -9,7 +9,7 @@ const BUNDLE_ID = "com.michalstrnadel.agentbar";
 const EXEC = "AgentBar";
 const stateDir = path.join(os.homedir(), ".agentbar", "state.d");
 
-// Gemini event name -> AgentBar state (null = ignore).
+// Gemini event name -> AgentBar state. Exactly the events HookInstaller registers.
 const STATE = {
   SessionStart: "idle", SessionEnd: "end",
   BeforeTool: "tool", AfterTool: "thinking",
@@ -50,6 +50,8 @@ function run() {
       label: j.tool_name ? String(j.tool_name) : (state === "done" ? "Done" : ""),
       project: cwd ? path.basename(cwd) : "", cwd, sessionId: id,
       entrypoint: "cli", term_program: process.env.TERM_PROGRAM || "",
+      // The shell running Gemini's command string execs the single command, so ppid
+      // is the gemini process itself, not a dead intermediate sh (verified on macOS).
       pid: process.ppid, started: state !== "idle" ? true : (prev.started || false),
       ts: Math.floor(Date.now() / 1000),
     });

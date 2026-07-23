@@ -33,8 +33,17 @@ main() {
   echo "  • wire Codex / Cursor / Gemini hooks — only for the tools you already use"
   echo "  • launch AgentBar in the background from the SessionStart hook"
   echo "No network calls, no telemetry. Uninstall steps are in the README."
-  if [ -t 0 ] && [ -z "${AGENTBAR_YES:-}" ]; then
-    printf "Continue? [Y/n] "; read -r reply
+  # Under `curl … | bash`, stdin is the script itself — read the answer from the
+  # controlling terminal so the consent prompt works in the canonical install path.
+  # No terminal at all (CI): proceed, same as AGENTBAR_YES=1.
+  if [ -z "${AGENTBAR_YES:-}" ]; then
+    reply=""
+    if [ -t 0 ]; then
+      printf "Continue? [Y/n] "; read -r reply
+    elif { : < /dev/tty; } 2>/dev/null; then
+      printf "Continue? [Y/n] " > /dev/tty
+      read -r reply < /dev/tty || reply=""
+    fi
     case "$reply" in [Nn]*) echo "Aborted."; exit 0 ;; esac
   fi
   echo
@@ -71,9 +80,12 @@ main() {
 
   # Bridge a custom CLAUDE_CONFIG_DIR to the app (launched via `open`, it can't see the
   # shell env). The app reads this hint and wires hooks into that config too (issue #4).
+  # Unset var clears a stale hint, so re-running the installer stops wiring old dirs.
   if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
     mkdir -p "$HOME/.agentbar"
     printf '%s\n' "$CLAUDE_CONFIG_DIR" > "$HOME/.agentbar/claude-config-dir"
+  else
+    rm -f "$HOME/.agentbar/claude-config-dir"
   fi
 
   open "$DEST/AgentBar.app"

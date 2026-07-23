@@ -3,6 +3,36 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.7.1 - 2026-07-24
+
+### Fixed
+- Hook installer: a config file that exists but is not parseable JSON (comments,
+  trailing comma, torn write) is now left untouched and logged, instead of being
+  silently replaced with only AgentBar's hooks. Applies to Claude `settings.json`,
+  `~/.cursor/hooks.json`, and `~/.gemini/settings.json`.
+- Cursor hook: the bridge script's shebang is pinned to the resolved absolute
+  `node` path at install time. A GUI-launched Cursor inherits the launchd PATH
+  (often without `/opt/homebrew/bin`), so `#!/usr/bin/env node` could silently
+  never fire.
+- Installer consent: `curl … | bash` now really asks "Continue? [Y/n]" by reading
+  from the controlling terminal (stdin is the script itself in that mode). With no
+  terminal at all (CI), it proceeds as before; `AGENTBAR_YES=1` still skips.
+- Gemini: `BeforeAgent` is now registered, so a turn that uses no tools shows
+  "thinking" instead of jumping straight to done.
+- Re-running the installer without `CLAUDE_CONFIG_DIR` set clears a previously
+  recorded custom dir, so hooks stop being wired into a stale location.
+- A branch checkout now refreshes the session row while the menu is open (the
+  change-detection snapshot ignored project/branch).
+
+### Changed
+- Agent configs are only rewritten when their content actually changes — no more
+  mtime churn on every launch for tools that watch their config files.
+- `node` is resolved once per launch instead of once per agent (up to 4 login-shell
+  probes on nvm/fnm setups).
+- Cursor now also registers `afterAgentResponse`, so "done" shows right after a
+  response, not only at the end of the agent loop. The bridge's event map matches
+  exactly what gets registered; permission-gating `before*` hooks stay untouched.
+
 ## 1.7.0 - 2026-07-23
 
 ### Added
@@ -16,8 +46,9 @@ All notable changes to AgentBar are documented here. This project follows
   request without opening the menu. Off by default; toggle in the menu. No
   Accessibility permission required.
 - Cursor CLI and Gemini CLI support: live working/done status via their hook
-  systems (`~/.cursor/hooks.json`, `~/.gemini/settings.json`), auto-wired on first
-  launch for the tools you have. Each gets its own menu mark (pointer, spark).
+  systems (`~/.cursor/hooks.json`, `~/.gemini/settings.json`), auto-wired at
+  launch (idempotently) for the tools you have. Each gets its own menu mark
+  (pointer, spark).
 - Mascot micro-animations: idle is calm, working walks, and a task finishing gives
   a brief celebratory hop.
 

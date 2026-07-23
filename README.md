@@ -136,8 +136,8 @@ rm -rf ~/.agentbar
 | Google Antigravity | — | yes | pixel rainbow arch | no public event API yet; everything else is wired and waiting |
 
 Hook readiness: Claude Code, Codex (`notify`), Cursor (`hooks.json`), and Gemini
-(`settings.json`) hooks all install automatically on first launch for the tools you
-have. Copilot and Antigravity ship with their mascots, menu entries, and (for Copilot)
+(`settings.json`) hooks all install automatically at launch (idempotently — every
+launch re-checks, nothing is duplicated) for the tools you have. Copilot and Antigravity ship with their mascots, menu entries, and (for Copilot)
 the keystroke-approval backend already in place — the moment either exposes session
 events, support is one small hook script away.
 

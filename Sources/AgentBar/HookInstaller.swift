@@ -1,11 +1,16 @@
 import Foundation
 
-/// First-launch, idempotent hook installation. Copies the bundled hook scripts to
-/// `~/.agentbar/hooks/` and wires them into each agent's own hook mechanism.
-/// Never blocks the UI; failures are logged and retried on next launch.
+/// Idempotent hook installation, re-run on every launch (scripts refresh with the app
+/// version; configs are only rewritten when the content actually changes). Copies the
+/// bundled hook scripts to `~/.agentbar/hooks/` and wires them into each agent's own
+/// hook mechanism. Never blocks the UI; failures are logged and retried on next launch.
 enum HookInstaller {
     private static let home = FileManager.default.homeDirectoryForCurrentUser
     private static var hooksDir: URL { home.appendingPathComponent(".agentbar/hooks", isDirectory: true) }
+
+    /// Resolved once per launch: the fallback probes the user's login shell, which can
+    /// cost hundreds of ms on nvm/fnm setups — never pay that four times.
+    private static let nodePath: String? = findNode()
 
     static func installIfNeeded() {
         DispatchQueue.global(qos: .utility).async {
@@ -25,7 +30,8 @@ enum HookInstaller {
     /// Every Claude config dir we should wire hooks into. Covers a custom
     /// `CLAUDE_CONFIG_DIR` (issue #4) — read from the app's environment if present, or
     /// from a hint file the installer drops (the app is launched via `open`, so it
-    /// usually doesn't inherit the shell's env). The default `~/.claude` is always
+    /// usually doesn't inherit the shell's env; install.sh rewrites or clears the hint
+    /// on every run, so it can't go stale). The default `~/.claude` is always
     /// included so a user who runs Claude both ways stays covered. Deduped.
     private static func claudeConfigDirs() -> [URL] {
         var dirs = [home.appendingPathComponent(".claude")]
@@ -50,6 +56,27 @@ enum HookInstaller {
             if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
             try fm.copyItem(at: agent, to: dest)
         }
+    }
+
+    /// Parse an existing JSON config. Missing file → empty object (fresh install).
+    /// Present-but-unparseable (JSONC comments, trailing comma, torn write) → nil:
+    /// the caller must SKIP, never overwrite — rewriting from `[:]` would silently
+    /// destroy the user's config.
+    private static func readConfig(at url: URL) -> [String: Any]? {
+        guard let data = try? Data(contentsOf: url) else { return [:] }
+        guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            NSLog("AgentBar: \(url.path) exists but is not parseable JSON — leaving it untouched")
+            return nil
+        }
+        return parsed
+    }
+
+    /// Atomic write, skipped when the file already has exactly this content — avoids
+    /// mtime churn (tools watch these configs) and shrinks the window for racing a
+    /// tool that is writing its own settings at the same moment.
+    private static func writeIfChanged(_ data: Data, to url: URL) throws {
+        if let existing = try? Data(contentsOf: url), existing == data { return }
+        try data.write(to: url, options: .atomic)
     }
 
     /// Find a node binary the hooks can rely on (login-shell PATHs vary wildly).
@@ -77,16 +104,12 @@ enum HookInstaller {
     // MARK: - Claude Code (<configDir>/settings.json)
 
     private static func installClaude(configDir: URL) throws {
-        guard let node = findNode() else { NSLog("AgentBar: node not found, Claude hooks skipped"); return }
+        guard let node = nodePath else { NSLog("AgentBar: node not found, Claude hooks skipped"); return }
         let settingsURL = configDir.appendingPathComponent("settings.json")
         let fm = FileManager.default
         try fm.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
 
-        var root: [String: Any] = [:]
-        if let data = try? Data(contentsOf: settingsURL),
-           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            root = parsed
-        }
+        guard var root = readConfig(at: settingsURL) else { return }
         var hooks = root["hooks"] as? [String: Any] ?? [:]
 
         let dir = hooksDir.appendingPathComponent("claude").path
@@ -127,13 +150,13 @@ enum HookInstaller {
         root["hooks"] = hooks
 
         let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-        try data.write(to: settingsURL, options: .atomic) // never leave settings.json half-written
+        try writeIfChanged(data, to: settingsURL) // never leave settings.json half-written
     }
 
     // MARK: - Codex (~/.codex/config.toml, notify hook)
 
     private static func installCodex() throws {
-        guard let node = findNode() else { return }
+        guard let node = nodePath else { return }
         let codexDir = home.appendingPathComponent(".codex")
         guard FileManager.default.fileExists(atPath: codexDir.path) else { return } // not a Codex user
         let configURL = codexDir.appendingPathComponent("config.toml")
@@ -152,43 +175,58 @@ enum HookInstaller {
     // MARK: - Cursor CLI (~/.cursor/hooks.json)
 
     private static func installCursor() throws {
+        // ~/.cursor also exists for IDE-only users; that's intentional — the same
+        // hooks.json drives IDE agent sessions, and the bridge is observe-only.
         let cursorDir = home.appendingPathComponent(".cursor")
         guard FileManager.default.fileExists(atPath: cursorDir.path) else { return } // not a Cursor user
         let cfgURL = cursorDir.appendingPathComponent("hooks.json")
-        let script = hooksDir.appendingPathComponent("cursor/cursor.js").path
+        let scriptURL = hooksDir.appendingPathComponent("cursor/cursor.js")
+        try pinNodeShebang(of: scriptURL)
 
-        var root: [String: Any] = [:]
-        if let data = try? Data(contentsOf: cfgURL),
-           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { root = parsed }
+        guard var root = readConfig(at: cfgURL) else { return }
         root["version"] = root["version"] ?? 1
         var hooks = root["hooks"] as? [String: Any] ?? [:]
         let marker = "/.agentbar/hooks/cursor/"
 
         // Cursor's command is a single executable path (our script is +x with a shebang).
-        for event in ["sessionStart", "sessionEnd", "preToolUse", "postToolUse", "stop"] {
+        // Only observational events: the before* hooks gate permissions and belong to
+        // the user, not to a status bridge.
+        for event in ["sessionStart", "sessionEnd", "preToolUse", "postToolUse",
+                      "afterAgentResponse", "stop"] {
             var rules = (hooks[event] as? [[String: Any]] ?? [])
                 .filter { ($0["command"] as? String)?.contains(marker) != true }
-            rules.append(["command": script])
+            rules.append(["command": scriptURL.path])
             hooks[event] = rules
         }
         root["hooks"] = hooks
         let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-        try data.write(to: cfgURL, options: .atomic)
+        try writeIfChanged(data, to: cfgURL)
+    }
+
+    /// Cursor runs the script directly via its shebang, and a GUI-launched Cursor
+    /// inherits the launchd PATH — often without /opt/homebrew/bin — so
+    /// `#!/usr/bin/env node` would silently never fire. Pin the resolved node path.
+    private static func pinNodeShebang(of scriptURL: URL) throws {
+        guard let node = nodePath,
+              var text = try? String(contentsOf: scriptURL, encoding: .utf8),
+              text.hasPrefix("#!") else { return }
+        let rest = text.drop(while: { $0 != "\n" })
+        text = "#!\(node)\(rest)"
+        try text.write(to: scriptURL, atomically: false, encoding: .utf8) // keep inode + mode
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
     }
 
     // MARK: - Gemini CLI (~/.gemini/settings.json)
 
     private static func installGemini() throws {
-        guard let node = findNode() else { return }
+        guard let node = nodePath else { return }
         let geminiDir = home.appendingPathComponent(".gemini")
         guard FileManager.default.fileExists(atPath: geminiDir.path) else { return } // not a Gemini user
         let cfgURL = geminiDir.appendingPathComponent("settings.json")
         let script = hooksDir.appendingPathComponent("gemini/gemini.js").path
         let command = "\"\(node)\" \"\(script)\""
 
-        var root: [String: Any] = [:]
-        if let data = try? Data(contentsOf: cfgURL),
-           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { root = parsed }
+        guard var root = readConfig(at: cfgURL) else { return }
         var hooks = root["hooks"] as? [String: Any] ?? [:]
         let marker = "/.agentbar/hooks/gemini/"
 
@@ -198,13 +236,16 @@ enum HookInstaller {
                 ($0["command"] as? String)?.contains(marker) == true
             }
         }
-        for event in ["SessionStart", "SessionEnd", "BeforeTool", "AfterTool", "AfterAgent"] {
+        // timeout is in milliseconds (Gemini docs; default 60000) → 5s.
+        // BeforeAgent gives "thinking" at turn start, so a no-tool turn still shows life.
+        for event in ["SessionStart", "SessionEnd", "BeforeAgent", "BeforeTool",
+                      "AfterTool", "AfterAgent"] {
             var groups = (hooks[event] as? [[String: Any]] ?? []).filter { !ours($0) }
             groups.append(["hooks": [["type": "command", "command": command, "timeout": 5000]]])
             hooks[event] = groups
         }
         root["hooks"] = hooks
         let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-        try data.write(to: cfgURL, options: .atomic)
+        try writeIfChanged(data, to: cfgURL)
     }
 }

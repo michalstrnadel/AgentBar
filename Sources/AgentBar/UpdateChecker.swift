@@ -125,6 +125,9 @@ final class UpdateChecker {
 
     /// Unzip into a private temp dir, verify it really is the promised version,
     /// strip quarantine. Returns the staged .app URL.
+    /// Integrity model (deliberate): GitHub TLS + the version check below. The app is
+    /// ad-hoc signed, so there is no signing identity to pin; a checksum in release
+    /// notes would come over the same channel as the zip and add no real protection.
     private func stage(downloaded: URL, expecting version: String) throws -> URL {
         let fm = FileManager.default
         let dir = fm.temporaryDirectory.appendingPathComponent("agentbar-update-\(UUID().uuidString)")
