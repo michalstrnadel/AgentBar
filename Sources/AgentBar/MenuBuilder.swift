@@ -181,26 +181,41 @@ enum MenuBuilder {
         return title
     }
 
-    /// Small resting mark used as the item icon in the Open submenu. Uses the clean
-    /// dot-free glyph for the agents whose bar sprite carries a dot-matrix (codex,
-    /// copilot); others fall back to their sprite's resting frame (already clean).
+    /// Small resting mark used as the item icon in the Open submenu. Every mark is
+    /// tight-trimmed to its glyph and normalized to one cap height, so all four
+    /// left-align in the icon gutter and read at the same visual weight. Codex and
+    /// Copilot use their clean dot-free glyph (the bar sprite carries a dot-matrix);
+    /// Claude and Antigravity use their resting frame, which has no dots.
+    private static let markCapHeight: CGFloat = 13
+
     private static func menuMark(for agent: Agent) -> NSImage {
         let template: NSImage
         switch agent.id {
         case "codex":
             template = IconRenderer.decode(codexMascotMarkPNG).map {
                 IconRenderer.solidTemplate(IconRenderer.trim($0))
-            } ?? IconRenderer.shared.sprite(for: agent).restingTemplate
+            } ?? trimmedTemplate(for: agent)
         case "copilot":
             template = IconRenderer.decode(copilotMascotMarkPNG).map {
                 IconRenderer.adaptiveTemplate(IconRenderer.trim($0))
-            } ?? IconRenderer.shared.sprite(for: agent).restingTemplate
+            } ?? trimmedTemplate(for: agent)
         default:
-            template = IconRenderer.shared.sprite(for: agent).restingTemplate
+            template = trimmedTemplate(for: agent)
         }
         let img = template.copy() as! NSImage
-        img.size = NSSize(width: 14 * img.size.width / max(img.size.height, 1), height: 14)
+        img.isTemplate = true
+        // Normalize on a fixed box so a short-wide glyph (the arch) and a tall glyph
+        // (the crab) share a baseline instead of one floating in empty padding.
+        let scale = markCapHeight / max(img.size.height, 1)
+        img.size = NSSize(width: (img.size.width * scale).rounded(), height: markCapHeight)
         return img
+    }
+
+    /// Resting template of an agent's sprite, tight-trimmed and re-flagged as template.
+    private static func trimmedTemplate(for agent: Agent) -> NSImage {
+        let t = IconRenderer.trim(IconRenderer.shared.sprite(for: agent).restingTemplate)
+        t.isTemplate = true
+        return t
     }
 
     /// The pending command and an Allow/Always/Deny/defer button strip inserted
