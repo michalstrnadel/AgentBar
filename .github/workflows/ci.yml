@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  hook-tests:
+    name: Hook protocol tests
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run permission hook test suite
+        run: ./Scripts/test/permission-hook-test.sh
+
+  build:
+    name: Build app (universal)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build AgentBar.app
+        run: ./Scripts/build.sh
+      - name: Verify bundle contents
+        run: |
+          test -x "build/AgentBar.app/Contents/MacOS/AgentBar"
+          test -f "build/AgentBar.app/Contents/Resources/hooks/claude/permission.js"
+          lipo -archs "build/AgentBar.app/Contents/MacOS/AgentBar" | grep -q "x86_64 arm64"

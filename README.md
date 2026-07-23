@@ -1,4 +1,13 @@
+<p align="center">
+  <img src="docs/assets/icon.png" width="128" alt="AgentBar icon">
+</p>
+
 # AgentBar
+
+[![CI](https://github.com/michalstrnadel/AgentBar/actions/workflows/ci.yml/badge.svg)](https://github.com/michalstrnadel/AgentBar/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black)
+![Swift](https://img.shields.io/badge/Swift-AppKit-orange)
 
 **One menu bar item for all your AI coding agents.**
 
