@@ -117,6 +117,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc func sessionRowClicked(_ sender: NSMenuItem) {
         guard let s = sender.representedObject as? Session else { return }
+        // A waiting session must be released to its terminal prompt before we focus
+        // it, or the user lands on a spinner with the hook still blocked.
+        if s.state == .permission,
+           let r = requestStore.requests.first(where: { $0.sessionId == s.id }) {
+            AnswerWriter.write(behavior: "defer", for: r)
+        }
         if s.entrypoint == "claude-desktop" {
             openAgent(Agent.byID("claude"))
             return
@@ -139,15 +145,19 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         systemColor = (sender.representedObject as? Bool) ?? false
     }
 
-    @objc func approvalActionClicked(_ sender: NSMenuItem) {
-        guard let a = sender.representedObject as? ApprovalAction else { return }
+    /// Called by the inline Allow/Always/Deny button strip on permission rows.
+    func answer(_ a: ApprovalAction) {
         switch a.behavior {
         case "always":
             AnswerWriter.write(behavior: "always", rule: a.request.ruleSuggestion, for: a.request)
         case "defer":
             AnswerWriter.write(behavior: "defer", for: a.request)
-            // The prompt is about to appear in the terminal: bring it forward.
-            Self.focusTerminal(named: a.session.termProgram)
+            // The prompt is about to reappear where the session lives: bring it forward.
+            if a.session.entrypoint == "claude-desktop" {
+                openAgent(Agent.byID(a.session.agentID))
+            } else {
+                Self.focusTerminal(named: a.session.termProgram)
+            }
         default:
             AnswerWriter.write(behavior: a.behavior, for: a.request)
         }

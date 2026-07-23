@@ -30,11 +30,27 @@ struct ApprovalRequest {
         ts              = o["ts"] as? TimeInterval ?? 0
     }
 
-    /// Text of the rule "Always allow" would persist — shown verbatim in the menu item.
+    /// Text of the rule "Always allow" would persist — shown in the menu item.
+    /// Claude Code suggestions come as {type:"addRules", rules:[{toolName, ruleContent}]};
+    /// render those as "Bash(git push:*)" instead of raw JSON.
     var ruleDescription: String? {
         guard let r = ruleSuggestion else { return nil }
         if let s = r["rule"] as? String { return s }
+        if let rules = r["rules"] as? [[String: Any]] {
+            let parts = rules.compactMap { rule -> String? in
+                guard let content = rule["ruleContent"] as? String else { return nil }
+                let tool = rule["toolName"] as? String ?? ""
+                return tool.isEmpty ? content : "\(tool)(\(content))"
+            }
+            if !parts.isEmpty { return parts.joined(separator: ", ") }
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: r) else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    /// ruleDescription cut to menu-title length; the full text belongs in a tooltip.
+    var ruleMenuTitle: String? {
+        guard let d = ruleDescription else { return nil }
+        return d.count > 48 ? String(d.prefix(47)) + "…" : d
     }
 }

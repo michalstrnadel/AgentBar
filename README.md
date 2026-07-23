@@ -43,11 +43,12 @@ First launch installs the Claude Code hooks automatically (and the Codex notify 
 
 ## Remote Allow/Deny
 
-When a Claude Code session asks for permission, the yellow "needs approval" row grows
-a submenu showing exactly what's requested (e.g. `Bash: git push origin main`; full
-input in the tooltip) with **Allow once**, **Always allow "<rule>"** (only when Claude
-Code suggests a rule — the literal rule is in the menu item), **Deny**, and **Answer
-in terminal instead**. Decisions return through Claude Code's PermissionRequest hook,
+When a Claude Code session asks for permission, the request appears right under the
+yellow "needs approval" row: what's requested (e.g. `Bash: git push origin main`; full
+input in the tooltip) plus an inline button strip — **✓ Allow**, **✓ Always** (only
+when Claude Code suggests a rule; the rule is in the tooltip), **✕ Deny**, and
+**⌨ Terminal** / **⧉ Claude app** to answer in the session's own UI instead. Clicking
+the session row does the same hand-off. Decisions return through Claude Code's PermissionRequest hook,
 so the terminal prompt never appears; if AgentBar isn't running, quits mid-wait, or
 you ignore the request for 10 minutes, the prompt shows in the terminal exactly as
 before. (Known cosmetic issue: the terminal dialog can flash briefly even when

@@ -69,18 +69,19 @@ hook allows (claude-code issue #12176). Harmless; documented in README.
 
 ## Menu UX
 
-Session row in `permission` state gains a submenu (replaces the plain row click):
+The request renders inline, directly under the session row — no second navigation
+level (chosen over a submenu after A/B evaluation on 2026-07-23):
 
 ```
-● AgentBar · main  needs approval   CLAUDE ▸
-    Bash: git push origin main        (disabled header; tooltip = full command)
-    ✓ Allow once
-    ✓ Always allow "Bash(git push:*)" (only when a rule suggestion exists;
-                                       item text contains the literal rule)
-    ✕ Deny
-    ──────────────
-    Answer in terminal instead        (defer + focus the session's terminal)
+● AgentBar · main  needs approval   CLAUDE
+      Bash: git push origin main          (small dimmed line; tooltip = full input)
+      [✓ Allow] [✓ Always] [✕ Deny] [⌨ Terminal]   (button strip, NSMenuItem.view)
 ```
+
+"✓ Always" appears only when a rule suggestion exists (rule text in the tooltip).
+The defer button reads "⌨ Terminal" for CLI sessions and "⧉ Claude app" for
+claude-desktop ones, and hands the prompt back to that surface. Clicking the
+session row itself performs the same defer + focus.
 
 Multiple concurrent requests for one session (parallel tool calls) each get their
 own block in the submenu, newest first.
