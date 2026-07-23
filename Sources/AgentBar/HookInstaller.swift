@@ -69,15 +69,16 @@ enum HookInstaller {
         var hooks = root["hooks"] as? [String: Any] ?? [:]
 
         let dir = hooksDir.appendingPathComponent("claude").path
-        let events: [(event: String, cmd: String, matcher: Bool)] = [
-            ("SessionStart",     "\"\(node)\" \"\(dir)/lifecycle.js\" start", false),
-            ("SessionEnd",       "\"\(node)\" \"\(dir)/lifecycle.js\" end", false),
-            ("UserPromptSubmit", "\"\(node)\" \"\(dir)/update.js\" prompt", false),
-            ("PreToolUse",       "\"\(node)\" \"\(dir)/update.js\" pre", true),
-            ("PostToolUse",      "\"\(node)\" \"\(dir)/update.js\" post", true),
-            ("Notification",     "\"\(node)\" \"\(dir)/update.js\" notify", false),
-            ("PermissionRequest","\"\(node)\" \"\(dir)/update.js\" permreq", true),
-            ("Stop",             "\"\(node)\" \"\(dir)/update.js\" stop", false),
+        let events: [(event: String, cmd: String, matcher: Bool, timeout: Int?)] = [
+            ("SessionStart",     "\"\(node)\" \"\(dir)/lifecycle.js\" start", false, nil),
+            ("SessionEnd",       "\"\(node)\" \"\(dir)/lifecycle.js\" end", false, nil),
+            ("UserPromptSubmit", "\"\(node)\" \"\(dir)/update.js\" prompt", false, nil),
+            ("PreToolUse",       "\"\(node)\" \"\(dir)/update.js\" pre", true, nil),
+            ("PostToolUse",      "\"\(node)\" \"\(dir)/update.js\" post", true, nil),
+            ("Notification",     "\"\(node)\" \"\(dir)/update.js\" notify", false, nil),
+            // Blocking approval hook: its own wait is 600s, so give Claude Code slack.
+            ("PermissionRequest","\"\(node)\" \"\(dir)/permission.js\"", true, 630),
+            ("Stop",             "\"\(node)\" \"\(dir)/update.js\" stop", false, nil),
         ]
 
         for e in events {
@@ -88,7 +89,9 @@ enum HookInstaller {
                     (cmd["command"] as? String)?.contains("/.agentbar/hooks/claude/") == true
                 }
             }
-            var rule: [String: Any] = ["hooks": [["type": "command", "command": e.cmd]]]
+            var hookEntry: [String: Any] = ["type": "command", "command": e.cmd]
+            if let t = e.timeout { hookEntry["timeout"] = t }
+            var rule: [String: Any] = ["hooks": [hookEntry]]
             if e.matcher { rule["matcher"] = "*" }
             rules.append(rule)
             hooks[e.event] = rules
