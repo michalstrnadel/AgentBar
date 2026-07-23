@@ -104,7 +104,8 @@ function run() {
     } catch {}
 
     writeAtomic(reqPath, {
-      sessionId: p.session_id || "", agent: "claude",
+      // safeId to match Session.id, which the app derives from the state file name.
+      sessionId: safeId(p.session_id), agent: "claude",
       toolName: p.tool_name || "", display, toolInputPretty: pretty,
       ruleSuggestion: suggestion, pid: process.ppid, hookPid: process.pid,
       ts: Math.floor(Date.now() / 1000),
