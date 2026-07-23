@@ -157,7 +157,10 @@ final class IconRenderer {
     }
 
     /// Amber badge for "awaiting permission", composited onto any frame.
-    static func withPermissionDot(_ src: NSImage) -> NSImage {
+    static let amberDot = NSColor(srgbRed: 0.95, green: 0.73, blue: 0.18, alpha: 1)
+    static let questionDot = NSColor(srgbRed: 0.30, green: 0.56, blue: 0.95, alpha: 1)
+
+    static func withPermissionDot(_ src: NSImage, color: NSColor = IconRenderer.amberDot) -> NSImage {
         let dot: CGFloat = 7
         let size = NSSize(width: src.size.width + dot / 2, height: max(src.size.height, 18))
         let wasTemplate = src.isTemplate
@@ -172,12 +175,12 @@ final class IconRenderer {
                 NSColor.labelColor.setFill()
                 imgRect.fill(using: .sourceAtop) // tint glyph pixels only
             }
-            NSColor(srgbRed: 0.95, green: 0.73, blue: 0.18, alpha: 1).setFill()
+            color.setFill()
             NSBezierPath(ovalIn: NSRect(x: size.width - dot, y: size.height - dot,
                                         width: dot, height: dot)).fill()
             return true
         }
-        out.isTemplate = false // the dot must stay amber even in System mode
+        out.isTemplate = false // the dot must keep its color even in System mode
         return out
     }
 

@@ -79,6 +79,26 @@ function run() {
   try {
     let p = {};
     try { p = JSON.parse(raw || "{}"); } catch {}
+
+    // AskUserQuestion is Claude asking the human, not asking for permission: the
+    // question UI renders regardless of any hook decision, so blocking here would
+    // be pointless. Mark the session "question" and get out of the way —
+    // PostToolUse flips the state back once the user answers.
+    if (p.tool_name === "AskUserQuestion") {
+      try {
+        const q = (((p.tool_input || {}).questions || [])[0] || {});
+        const statePath = path.join(stateDir, safeId(p.session_id) + ".json");
+        fs.mkdirSync(stateDir, { recursive: true });
+        let prev = {};
+        try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
+        writeAtomic(statePath, { ...prev, agent: "claude", state: "question",
+          label: "❓ " + oneLine(q.question || "Waiting for your answer"),
+          sessionId: p.session_id || "", pid: process.ppid, started: true,
+          ts: Math.floor(Date.now() / 1000) });
+      } catch {}
+      process.exit(0);
+    }
+
     const name = safeId(p.session_id) + "-" + safeId(p.prompt_id || String(process.pid));
     const reqPath = path.join(reqDir, name + ".json");
     const ansPath = path.join(ansDir, name + ".json");

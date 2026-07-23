@@ -4,7 +4,7 @@ import Foundation
 /// written by the hook scripts in `Scripts/hooks/`.
 struct Session {
     enum State: String {
-        case idle, thinking, tool, permission, done
+        case idle, thinking, tool, permission, question, done
 
         var isWorking: Bool { self == .thinking || self == .tool }
     }
@@ -24,7 +24,8 @@ struct Session {
     /// Sort/priority weight: what the menu bar should surface first.
     var priority: Int {
         switch state {
-        case .permission:      return 2
+        case .permission:      return 3
+        case .question:        return 2
         case .thinking, .tool: return 1
         case .idle, .done:     return 0
         }

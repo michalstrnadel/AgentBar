@@ -137,6 +137,16 @@ check "edit display is cwd-relative" 'grep -q "Edit: Sources/App/File.swift" "$H
 printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 
+# 12. AskUserQuestion -> "question" state, immediate exit, no request file
+fresh_home
+Q_EVENT='{"session_id":"testsess","prompt_id":"p3","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Which direction should we take?","header":"Direction","options":[]}]}}'
+start=$(date +%s)
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=600 "$NODE" "$HOOK" <<<"$Q_EVENT" >"$HOME/out.json"
+end=$(date +%s)
+check "question: exits immediately"  '[ $((end-start)) -le 2 ] && [ ! -s "$HOME/out.json" ]'
+check "question: no request file"    '[ -z "$(ls "$HOME/.agentbar/requests.d/" 2>/dev/null)" ]'
+check "question: state + label"      'grep -q "\"state\":\"question\"" "$HOME/.agentbar/state.d/testsess.json" && grep -q "Which direction" "$HOME/.agentbar/state.d/testsess.json"'
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

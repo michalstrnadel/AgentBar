@@ -3,6 +3,16 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.3.0 - 2026-07-23
+
+### Added
+- New "question" state: when Claude asks you something (AskUserQuestion — option
+  pickers, plan questions), the session shows a blue dot with the question text
+  instead of a false "needs approval"; clicking the row jumps to the session to
+  answer. Clears automatically once you reply.
+- docs/claude-code-states.md: authoritative mapping of Claude Code hook events to
+  AgentBar states, including what's deliberately not consumed and why.
+
 ## 1.2.1 - 2026-07-23
 
 ### Fixed

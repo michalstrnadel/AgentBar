@@ -59,6 +59,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             button.image = IconRenderer.withPermissionDot(
                 systemColor ? sprite.restingTemplate : sprite.restingColor)
             button.title = ""
+        case .question:
+            stopAnimation()
+            stopWords()
+            button.image = IconRenderer.withPermissionDot(
+                systemColor ? sprite.restingTemplate : sprite.restingColor,
+                color: IconRenderer.questionDot)
+            button.title = ""
         default:
             stopAnimation()
             stopWords()
