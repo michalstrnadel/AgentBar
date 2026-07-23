@@ -3,6 +3,16 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-07-23
+
+### Added
+- Remote Allow/Deny: answer Claude Code permission prompts from the menu bar —
+  see the exact command, then allow once, always-allow with the Claude-suggested
+  rule, deny, or defer to the terminal prompt. Every failure mode (app not
+  running, timeout, kill) falls back to the normal terminal prompt.
+- Best-effort keystroke approval for Codex and Copilot sessions (requires the
+  Accessibility permission; clearly labeled in the menu).
+
 ## [1.0.0] - 2026-07-23
 
 First release. A clean-room rewrite of the AI Status Notifier concept as a

@@ -19,6 +19,8 @@ open "build/AgentBar.app"
    god-object controller.
 2. Menu bar only: no windows, no dock icon, no heavy dependencies.
 3. Hooks must never block the host agent: async, atomic writes, exit fast.
+   Sole exception: `permission.js` blocks while the session is already waiting on
+   the human, and must always time out silently to the normal terminal prompt.
 4. Adding an agent: entry in `Agents.swift`, sprite in `Sources/AgentBar/Sprites/`,
    optional hook dir in `Scripts/hooks/<agent>/`. Nothing else should need touching.
 5. Third-party marks stay listed in `THIRD_PARTY_NOTICES.md`.

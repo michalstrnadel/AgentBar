@@ -18,6 +18,8 @@ Created by **Michal Strnadel**.
   click a row to jump to its app or terminal.
 - **Open anything** — launch Claude, Codex, Copilot, or Antigravity straight from the menu.
 - **Two looks** — full-color mascots, or a monochrome System mode that matches the menu bar.
+- **Remote Allow/Deny** — answer Claude Code permission prompts straight from the menu:
+  see exactly what's requested, then Allow once, Always allow, Deny, or defer to terminal.
 - **Nothing else** — no dock icon, no windows, no timers, no sounds. One process, tiny footprint.
 
 ## Install
@@ -39,10 +41,29 @@ First launch installs the Claude Code hooks automatically (and the Codex notify 
 | GitHub Copilot | — | yes | no public event API yet; mascot ready |
 | Google Antigravity | — | yes | no public event API yet; mascot ready |
 
+## Remote Allow/Deny
+
+When a Claude Code session asks for permission, the yellow "needs approval" row grows
+a submenu showing exactly what's requested (e.g. `Bash: git push origin main`; full
+input in the tooltip) with **Allow once**, **Always allow "<rule>"** (only when Claude
+Code suggests a rule — the literal rule is in the menu item), **Deny**, and **Answer
+in terminal instead**. Decisions return through Claude Code's PermissionRequest hook,
+so the terminal prompt never appears; if AgentBar isn't running, quits mid-wait, or
+you ignore the request for 10 minutes, the prompt shows in the terminal exactly as
+before. (Known cosmetic issue: the terminal dialog can flash briefly even when
+approved from the menu — upstream claude-code #12176.)
+
+Codex and Copilot have no decision hooks, so their rows offer *Approve in terminal
+(sends keystroke)* — AgentBar focuses the session's terminal and presses the approval
+key. Best-effort by design, and it needs the Accessibility permission (the menu item
+offers to open System Settings until it's granted).
+
 ## How it works
 
 Tiny hook scripts (Node.js) write one JSON file per session to `~/.agentbar/state.d/`.
 The app watches that folder and renders. No sockets, no daemons, no network.
+Permission approvals use two more folders of the same protocol: the blocking hook
+writes `requests.d/`, the app answers into `answers.d/`.
 
 ## License
 
