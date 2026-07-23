@@ -181,10 +181,24 @@ enum MenuBuilder {
         return title
     }
 
-    /// Small resting mark used as the item icon in the Open submenu.
+    /// Small resting mark used as the item icon in the Open submenu. Uses the clean
+    /// dot-free glyph for the agents whose bar sprite carries a dot-matrix (codex,
+    /// copilot); others fall back to their sprite's resting frame (already clean).
     private static func menuMark(for agent: Agent) -> NSImage {
-        let sprite = IconRenderer.shared.sprite(for: agent)
-        let img = sprite.restingTemplate.copy() as! NSImage
+        let template: NSImage
+        switch agent.id {
+        case "codex":
+            template = IconRenderer.decode(codexMascotMarkPNG).map {
+                IconRenderer.solidTemplate(IconRenderer.trim($0))
+            } ?? IconRenderer.shared.sprite(for: agent).restingTemplate
+        case "copilot":
+            template = IconRenderer.decode(copilotMascotMarkPNG).map {
+                IconRenderer.adaptiveTemplate(IconRenderer.trim($0))
+            } ?? IconRenderer.shared.sprite(for: agent).restingTemplate
+        default:
+            template = IconRenderer.shared.sprite(for: agent).restingTemplate
+        }
+        let img = template.copy() as! NSImage
         img.size = NSSize(width: 14 * img.size.width / max(img.size.height, 1), height: 14)
         return img
     }

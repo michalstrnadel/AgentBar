@@ -3,6 +3,13 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.6.1 - 2026-07-23
+
+### Fixed
+- Open menu: the Codex and Copilot launcher icons now show the clean mascot glyph
+  (the knot; the pixel head) without the trailing braille dot-matrix. The animated
+  dots belong only in the menu bar; the picker stays crisp.
+
 ## 1.6.0 - 2026-07-23
 
 ### Added
