@@ -11,6 +11,10 @@
 
 **One menu bar item for all your AI coding agents.**
 
+<p align="center">
+  <img src="docs/assets/demo.gif" width="640" alt="AgentBar demo: working session, needs-approval, one-click Allow">
+</p>
+
 AgentBar is a lightweight, native macOS menu bar app that shows the live state of your
 AI coding sessions — Claude Code today, with Codex, GitHub Copilot, and Google
 Antigravity in the same bar. Each agent gets its own animated mascot; the bar always
