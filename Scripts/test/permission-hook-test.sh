@@ -12,9 +12,23 @@ pass=0; fail=0
 check() {
   if eval "$2"; then echo "ok   $1"; pass=$((pass+1)); else echo "FAIL $1"; fail=$((fail+1)); fi
 }
+
+TESTROOT="$(mktemp -d)"
+trap 'rm -rf "$TESTROOT"' EXIT
+
 fresh_home() {
-  export HOME="$(mktemp -d)"
+  export HOME="$TESTROOT/home.$$.$RANDOM"
   mkdir -p "$HOME/.agentbar/answers.d"
+}
+
+# Bounded poll for the request file instead of a fixed sleep; sets $REQ.
+wait_req() {
+  for _ in $(seq 50); do
+    REQ="$(ls "$HOME/.agentbar/requests.d/" 2>/dev/null | head -1)"
+    [ -n "$REQ" ] && return 0
+    sleep 0.1
+  done
+  return 1
 }
 
 EVENT='{"session_id":"testsess","prompt_id":"p1","tool_name":"Bash","tool_input":{"command":"git push origin main"},"permission_suggestions":[{"type":"rule","rule":"Bash(git push:*)"}]}'
@@ -23,8 +37,7 @@ EVENT='{"session_id":"testsess","prompt_id":"p1","tool_name":"Bash","tool_input"
 fresh_home
 AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
 hookpid=$!
-sleep 0.5
-REQ="$(ls "$HOME/.agentbar/requests.d/" 2>/dev/null | head -1)"
+wait_req
 check "request file written"        '[ -n "$REQ" ]'
 check "request carries display"     'grep -q "Bash: git push origin main" "$HOME/.agentbar/requests.d/$REQ"'
 check "state flipped to permission" 'grep -q "\"state\":\"permission\"" "$HOME/.agentbar/state.d/testsess.json"'
@@ -38,18 +51,16 @@ check "answer cleaned up"           '[ ! -e "$HOME/.agentbar/answers.d/$REQ" ]'
 fresh_home
 AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
 hookpid=$!
-sleep 0.5
-REQ="$(ls "$HOME/.agentbar/requests.d/" | head -1)"
+wait_req
 printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 check "deny decision on stdout"     'grep -q "\"behavior\":\"deny\"" "$HOME/out.json"'
 
-# 3. always -> allow + rule passthrough
+# 3. always -> allow + rule passthrough (rule matches the received suggestion verbatim)
 fresh_home
 AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
 hookpid=$!
-sleep 0.5
-REQ="$(ls "$HOME/.agentbar/requests.d/" | head -1)"
+wait_req
 printf '{"behavior":"always","rule":{"type":"rule","rule":"Bash(git push:*)"}}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 check "always returns allow"        'grep -q "\"behavior\":\"allow\"" "$HOME/out.json"'
@@ -59,8 +70,7 @@ check "always carries the rule"     'grep -q "git push:" "$HOME/out.json"'
 fresh_home
 AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
 hookpid=$!
-sleep 0.5
-REQ="$(ls "$HOME/.agentbar/requests.d/" | head -1)"
+wait_req
 printf '{"behavior":"defer"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 check "defer produces no output"    '[ ! -s "$HOME/out.json" ]'
@@ -79,6 +89,33 @@ fresh_home
 AGENTBAR_FORCE_APP=0 AGENTBAR_APPROVAL_TIMEOUT=600 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json"
 check "no app: no output"           '[ ! -s "$HOME/out.json" ]'
 check "no app: no request dir"      '[ ! -d "$HOME/.agentbar/requests.d" ]'
+
+# 7. stdin never closes -> the 1s setTimeout bails without blocking on an unknown request
+fresh_home
+start=$(date +%s)
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=600 "$NODE" "$HOOK" < <(sleep 3) >"$HOME/out.json"
+end=$(date +%s)
+check "stdin stall: exits fast, no output, no request" \
+  '[ $((end-start)) -le 2 ] && [ ! -s "$HOME/out.json" ] && [ -z "$(ls "$HOME/.agentbar/requests.d/" 2>/dev/null)" ]'
+
+# 8. SIGTERM mid-wait -> signal handler still cleans up the request file
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=30 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+kill -TERM "$hookpid"
+wait "$hookpid" 2>/dev/null
+check "SIGTERM cleans up request"   '[ ! -e "$HOME/.agentbar/requests.d/$REQ" ]'
+
+# 9. forged rule (doesn't match any received suggestion) -> plain allow, no updatedPermissions
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"behavior":"always","rule":{"type":"rule","rule":"Bash(*)"}}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "forged rule downgrades to plain allow" \
+  'grep -q "\"behavior\":\"allow\"" "$HOME/out.json" && ! grep -q "updatedPermissions" "$HOME/out.json"'
 
 echo "---"
 echo "$pass passed, $fail failed"
