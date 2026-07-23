@@ -105,8 +105,8 @@ enum MenuBuilder {
         let agent = Agent.byID(s.agentID)
         let dotColor: NSColor
         switch s.state {
-        case .permission:      dotColor = NSColor(srgbRed: 0.95, green: 0.73, blue: 0.18, alpha: 1)
-        case .question:        dotColor = NSColor(srgbRed: 0.30, green: 0.56, blue: 0.95, alpha: 1)
+        case .permission:      dotColor = IconRenderer.amberDot
+        case .question:        dotColor = IconRenderer.questionDot
         case .thinking, .tool: dotColor = agent.brand
         case .idle, .done:     dotColor = .tertiaryLabelColor
         }

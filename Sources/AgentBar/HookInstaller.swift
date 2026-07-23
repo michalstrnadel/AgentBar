@@ -106,7 +106,7 @@ enum HookInstaller {
         root["hooks"] = hooks
 
         let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-        try data.write(to: settingsURL)
+        try data.write(to: settingsURL, options: .atomic) // never leave settings.json half-written
     }
 
     // MARK: - Codex (~/.codex/config.toml, notify hook)

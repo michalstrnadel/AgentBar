@@ -19,7 +19,7 @@ Thanks for your interest! AgentBar is intentionally small — please keep it tha
 ```bash
 ./Scripts/build.sh                        # builds build/AgentBar.app
 open build/AgentBar.app
-./Scripts/test/permission-hook-test.sh    # hook protocol tests (20 checks)
+./Scripts/test/permission-hook-test.sh    # hook protocol tests
 ```
 
 `swift build` works for quick compile checks and SourceKit-LSP; the shippable app
