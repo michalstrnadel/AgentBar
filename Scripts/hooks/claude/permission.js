@@ -1,0 +1,132 @@
+#!/usr/bin/env node
+// Claude Code PermissionRequest -> remote approval from the AgentBar menu.
+// Writes a request file, then BLOCKS polling answers.d for the user's decision;
+// returning a decision replaces the terminal prompt entirely.
+// Deliberate exception to "hooks never block": the session is already waiting on
+// a human, and every failure path (no app, app quits, timeout, junk input) exits
+// silently so the ordinary terminal prompt appears instead.
+// Usage: node permission.js   (PermissionRequest hook JSON on stdin)
+
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const cp = require("child_process");
+
+const base = path.join(os.homedir(), ".agentbar");
+const stateDir = path.join(base, "state.d");
+const reqDir = path.join(base, "requests.d");
+const ansDir = path.join(base, "answers.d");
+
+const TIMEOUT_MS = 1000 * Number(process.env.AGENTBAR_APPROVAL_TIMEOUT || 600);
+const POLL_MS = 100;
+
+const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";
+const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const writeAtomic = (file, obj) => {
+  const tmp = file + "." + process.pid + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(obj));
+  fs.renameSync(tmp, file);
+};
+const appRunning = () => {
+  if (process.env.AGENTBAR_FORCE_APP === "1") return true;
+  if (process.env.AGENTBAR_FORCE_APP === "0") return false;
+  try { cp.execSync("pgrep -x AgentBar", { stdio: "ignore" }); return true; } catch { return false; }
+};
+
+const oneLine = (s, n = 60) => {
+  s = String(s || "").split("\n")[0].trim();
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+};
+
+function displaySummary(tool, input) {
+  const t = String(tool || "unknown");
+  const i = input || {};
+  if (t === "Bash") return "Bash: " + oneLine(i.command);
+  if (["Edit", "Write", "MultiEdit", "NotebookEdit", "Read"].includes(t))
+    return t + ": " + oneLine(i.file_path || i.notebook_path);
+  if (t === "WebFetch") return "WebFetch: " + oneLine(i.url);
+  if (t === "WebSearch") return "WebSearch: " + oneLine(i.query);
+  const m = t.match(/^mcp__(.+?)__(.+)$/);
+  if (m) return m[1] + ": " + m[2];
+  return t;
+}
+
+let raw = "", started = false;
+process.stdin.on("data", (d) => (raw += d));
+process.stdin.on("end", run);
+setTimeout(run, 1000); // stdin never arrived: bail, never hang the session start
+
+function run() {
+  if (started) return; started = true;
+  if (!appRunning()) process.exit(0); // nobody to answer -> terminal prompt
+
+  let p = {};
+  try { p = JSON.parse(raw || "{}"); } catch {}
+  const name = safeId(p.session_id) + "-" + safeId(p.prompt_id || String(process.pid));
+  const reqPath = path.join(reqDir, name + ".json");
+  const ansPath = path.join(ansDir, name + ".json");
+  const display = displaySummary(p.tool_name, p.tool_input);
+
+  let pretty = "";
+  try { pretty = JSON.stringify(p.tool_input || {}, null, 2); } catch {}
+  if (pretty.length > 4096) pretty = pretty.slice(0, 4096) + "\n…";
+
+  // Rule suggestions come from Claude Code and go back verbatim on "Always allow";
+  // the hook never invents permission rules itself.
+  const suggestion = Array.isArray(p.permission_suggestions) ? p.permission_suggestions[0] : null;
+
+  fs.mkdirSync(reqDir, { recursive: true });
+  fs.mkdirSync(ansDir, { recursive: true });
+
+  // The session row itself shows what's pending, even before the submenu opens.
+  try {
+    const statePath = path.join(stateDir, safeId(p.session_id) + ".json");
+    fs.mkdirSync(stateDir, { recursive: true });
+    let prev = {};
+    try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
+    writeAtomic(statePath, { ...prev, agent: "claude", state: "permission", label: display,
+      sessionId: p.session_id || "", pid: process.ppid, started: true,
+      ts: Math.floor(Date.now() / 1000) });
+  } catch {}
+
+  writeAtomic(reqPath, {
+    sessionId: p.session_id || "", agent: "claude",
+    toolName: p.tool_name || "", display, toolInputPretty: pretty,
+    ruleSuggestion: suggestion, pid: process.ppid,
+    ts: Math.floor(Date.now() / 1000),
+  });
+
+  const cleanup = () => {
+    try { fs.rmSync(reqPath, { force: true }); } catch {}
+    try { fs.rmSync(ansPath, { force: true }); } catch {}
+  };
+  process.on("exit", cleanup);
+
+  const deadline = Date.now() + TIMEOUT_MS;
+  let ticks = 0;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(ansPath)) {
+      let a = {};
+      try { a = JSON.parse(fs.readFileSync(ansPath, "utf8")); } catch {}
+      const b = a.behavior;
+      if (b === "allow" || b === "always") {
+        const decision = { behavior: "allow" };
+        // Echoing a permission_suggestions entry as updatedPermissions == "always allow".
+        if (b === "always" && a.rule) decision.updatedPermissions = [a.rule];
+        respond(decision);
+      } else if (b === "deny") {
+        respond({ behavior: "deny" });
+      }
+      process.exit(0); // "defer"/junk: silent exit -> terminal prompt
+    }
+    if (++ticks % 20 === 0 && !appRunning()) process.exit(0); // app quit mid-wait
+    sleep(POLL_MS);
+  }
+  process.exit(0); // timeout -> terminal prompt
+}
+
+function respond(decision) {
+  process.stdout.write(JSON.stringify({
+    hookSpecificOutput: { hookEventName: "PermissionRequest", decision },
+  }));
+}
