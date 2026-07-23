@@ -14,6 +14,8 @@ enum HookInstaller {
                 try copyScripts(from: bundled)
                 for dir in claudeConfigDirs() { try installClaude(configDir: dir) }
                 try installCodex()
+                try installCursor()
+                try installGemini()
             } catch {
                 NSLog("AgentBar hook install failed: \(error)")
             }
@@ -145,5 +147,64 @@ enum HookInstaller {
         if !config.isEmpty && !config.hasSuffix("\n") { config += "\n" }
         config += "notify = [\"\(node)\", \"\(script)\"]\n"
         try config.write(to: configURL, atomically: true, encoding: .utf8)
+    }
+
+    // MARK: - Cursor CLI (~/.cursor/hooks.json)
+
+    private static func installCursor() throws {
+        let cursorDir = home.appendingPathComponent(".cursor")
+        guard FileManager.default.fileExists(atPath: cursorDir.path) else { return } // not a Cursor user
+        let cfgURL = cursorDir.appendingPathComponent("hooks.json")
+        let script = hooksDir.appendingPathComponent("cursor/cursor.js").path
+
+        var root: [String: Any] = [:]
+        if let data = try? Data(contentsOf: cfgURL),
+           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { root = parsed }
+        root["version"] = root["version"] ?? 1
+        var hooks = root["hooks"] as? [String: Any] ?? [:]
+        let marker = "/.agentbar/hooks/cursor/"
+
+        // Cursor's command is a single executable path (our script is +x with a shebang).
+        for event in ["sessionStart", "sessionEnd", "preToolUse", "postToolUse", "stop"] {
+            var rules = (hooks[event] as? [[String: Any]] ?? [])
+                .filter { ($0["command"] as? String)?.contains(marker) != true }
+            rules.append(["command": script])
+            hooks[event] = rules
+        }
+        root["hooks"] = hooks
+        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: cfgURL, options: .atomic)
+    }
+
+    // MARK: - Gemini CLI (~/.gemini/settings.json)
+
+    private static func installGemini() throws {
+        guard let node = findNode() else { return }
+        let geminiDir = home.appendingPathComponent(".gemini")
+        guard FileManager.default.fileExists(atPath: geminiDir.path) else { return } // not a Gemini user
+        let cfgURL = geminiDir.appendingPathComponent("settings.json")
+        let script = hooksDir.appendingPathComponent("gemini/gemini.js").path
+        let command = "\"\(node)\" \"\(script)\""
+
+        var root: [String: Any] = [:]
+        if let data = try? Data(contentsOf: cfgURL),
+           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { root = parsed }
+        var hooks = root["hooks"] as? [String: Any] ?? [:]
+        let marker = "/.agentbar/hooks/gemini/"
+
+        // Gemini groups hooks as [{ hooks: [{type:"command", command}] }].
+        func ours(_ group: [String: Any]) -> Bool {
+            ((group["hooks"] as? [[String: Any]]) ?? []).contains {
+                ($0["command"] as? String)?.contains(marker) == true
+            }
+        }
+        for event in ["SessionStart", "SessionEnd", "BeforeTool", "AfterTool", "AfterAgent"] {
+            var groups = (hooks[event] as? [[String: Any]] ?? []).filter { !ours($0) }
+            groups.append(["hooks": [["type": "command", "command": command, "timeout": 5000]]])
+            hooks[event] = groups
+        }
+        root["hooks"] = hooks
+        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+        try data.write(to: cfgURL, options: .atomic)
     }
 }

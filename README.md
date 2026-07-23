@@ -32,6 +32,21 @@ curl -fsSL https://raw.githubusercontent.com/michalstrnadel/AgentBar/main/Script
 
 That's the whole loop. More install options below; troubleshooting at the bottom.
 
+### What the installer changes (and how to undo it)
+
+AgentBar is local-only — no network, no telemetry. The install touches exactly these,
+all reversible (see [Uninstall](#uninstall)):
+
+- Copies the hook scripts to `~/.agentbar/hooks/`.
+- Merges AgentBar hook entries into your Claude Code settings — `~/.claude/settings.json`,
+  and your `CLAUDE_CONFIG_DIR` if you set one. Existing hooks are preserved.
+- Adds a `notify` line to `~/.codex/config.toml` **only if you use Codex and have none**;
+  merges into `~/.cursor/hooks.json` / `~/.gemini/settings.json` **only if those exist**.
+- The SessionStart hook launches AgentBar in the background when an agent session begins.
+
+The installer prints this summary before doing anything, and never modifies a tool you
+don't use. Hooks are snapshotted per session — start a new agent session afterward.
+
 ## Features
 
 - **Live status per agent** — an animated mascot works the bar while an agent works:
@@ -103,24 +118,28 @@ First launch installs the Claude Code hooks automatically (and the Codex notify 
 osascript -e 'quit app "AgentBar"'
 rm -rf ~/.agentbar
 # remove the AgentBar hook entries (they all reference ~/.agentbar/hooks/):
-#   ~/.claude/settings.json  — delete rules whose command contains "/.agentbar/hooks/"
-#   ~/.codex/config.toml     — delete the notify line referencing "/.agentbar/hooks/"
+#   ~/.claude/settings.json (and your CLAUDE_CONFIG_DIR) — delete rules whose command contains "/.agentbar/hooks/"
+#   ~/.codex/config.toml       — delete the notify line referencing "/.agentbar/hooks/"
+#   ~/.cursor/hooks.json       — delete entries whose command references "/.agentbar/hooks/cursor/"
+#   ~/.gemini/settings.json    — delete hook groups whose command references "/.agentbar/hooks/gemini/"
 ```
 
 ## Agent support
 
-| Agent | Live status | Open | Animated mascot | Notes |
+| Agent | Live status | Open | Mascot | Notes |
 |---|---|---|---|---|
 | Claude Code (CLI + desktop) | full | yes | Clawd the crab | hooks: prompt, tool, permission, stop, lifecycle |
 | Codex CLI | turn-complete | yes | knot + braille dot-matrix | via Codex `notify` (auto-installed); no per-tool granularity upstream |
-| GitHub Copilot | — | yes | official pixel head + dot-matrix | no public event API yet; everything else is wired and waiting |
-| Google Antigravity | — | yes | official pixel rainbow arch | no public event API yet; everything else is wired and waiting |
+| Cursor CLI | working / done | yes | pointer | hooks in `~/.cursor/hooks.json` (auto-wired if Cursor is installed) |
+| Gemini CLI | working / done | yes | spark | hooks in `~/.gemini/settings.json` (auto-wired if Gemini is installed) |
+| GitHub Copilot | — | yes | pixel head + dot-matrix | no public event API yet; everything else is wired and waiting |
+| Google Antigravity | — | yes | pixel rainbow arch | no public event API yet; everything else is wired and waiting |
 
-Hook readiness: Claude Code hooks and the Codex `notify` bridge install automatically
-on first launch. Copilot and Antigravity ship with their mascots, menu entries, and
-(for Copilot) the keystroke-approval backend already in place — the moment either tool
-exposes session events, support is one small hook script away
-(see `Scripts/hooks/copilot/README.md` and `Scripts/hooks/antigravity/README.md`).
+Hook readiness: Claude Code, Codex (`notify`), Cursor (`hooks.json`), and Gemini
+(`settings.json`) hooks all install automatically on first launch for the tools you
+have. Copilot and Antigravity ship with their mascots, menu entries, and (for Copilot)
+the keystroke-approval backend already in place — the moment either exposes session
+events, support is one small hook script away.
 
 ## Remote Allow/Deny
 

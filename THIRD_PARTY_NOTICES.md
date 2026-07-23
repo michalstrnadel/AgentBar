@@ -13,6 +13,10 @@ property of their respective owners.
 - **Google Antigravity logo** — trademark of Google LLC. The animated Antigravity mark
   is a faithful pixel-by-pixel reproduction of the official pixel rainbow arch; static
   vector sourced from svgl.app.
+- **Cursor** — trademark of Anysphere Inc. Shown for Cursor CLI sessions as a stylized
+  pointer glyph (an original mark, not Cursor's logo), used only to identify the tool.
+- **Google Gemini** — trademark of Google LLC. Shown for Gemini CLI sessions as the
+  four-point spark, used nominatively to identify the tool.
 - **Clawd crab sprite** (shown for Claude sessions) — pixel-art frames derived from
   `Clawd-CrabWalking.gif`; Clawd is the community mascot of Anthropic's Claude.
 

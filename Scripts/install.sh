@@ -26,6 +26,18 @@ main() {
   trap 'rm -rf "$TMP"' EXIT
 
   echo "AgentBar installer — $REPO"
+  echo
+  echo "This will, all locally and reversibly:"
+  echo "  • copy hook scripts to ~/.agentbar/hooks/"
+  echo "  • merge AgentBar hooks into your Claude settings (~/.claude, or CLAUDE_CONFIG_DIR)"
+  echo "  • wire Codex / Cursor / Gemini hooks — only for the tools you already use"
+  echo "  • launch AgentBar in the background from the SessionStart hook"
+  echo "No network calls, no telemetry. Uninstall steps are in the README."
+  if [ -t 0 ] && [ -z "${AGENTBAR_YES:-}" ]; then
+    printf "Continue? [Y/n] "; read -r reply
+    case "$reply" in [Nn]*) echo "Aborted."; exit 0 ;; esac
+  fi
+  echo
 
   # Prefer the prebuilt universal app from the latest release; else build from source.
   # No python/CLT dependency here — the prebuilt path must work on a bare Mac, and

@@ -3,6 +3,30 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.7.0 - 2026-07-23
+
+### Added
+- Live-updating menu: the open dropdown now reflects state as it changes — a
+  finished command clears its spinner, a new permission request makes the
+  Allow/Deny strip appear, answered requests disappear — without reopening.
+- Richer approval context: Claude Code permission rows show what you're approving
+  inline — a −old/+new mini-diff for Edit/MultiEdit, the full command for Bash, a
+  preview for Write — instead of only a hover tooltip.
+- Global Allow/Deny shortcut (opt-in): ⌥⌘A allows and ⌥⌘D denies the newest pending
+  request without opening the menu. Off by default; toggle in the menu. No
+  Accessibility permission required.
+- Cursor CLI and Gemini CLI support: live working/done status via their hook
+  systems (`~/.cursor/hooks.json`, `~/.gemini/settings.json`), auto-wired on first
+  launch for the tools you have. Each gets its own menu mark (pointer, spark).
+- Mascot micro-animations: idle is calm, working walks, and a task finishing gives
+  a brief celebratory hop.
+
+### Changed
+- The installer now honors a custom `CLAUDE_CONFIG_DIR` (previously it only wired
+  `~/.claude`, so custom-config users silently got no hooks — issue #4).
+- The installer prints exactly what it will change before doing anything, and the
+  README leads with that footprint. Nothing is touched for tools you don't use.
+
 ## 1.6.1 - 2026-07-23
 
 ### Fixed

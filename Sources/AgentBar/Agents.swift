@@ -48,6 +48,17 @@ struct Agent {
               artwork: .frames(antigravityMascotFramePNGs, fps: 11),
               open: .appNamed("Antigravity"),
               approveKeys: nil),
+        // Hook-driven live status (Cursor: ~/.cursor/hooks.json; Gemini CLI: hooks).
+        Agent(id: "cursor", name: "Cursor",
+              brand: NSColor(srgbRed: 0.024, green: 0.714, blue: 0.831, alpha: 1), // #06B6D4
+              artwork: .tintedMark(cursorLogoPNG),
+              open: .terminal,
+              approveKeys: nil),
+        Agent(id: "gemini", name: "Gemini",
+              brand: NSColor(srgbRed: 0.486, green: 0.420, blue: 0.961, alpha: 1), // #7C6BF5
+              artwork: .tintedMark(geminiLogoPNG),
+              open: .terminal,
+              approveKeys: nil),
     ]
 
     static func byID(_ id: String) -> Agent { all.first { $0.id == id } ?? all[0] }
