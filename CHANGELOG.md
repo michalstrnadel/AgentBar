@@ -3,6 +3,13 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.4.0 - 2026-07-23
+
+### Changed
+- New app icon: light ivory squircle with the charcoal prompt chevron and a
+  menu-bar-item pill holding the four agent status dots — one lit, three dimmed
+  (the session that needs you). Replaces the dark terminal-style icon.
+
 ## 1.3.0 - 2026-07-23
 
 ### Added

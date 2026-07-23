@@ -1,5 +1,6 @@
 // Renders the AgentBar app icon (1024x1024 master PNG).
-// Dark terminal-style squircle with a prompt chevron and a terracotta cursor bar.
+// Light ivory squircle, charcoal prompt chevron, and a menu-bar-item pill with the
+// four agent status dots — one lit (the session that needs you), three dimmed.
 import AppKit
 
 let S: CGFloat = 1024
@@ -19,79 +20,66 @@ func rgb(_ hex: UInt32, _ a: CGFloat = 1) -> CGColor {
 }
 
 let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+let charcoal = rgb(0x262421)
+// Agent brand dots: Claude, Codex, Copilot, Antigravity — same hexes as Agents.swift.
+let brand: [UInt32] = [0xD97757, 0x10A37F, 0x8250DF, 0x4285F4]
 
-// ---- Background squircle (Apple grid: 824x824 centered, r ~185) ----
+// ---- Light background squircle (Apple grid: 824x824 centered, r ~185) ----
 let inset: CGFloat = 100
 let body = CGRect(x: inset, y: inset, width: S - 2 * inset, height: S - 2 * inset)
-let squircle = CGPath(roundedRect: body, cornerWidth: 185, cornerHeight: 185, transform: nil)
-
 ctx.saveGState()
-ctx.addPath(squircle)
+ctx.addPath(CGPath(roundedRect: body, cornerWidth: 185, cornerHeight: 185, transform: nil))
 ctx.clip()
 let grad = CGGradient(colorsSpace: srgb,
-                      colors: [rgb(0x34312D), rgb(0x262421), rgb(0x1B1917)] as CFArray,
+                      colors: [rgb(0xFDFBF7), rgb(0xF6F1E8), rgb(0xEDE6DA)] as CFArray,
                       locations: [0, 0.55, 1])!
 ctx.drawLinearGradient(grad, start: CGPoint(x: S/2, y: S - inset),
                        end: CGPoint(x: S/2, y: inset), options: [])
-// Faint top sheen
-let sheen = CGGradient(colorsSpace: srgb,
-                       colors: [CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.07),
-                                CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.0)] as CFArray,
-                       locations: [0, 1])!
-ctx.drawLinearGradient(sheen, start: CGPoint(x: S/2, y: S - inset),
-                       end: CGPoint(x: S/2, y: S/2 + 100), options: [])
 ctx.restoreGState()
 
-// Hairline inner highlight on the squircle edge
+// Hairline edge so the light icon doesn't dissolve on white backgrounds.
 ctx.saveGState()
 ctx.addPath(CGPath(roundedRect: body.insetBy(dx: 3, dy: 3), cornerWidth: 182, cornerHeight: 182, transform: nil))
-ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.10))
+ctx.setStrokeColor(rgb(0x262421, 0.14))
 ctx.setLineWidth(6)
 ctx.strokePath()
 ctx.restoreGState()
 
-// ---- Prompt chevron (ivory) ----
+// ---- Charcoal prompt chevron ----
 let cx: CGFloat = 512
-let ivory = rgb(0xFAF6F0)
-
 let chevron = CGMutablePath()
-chevron.move(to: CGPoint(x: cx - 118, y: 712))
-chevron.addLine(to: CGPoint(x: cx + 86, y: 548))
-chevron.addLine(to: CGPoint(x: cx - 118, y: 384))
+chevron.move(to: CGPoint(x: cx - 118, y: 724))
+chevron.addLine(to: CGPoint(x: cx + 86, y: 560))
+chevron.addLine(to: CGPoint(x: cx - 118, y: 396))
 
 ctx.saveGState()
-ctx.setShadow(offset: CGSize(width: 0, height: -10), blur: 26,
-              color: CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.45))
+ctx.setShadow(offset: CGSize(width: 0, height: -8), blur: 20,
+              color: CGColor(srgbRed: 0.15, green: 0.12, blue: 0.10, alpha: 0.22))
 ctx.addPath(chevron)
-ctx.setStrokeColor(ivory)
+ctx.setStrokeColor(charcoal)
 ctx.setLineWidth(82)
 ctx.setLineCap(.round)
 ctx.setLineJoin(.round)
 ctx.strokePath()
 ctx.restoreGState()
 
-// ---- Cursor bar (terracotta, slight glow) ----
-let barRect = CGRect(x: cx - 138, y: 246, width: 300, height: 62)
-let barPath = CGPath(roundedRect: barRect, cornerWidth: 31, cornerHeight: 31, transform: nil)
-
-// Glow
+// ---- Menu bar item: pill outline, one lit dot + three dimmed ----
+let bar = CGRect(x: cx - 26 - 170, y: 232, width: 340, height: 76)
 ctx.saveGState()
-ctx.setShadow(offset: .zero, blur: 60, color: rgb(0x8250DF, 0.45))
-ctx.addPath(barPath)
-ctx.setFillColor(rgb(0xD97757))
-ctx.fillPath()
+ctx.addPath(CGPath(roundedRect: bar, cornerWidth: 38, cornerHeight: 38, transform: nil))
+ctx.setStrokeColor(rgb(0x262421, 0.85))
+ctx.setLineWidth(14)
+ctx.strokePath()
 ctx.restoreGState()
 
-// Gradient fill on top of the glowed base
-ctx.saveGState()
-ctx.addPath(barPath)
-ctx.clip()
-let barGrad = CGGradient(colorsSpace: srgb,
-                         colors: [rgb(0xD97757), rgb(0x10A37F), rgb(0x8250DF), rgb(0x4285F4)] as CFArray,
-                         locations: [0, 0.34, 0.67, 1])!
-ctx.drawLinearGradient(barGrad, start: CGPoint(x: barRect.minX, y: barRect.midY),
-                       end: CGPoint(x: barRect.maxX, y: barRect.midY), options: [])
-ctx.restoreGState()
+let r: CGFloat = 20, gap: CGFloat = 26
+let step = r * 2 + gap
+var x = bar.midX - (step * 3) / 2
+for (i, hex) in brand.enumerated() {
+    ctx.setFillColor(i == 0 ? rgb(hex) : rgb(hex, 0.35))
+    ctx.fillEllipse(in: CGRect(x: x - r, y: bar.midY - r, width: r * 2, height: r * 2))
+    x += step
+}
 
 // ---- Write PNG ----
 let img = ctx.makeImage()!
