@@ -1,4 +1,4 @@
-// Renders the Claude Status Notifier app icon (1024x1024 master PNG).
+// Renders the AgentBar app icon (1024x1024 master PNG).
 // Dark terminal-style squircle with a prompt chevron and a terracotta cursor bar.
 import AppKit
 

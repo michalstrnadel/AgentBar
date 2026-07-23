@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Claude Code hook -> ~/.agentbar/state.d/<session_id>.json
-// Usage: node update.js <prompt|pre|post|notify|permreq|stop>   (hook JSON on stdin)
+// Usage: node update.js <prompt|pre|post|notify|stop>   (hook JSON on stdin)
+// ("permreq" is legacy: PermissionRequest is handled by permission.js since 1.1.0)
 // Event-to-state mapping ported from AI Status Notifier (proven in daily use).
 
 const fs = require("fs");
@@ -43,7 +44,7 @@ process.stdin.on("end", () => {
     case "pre":    state = "tool"; label = TOOL_LABELS[p.tool_name] || "Using tool"; break;
     case "post":   state = "thinking"; label = "Thinking…"; break;
     case "notify": {
-      // Only permission prompts drive the icon (CLI path; the desktop app uses permreq).
+      // Only permission prompts drive the icon (permission.js handles the real request).
       // Everything else — especially the idle "waiting for your input" — must not park the bar.
       const m = (p.message || "").toLowerCase();
       const isPerm = p.notification_type === "permission_prompt" ||

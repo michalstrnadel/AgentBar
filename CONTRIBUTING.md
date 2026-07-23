@@ -22,6 +22,9 @@ open build/AgentBar.app
 ./Scripts/test/permission-hook-test.sh    # hook protocol tests (20 checks)
 ```
 
+`swift build` works for quick compile checks and SourceKit-LSP; the shippable app
+(bundle, Info.plist, hooks) comes from `./Scripts/build.sh`.
+
 The whole app ↔ hook protocol is files in `~/.agentbar/` (`state.d/`, `requests.d/`,
 `answers.d/`) — you can drive any app feature by writing JSON files there, no agent
 needed. See `docs/specs/` for the design documents.
@@ -32,3 +35,8 @@ needed. See `docs/specs/` for the design documents.
 - Add or extend a test when you touch the hook protocol.
 - Update `CHANGELOG.md` for user-visible changes.
 - CI must be green (build + hook tests).
+
+## Releases
+
+Bump `VERSION` in `Scripts/build.sh`, add a `CHANGELOG.md` section, tag `vX.Y.Z`,
+and create a GitHub release with the changelog section as notes.

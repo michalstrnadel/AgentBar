@@ -38,7 +38,7 @@ Flow:
      `permission_rule`/suggestions, `cwd`).
    - Builds a one-line display summary (see "Display summaries").
    - Updates the session's `state.d` file: `state: "permission"`, `label: <summary>`
-     (the menu row renders "needs approval"; the summary shows in the submenu header).
+     (the menu row renders "needs approval"; the summary shows on the request line under it).
    - Writes the request file atomically (tmp + rename): `{sessionId, agent: "claude",
      toolName, display, toolInputPretty (pretty JSON, ≤4 KB), ruleSuggestion?,
      pid: ppid, hookPid, ts}`; promptId is encoded in the file name.
@@ -84,7 +84,7 @@ claude-desktop ones, and hands the prompt back to that surface. Clicking the
 session row itself performs the same defer + focus.
 
 Multiple concurrent requests for one session (parallel tool calls) each get their
-own block in the submenu, newest first.
+own block under the session row, newest first.
 
 ### Display summaries
 
@@ -124,7 +124,8 @@ For sessions in `permission` state whose agent has no request file:
 | `Sources/AgentBar/RequestStore.swift` (new) | Watch `requests.d/`, prune orphans, publish requests |
 | `Sources/AgentBar/AnswerWriter.swift` (new) | Atomic answer-file writes |
 | `Sources/AgentBar/KeystrokeApprover.swift` (new) | Non-Claude approve: activate terminal + CGEvent |
-| `MenuBuilder.swift` | Approval submenu on permission rows |
+| `MenuBuilder.swift` | Inline approval rows (request line + button strip) |
+| `Sources/AgentBar/ApprovalButtonsRow.swift` (new) | Allow/Always/Deny/defer button strip (NSMenuItem.view) |
 | `StatusItemController.swift` | Menu actions → AnswerWriter / KeystrokeApprover |
 | `HookInstaller.swift` | Register permission.js with timeout 630 |
 | `Agents.swift` | Per-agent approval keystroke definition |
@@ -145,7 +146,7 @@ For sessions in `permission` state whose agent has no request file:
   2. answered-deny and defer variants.
   3. timeout: no answer → assert silent exit 0 within budget, request file removed.
   4. app-not-running guard: with pgrep failing → instant silent exit.
-- App-side manual harness: drop a crafted request+state file pair with the current shell's PID, verify submenu contents, click each action, assert answer file bytes.
+- App-side manual harness: drop a crafted request+state file pair with the current shell's PID, verify the inline approval rows, click each action, assert answer file bytes.
 - Manual E2E checklist (in PR): real Claude Code session, approve `git status` from the menu; deny; always-allow with rule; defer to terminal; kill app mid-wait.
 
 ## Docs / changelog

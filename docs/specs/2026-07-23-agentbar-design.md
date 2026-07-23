@@ -1,6 +1,6 @@
 # AgentBar — design
 
-> Extended by: [Remote Allow/Deny design](2026-07-23-remote-approval-design.md)
+> Snapshot as of 1.0.0. Extended by: [Remote Allow/Deny design](2026-07-23-remote-approval-design.md)
 
 ## Goal
 A from-scratch, best-practices rewrite of AI Status Notifier as a multi-agent macOS

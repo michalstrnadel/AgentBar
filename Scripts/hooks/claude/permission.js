@@ -96,7 +96,7 @@ function run() {
     fs.mkdirSync(reqDir, { recursive: true });
     fs.mkdirSync(ansDir, { recursive: true });
 
-    // The session row itself shows what's pending, even before the submenu opens.
+    // The session row itself shows what's pending, even before the menu opens.
     try {
       const statePath = path.join(stateDir, safeId(p.session_id) + ".json");
       fs.mkdirSync(stateDir, { recursive: true });

@@ -3,7 +3,7 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## [1.1.0] - 2026-07-23
+## 1.1.0 - 2026-07-23
 
 ### Added
 - Remote Allow/Deny: answer Claude Code permission prompts from the menu bar —
@@ -12,8 +12,10 @@ All notable changes to AgentBar are documented here. This project follows
   running, timeout, kill) falls back to the normal terminal prompt.
 - Best-effort keystroke approval for Codex and Copilot sessions (requires the
   Accessibility permission; clearly labeled in the menu).
+- Preferred terminal picker: Open ▸ Terminal lists installed terminals; the
+  checkmarked one is remembered and used for Open actions.
 
-## [1.0.0] - 2026-07-23
+## 1.0.0 - 2026-07-23
 
 First release. A clean-room rewrite of the AI Status Notifier concept as a
 multi-agent menu bar app.

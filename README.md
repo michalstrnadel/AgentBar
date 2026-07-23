@@ -27,7 +27,13 @@ surfaces the session that needs you most.
 - **Two looks** — full-color mascots, or a monochrome System mode that matches the menu bar.
 - **Remote Allow/Deny** — answer Claude Code permission prompts straight from the menu:
   see exactly what's requested, then Allow once, Always allow, Deny, or defer to terminal.
-- **Nothing else** — no dock icon, no windows, no timers, no sounds. One process, tiny footprint.
+- **Nothing else** — no dock icon, no windows, no countdown timers, no sounds. One process, tiny footprint.
+
+## Requirements
+
+- macOS 12+ (Apple Silicon or Intel)
+- Node.js (for the hook scripts; found via Homebrew paths or your login shell)
+- Xcode Command Line Tools to build from source
 
 ## Install
 
@@ -38,6 +44,24 @@ open "build/AgentBar.app"
 
 First launch installs the Claude Code hooks automatically (and the Codex notify hook if
 `~/.codex` exists). New agent sessions appear in the bar from then on.
+
+> **What install touches:** hook scripts are copied to `~/.agentbar/hooks/`, hook
+> entries are merged into `~/.claude/settings.json` (existing hooks are preserved),
+> and a `notify` line is added to `~/.codex/config.toml` only if none exists.
+> The Claude SessionStart hook also auto-launches AgentBar in the background when a
+> session begins. Hooks are snapshotted per session — start a new agent session after
+> installing.
+> If you run Claude Code with a custom `CLAUDE_CONFIG_DIR`, see issue #4.
+
+## Uninstall
+
+```bash
+osascript -e 'quit app "AgentBar"'
+rm -rf ~/.agentbar
+# remove the AgentBar hook entries (they all reference ~/.agentbar/hooks/):
+#   ~/.claude/settings.json  — delete rules whose command contains "/.agentbar/hooks/"
+#   ~/.codex/config.toml     — delete the notify line referencing "/.agentbar/hooks/"
+```
 
 ## Agent support
 
@@ -59,7 +83,7 @@ the session row does the same hand-off. Decisions return through Claude Code's P
 so the terminal prompt never appears; if AgentBar isn't running, quits mid-wait, or
 you ignore the request for 10 minutes, the prompt shows in the terminal exactly as
 before. (Known cosmetic issue: the terminal dialog can flash briefly even when
-approved from the menu — upstream claude-code #12176.)
+approved from the menu — upstream [claude-code #12176](https://github.com/anthropics/claude-code/issues/12176).)
 
 Codex and Copilot have no decision hooks, so their rows offer *Approve in terminal
 (sends keystroke)* — AgentBar focuses the session's terminal and presses the approval
@@ -72,6 +96,19 @@ Tiny hook scripts (Node.js) write one JSON file per session to `~/.agentbar/stat
 The app watches that folder and renders. No sockets, no daemons, no network.
 Permission approvals use two more folders of the same protocol: the blocking hook
 writes `requests.d/`, the app answers into `answers.d/`.
+
+## Troubleshooting
+
+- **No sessions appear** — hooks load when a session starts: open a *new* agent
+  session after installing. If you use a custom `CLAUDE_CONFIG_DIR`, see
+  [issue #4](https://github.com/michalstrnadel/AgentBar/issues/4).
+- **Still nothing** — the installer needs `node`; if none is found the Claude hooks
+  are skipped (logged to Console.app). Install Node.js and relaunch AgentBar.
+- **Codex rows never show** — if `~/.codex/config.toml` already had a `notify`
+  entry, AgentBar deliberately leaves it alone; wire `Scripts/hooks/codex/notify.js`
+  into your existing notify chain manually.
+- **Keystroke approval does nothing** — grant AgentBar the Accessibility permission
+  (the menu item offers to open System Settings).
 
 ## License
 
