@@ -126,7 +126,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc func openTerminalClicked(_ sender: NSMenuItem) {
-        Self.focusTerminal(named: ProcessInfo.processInfo.environment["TERM_PROGRAM"] ?? "Apple_Terminal")
+        guard let terminal = sender.representedObject as? TerminalApp else { return }
+        TerminalApp.setPreferred(terminal)
+        terminal.open()
     }
 
     @objc func chooseColor(_ sender: NSMenuItem) {
@@ -140,7 +142,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             if let url = ws.urlForApplication(withBundleIdentifier: id) {
                 ws.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
             } else {
-                Self.focusTerminal(named: "Apple_Terminal")
+                TerminalApp.preferred(sessions: sessions).open()
             }
         case .appNamed(let name):
             let p = Process()
@@ -148,7 +150,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             p.arguments = ["-a", name]
             try? p.run()
         case .terminal:
-            Self.focusTerminal(named: "Apple_Terminal")
+            // CLI-only agents open into the user's terminal (chosen in Open ▸ Terminal,
+            // or auto-detected from the most recent session).
+            TerminalApp.preferred(sessions: sessions).open()
         }
     }
 

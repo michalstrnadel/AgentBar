@@ -36,10 +36,22 @@ enum MenuBuilder {
             openSub.addItem(item)
         }
         openSub.addItem(.separator())
-        let term = NSMenuItem(title: "Terminal", action: #selector(StatusItemController.openTerminalClicked(_:)),
-                              keyEquivalent: "")
-        term.target = controller
-        openSub.addItem(term)
+        // Terminal ▸ every installed terminal; the checkmarked one is what Codex/Copilot
+        // open into. Clicking opens it and remembers it as the preferred terminal.
+        let termParent = NSMenuItem(title: "Terminal", action: nil, keyEquivalent: "")
+        let termSub = NSMenu()
+        let preferred = TerminalApp.preferred(sessions: sessions)
+        for terminal in TerminalApp.installed {
+            let item = NSMenuItem(title: terminal.name,
+                                  action: #selector(StatusItemController.openTerminalClicked(_:)),
+                                  keyEquivalent: "")
+            item.target = controller
+            item.representedObject = terminal
+            item.state = terminal.bundleID == preferred.bundleID ? .on : .off
+            termSub.addItem(item)
+        }
+        termParent.submenu = termSub
+        openSub.addItem(termParent)
         openParent.submenu = openSub
         menu.addItem(openParent)
 
