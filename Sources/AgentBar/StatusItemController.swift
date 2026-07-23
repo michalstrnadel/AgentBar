@@ -5,6 +5,7 @@ import Cocoa
 final class StatusItemController: NSObject, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let store = SessionStore()
+    private let requestStore = RequestStore()
 
     private var sessions: [Session] = []
     private var animationTimer: Timer?
@@ -34,6 +35,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             self?.render()
         }
         store.start()
+        requestStore.start()
         render()
     }
 
@@ -106,7 +108,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         store.refresh()
-        MenuBuilder.populate(menu, sessions: sessions, controller: self)
+        requestStore.refresh()
+        MenuBuilder.populate(menu, sessions: sessions, requests: requestStore.requests,
+                             controller: self)
     }
 
     // MARK: - Actions (targets for MenuBuilder items)
@@ -133,6 +137,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc func chooseColor(_ sender: NSMenuItem) {
         systemColor = (sender.representedObject as? Bool) ?? false
+    }
+
+    @objc func approvalActionClicked(_ sender: NSMenuItem) {
+        guard let a = sender.representedObject as? ApprovalAction else { return }
+        switch a.behavior {
+        case "always":
+            AnswerWriter.write(behavior: "always", rule: a.request.ruleSuggestion, for: a.request)
+        case "defer":
+            AnswerWriter.write(behavior: "defer", for: a.request)
+            // The prompt is about to appear in the terminal: bring it forward.
+            Self.focusTerminal(named: a.session.termProgram)
+        default:
+            AnswerWriter.write(behavior: a.behavior, for: a.request)
+        }
+    }
+
+    @objc func keystrokeApproveClicked(_ sender: NSMenuItem) {
+        guard let s = sender.representedObject as? Session,
+              let keys = Agent.byID(s.agentID).approveKeys else { return }
+        if KeystrokeApprover.trusted {
+            KeystrokeApprover.approve(session: s, keys: keys)
+        } else {
+            KeystrokeApprover.requestAccess()
+        }
     }
 
     private func openAgent(_ agent: Agent) {

@@ -2,7 +2,8 @@ import Cocoa
 
 /// Builds the dropdown menu from a session snapshot. Stateless: every open rebuilds.
 enum MenuBuilder {
-    static func populate(_ menu: NSMenu, sessions: [Session], controller: StatusItemController) {
+    static func populate(_ menu: NSMenu, sessions: [Session], requests: [ApprovalRequest],
+                         controller: StatusItemController) {
         menu.removeAllItems()
 
         // Sessions
@@ -19,6 +20,11 @@ enum MenuBuilder {
                 item.representedObject = s
                 item.attributedTitle = rowTitle(s)
                 item.toolTip = s.cwd
+                if s.state == .permission {
+                    item.submenu = approvalSubmenu(
+                        for: s, requests: requests.filter { $0.sessionId == s.id },
+                        controller: controller)
+                }
                 menu.addItem(item)
             }
         }
@@ -127,5 +133,87 @@ enum MenuBuilder {
         let img = sprite.restingTemplate.copy() as! NSImage
         img.size = NSSize(width: 14 * img.size.width / max(img.size.height, 1), height: 14)
         return img
+    }
+
+    /// Submenu for a session waiting on a permission prompt. Claude sessions get real
+    /// Allow/Deny (the hook is blocked waiting for our answer file); agents without
+    /// request files get the best-effort keystroke path.
+    private static func approvalSubmenu(for s: Session, requests: [ApprovalRequest],
+                                        controller: StatusItemController) -> NSMenu {
+        let menu = NSMenu()
+        if requests.isEmpty {
+            return keystrokeSubmenu(for: s, controller: controller)
+        }
+        for (i, r) in requests.enumerated() {
+            if i > 0 { menu.addItem(.separator()) }
+
+            let what = NSMenuItem(title: r.display, action: nil, keyEquivalent: "")
+            what.isEnabled = false
+            what.toolTip = r.toolInputPretty
+            menu.addItem(what)
+
+            menu.addItem(actionItem("✓ Allow once", ApprovalAction(request: r, behavior: "allow", session: s),
+                                    controller: controller))
+            if let rule = r.ruleDescription {
+                menu.addItem(actionItem("✓ Always allow \u{201C}\(rule)\u{201D}",
+                                        ApprovalAction(request: r, behavior: "always", session: s),
+                                        controller: controller))
+            }
+            menu.addItem(actionItem("✕ Deny", ApprovalAction(request: r, behavior: "deny", session: s),
+                                    controller: controller))
+        }
+        menu.addItem(.separator())
+        menu.addItem(actionItem("Answer in terminal instead",
+                                ApprovalAction(request: requests[0], behavior: "defer", session: s),
+                                controller: controller))
+        return menu
+    }
+
+    private static func keystrokeSubmenu(for s: Session, controller: StatusItemController) -> NSMenu {
+        let menu = NSMenu()
+        let agent = Agent.byID(s.agentID)
+        let note = NSMenuItem(title: "Can't show the request for \(agent.name)",
+                              action: nil, keyEquivalent: "")
+        note.isEnabled = false
+        menu.addItem(note)
+        if agent.approveKeys != nil {
+            let title = KeystrokeApprover.trusted
+                ? "Approve in terminal (sends keystroke)" : "Grant Accessibility…"
+            let item = NSMenuItem(title: title,
+                                  action: #selector(StatusItemController.keystrokeApproveClicked(_:)),
+                                  keyEquivalent: "")
+            item.target = controller
+            item.representedObject = s
+            menu.addItem(item)
+        }
+        let open = NSMenuItem(title: "Open in terminal",
+                              action: #selector(StatusItemController.sessionRowClicked(_:)),
+                              keyEquivalent: "")
+        open.target = controller
+        open.representedObject = s
+        menu.addItem(open)
+        return menu
+    }
+
+    private static func actionItem(_ title: String, _ payload: ApprovalAction,
+                                   controller: StatusItemController) -> NSMenuItem {
+        let item = NSMenuItem(title: title,
+                              action: #selector(StatusItemController.approvalActionClicked(_:)),
+                              keyEquivalent: "")
+        item.target = controller
+        item.representedObject = payload
+        return item
+    }
+}
+
+/// Payload carried by approval menu items (NSMenuItem.representedObject needs a class).
+final class ApprovalAction: NSObject {
+    let request: ApprovalRequest
+    let behavior: String   // "allow" | "always" | "deny" | "defer"
+    let session: Session
+    init(request: ApprovalRequest, behavior: String, session: Session) {
+        self.request = request
+        self.behavior = behavior
+        self.session = session
     }
 }
