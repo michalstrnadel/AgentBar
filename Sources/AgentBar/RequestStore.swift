@@ -8,19 +8,27 @@ final class RequestStore {
     static let answersDir = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".agentbar/answers.d", isDirectory: true)
 
-    /// Longest a request can be pending: the hook's 600s wait plus slack.
+    /// Longest a request can be pending: the hook's default 600s wait plus slack.
+    /// (A raised AGENTBAR_APPROVAL_TIMEOUT outlives this and gets pruned early —
+    /// accepted: the hook still answers the terminal prompt path on its own.)
     private static let maxAge: TimeInterval = 660
 
     private(set) var requests: [ApprovalRequest] = []
     var onChange: (() -> Void)?
 
     private var dirSource: DispatchSourceFileSystemObject?
+    private var timer: Timer?
     private var lastSnapshot: [String] = []
 
     func start() {
         try? FileManager.default.createDirectory(at: Self.requestsDir, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: Self.answersDir, withIntermediateDirectories: true)
         watchDirectory()
+        // Fallback poll, same as SessionStore: dead-hook pruning, maxAge expiry, and
+        // orphan-answer GC are time-based and must run without a directory event.
+        timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            self?.refresh()
+        }
         refresh()
     }
 
