@@ -75,10 +75,6 @@ final class RequestStore {
         onChange?()
     }
 
-    func requests(for sessionId: String) -> [ApprovalRequest] {
-        requests.filter { $0.sessionId == sessionId }
-    }
-
     /// Answers nobody consumed (hook died between click and pickup): delete after 60s.
     private func pruneOrphanAnswers(liveNames: Set<String>) {
         let fm = FileManager.default

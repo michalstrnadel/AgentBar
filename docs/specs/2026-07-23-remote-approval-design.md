@@ -15,7 +15,8 @@ approving.
 
 - All four agents, two backends:
   - **Claude Code** — native: a hook returns the decision; the terminal prompt never appears.
-  - **Codex / Copilot / Antigravity** — best-effort: focus the terminal, send the approval keystroke.
+  - **Codex / Copilot** — best-effort: focus the terminal, send the approval keystroke.
+    (Antigravity is an IDE without a scriptable prompt; its rows keep Open in terminal only.)
 - Decisions supported for Claude: Allow once, Always allow (persist rule), Deny, Answer in terminal.
 - Non-goals (v1): notifications with action buttons, approval history, per-project auto-allow lists, iOS/remote approval.
 
@@ -37,10 +38,10 @@ Flow:
      `permission_rule`/suggestions, `cwd`).
    - Builds a one-line display summary (see "Display summaries").
    - Updates the session's `state.d` file: `state: "permission"`, `label: <summary>`
-     (the row itself shows what's pending).
-   - Writes the request file atomically (tmp + rename): `{sessionId, promptId,
-     agent: "claude", toolName, toolInput (JSON, truncated to 4 KB), display,
-     ruleSuggestion?, pid: ppid, ts}`.
+     (the menu row renders "needs approval"; the summary shows in the submenu header).
+   - Writes the request file atomically (tmp + rename): `{sessionId, agent: "claude",
+     toolName, display, toolInputPretty (pretty JSON, ≤4 KB), ruleSuggestion?,
+     pid: ppid, hookPid, ts}`; promptId is encoded in the file name.
    - Polls `answers.d/` every 100 ms. Every 2 s it also re-checks that AgentBar
      is running (`pgrep -x AgentBar`); if not, it cleans up and exits silently.
    - On answer:

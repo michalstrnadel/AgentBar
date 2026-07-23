@@ -48,12 +48,16 @@ const oneLine = (s, n = 60) => {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
 };
 
-function displaySummary(tool, input) {
+function displaySummary(tool, input, cwd) {
   const t = String(tool || "unknown");
   const i = input || {};
   if (t === "Bash") return "Bash: " + oneLine(i.command);
-  if (["Edit", "Write", "MultiEdit", "NotebookEdit", "Read"].includes(t))
-    return t + ": " + oneLine(i.file_path || i.notebook_path);
+  if (["Edit", "Write", "MultiEdit", "NotebookEdit", "Read"].includes(t)) {
+    // Relative to the session's cwd, so the 60-char cut keeps the file name visible.
+    let f = String(i.file_path || i.notebook_path || "");
+    if (cwd && f.startsWith(cwd + "/")) f = f.slice(cwd.length + 1);
+    return t + ": " + oneLine(f);
+  }
   if (t === "WebFetch") return "WebFetch: " + oneLine(i.url);
   if (t === "WebSearch") return "WebSearch: " + oneLine(i.query);
   const m = t.match(/^mcp__(.+?)__(.+)$/);
@@ -78,7 +82,7 @@ function run() {
     const name = safeId(p.session_id) + "-" + safeId(p.prompt_id || String(process.pid));
     const reqPath = path.join(reqDir, name + ".json");
     const ansPath = path.join(ansDir, name + ".json");
-    const display = displaySummary(p.tool_name, p.tool_input);
+    const display = displaySummary(p.tool_name, p.tool_input, p.cwd);
 
     let pretty = "";
     try { pretty = JSON.stringify(p.tool_input || {}, null, 2); } catch {}

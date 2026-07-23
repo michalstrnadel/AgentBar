@@ -127,6 +127,16 @@ wait "$hookpid"
 check "forged rule downgrades to plain allow" \
   'grep -q "\"behavior\":\"allow\"" "$HOME/out.json" && ! grep -q "updatedPermissions" "$HOME/out.json"'
 
+# 11. Edit display relativizes file_path against cwd (file name survives truncation)
+fresh_home
+EDIT_EVENT='{"session_id":"testsess","prompt_id":"p2","tool_name":"Edit","tool_input":{"file_path":"/tmp/proj/Sources/App/File.swift"},"cwd":"/tmp/proj"}'
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$EDIT_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+check "edit display is cwd-relative" 'grep -q "Edit: Sources/App/File.swift" "$HOME/.agentbar/requests.d/$REQ"'
+printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

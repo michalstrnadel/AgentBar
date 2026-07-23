@@ -18,7 +18,7 @@
 - Create: `Scripts/test/permission-hook-test.sh`
 - Create: `Scripts/hooks/claude/permission.js`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `Scripts/test/permission-hook-test.sh` (make it executable):
 
@@ -110,16 +110,16 @@ echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
 ```
 
-- [ ] **Step 2: Run it to make sure it fails**
+- [x] **Step 2: Run it to make sure it fails**
 
 Run: `chmod +x Scripts/test/permission-hook-test.sh && ./Scripts/test/permission-hook-test.sh`
 Expected: FAIL — node cannot find `Scripts/hooks/claude/permission.js` (module not found), non-zero exit.
 
-- [ ] **Step 3: Verify one schema detail against the docs**
+- [x] **Step 3: Verify one schema detail against the docs**
 
 The hook's output uses the PermissionRequest decision schema. Resolved during implementation: the docs name it `decision.updatedPermissions` (an array; the hook echoes one `permission_suggestions` entry verbatim). Step 4 below already uses it. The rest of the schema (`hookSpecificOutput.hookEventName`, `decision.behavior: "allow"|"deny"`) is already verified.
 
-- [ ] **Step 4: Write the hook**
+- [x] **Step 4: Write the hook**
 
 Create `Scripts/hooks/claude/permission.js`:
 
@@ -258,12 +258,12 @@ function respond(decision) {
 }
 ```
 
-- [ ] **Step 5: Run the tests until green**
+- [x] **Step 5: Run the tests until green**
 
 Run: `./Scripts/test/permission-hook-test.sh`
-Expected: all checks green, 0 failed, exit 0 (18 checks after the review-fix round).
+Expected: all checks green, 0 failed, exit 0 (20 checks after the review-fix rounds).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add Scripts/hooks/claude/permission.js Scripts/test/permission-hook-test.sh
@@ -277,7 +277,7 @@ git commit -m "feat: blocking PermissionRequest hook for remote approval"
 **Files:**
 - Modify: `Sources/AgentBar/HookInstaller.swift:72-95` (the `events` array and rule building inside `installClaude()`)
 
-- [ ] **Step 1: Support per-event timeouts and swap the PermissionRequest command**
+- [x] **Step 1: Support per-event timeouts and swap the PermissionRequest command**
 
 In `installClaude()`, replace the `events` declaration and the loop body that builds `rule` with:
 
@@ -313,12 +313,12 @@ In `installClaude()`, replace the `events` declaration and the loop body that bu
 
 (The existing path-match removal already deletes the old `update.js permreq` entry on upgrade; `update.js` keeps its `permreq` branch as dead code tolerance — no change there.)
 
-- [ ] **Step 2: Build**
+- [x] **Step 2: Build**
 
 Run: `./Scripts/build.sh`
 Expected: `Built build/AgentBar.app` (permission.js is bundled automatically by the `cp -R Scripts/hooks` line).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add Sources/AgentBar/HookInstaller.swift
@@ -334,7 +334,7 @@ git commit -m "feat: install permission.js hook with extended timeout"
 - Create: `Sources/AgentBar/RequestStore.swift`
 - Create: `Sources/AgentBar/AnswerWriter.swift`
 
-- [ ] **Step 1: Create `Sources/AgentBar/ApprovalRequest.swift`**
+- [x] **Step 1: Create `Sources/AgentBar/ApprovalRequest.swift`**
 
 ```swift
 import Foundation
@@ -379,7 +379,7 @@ struct ApprovalRequest {
 }
 ```
 
-- [ ] **Step 2: Create `Sources/AgentBar/RequestStore.swift`**
+- [x] **Step 2: Create `Sources/AgentBar/RequestStore.swift`**
 
 ```swift
 import Foundation
@@ -471,7 +471,7 @@ final class RequestStore {
 }
 ```
 
-- [ ] **Step 3: Create `Sources/AgentBar/AnswerWriter.swift`**
+- [x] **Step 3: Create `Sources/AgentBar/AnswerWriter.swift`**
 
 ```swift
 import Foundation
@@ -500,12 +500,12 @@ enum AnswerWriter {
 }
 ```
 
-- [ ] **Step 4: Build**
+- [x] **Step 4: Build**
 
 Run: `./Scripts/build.sh`
 Expected: `Built build/AgentBar.app`, no warnings about these files.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/AgentBar/ApprovalRequest.swift Sources/AgentBar/RequestStore.swift Sources/AgentBar/AnswerWriter.swift
@@ -520,7 +520,7 @@ git commit -m "feat: request/answer file model for remote approval"
 - Modify: `Sources/AgentBar/Agents.swift` (add `approveKeys` to the struct and every entry)
 - Create: `Sources/AgentBar/KeystrokeApprover.swift`
 
-- [ ] **Step 1: Add the per-agent approval keystroke to `Agents.swift`**
+- [x] **Step 1: Add the per-agent approval keystroke to `Agents.swift`**
 
 Add the property after `let open: OpenAction`:
 
@@ -545,7 +545,7 @@ And extend each entry in `Agent.all` (keeping everything else identical):
 
 (`...` = the existing arguments, unchanged. Key codes are the initial mapping; the E2E task verifies them against each agent's real prompt and this is the only place to adjust.)
 
-- [ ] **Step 2: Create `Sources/AgentBar/KeystrokeApprover.swift`**
+- [x] **Step 2: Create `Sources/AgentBar/KeystrokeApprover.swift`**
 
 ```swift
 import Cocoa
@@ -579,12 +579,12 @@ enum KeystrokeApprover {
 }
 ```
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build**
 
 Run: `./Scripts/build.sh`
 Expected: `Built build/AgentBar.app`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Sources/AgentBar/Agents.swift Sources/AgentBar/KeystrokeApprover.swift
@@ -599,7 +599,7 @@ git commit -m "feat: keystroke approval backend for non-Claude agents"
 - Modify: `Sources/AgentBar/MenuBuilder.swift` (populate signature, permission-row submenu)
 - Modify: `Sources/AgentBar/StatusItemController.swift` (RequestStore, new actions)
 
-- [ ] **Step 1: Add the payload class and submenu builder to `MenuBuilder.swift`**
+- [x] **Step 1: Add the payload class and submenu builder to `MenuBuilder.swift`**
 
 At the bottom of the file (outside the `enum MenuBuilder` block), add:
 
@@ -708,7 +708,7 @@ And add the two builders inside `enum MenuBuilder`:
     }
 ```
 
-- [ ] **Step 2: Wire `RequestStore` and the actions into `StatusItemController.swift`**
+- [x] **Step 2: Wire `RequestStore` and the actions into `StatusItemController.swift`**
 
 Add the store next to the session store (line 7):
 
@@ -761,12 +761,12 @@ Add the two actions in the Actions section:
     }
 ```
 
-- [ ] **Step 3: Build**
+- [x] **Step 3: Build**
 
 Run: `./Scripts/build.sh`
 Expected: `Built build/AgentBar.app`.
 
-- [ ] **Step 4: Manual harness — fake request drives the real menu**
+- [x] **Step 4: Manual harness — fake request drives the real menu**
 
 ```bash
 open build/AgentBar.app
@@ -787,7 +787,7 @@ cat ~/.agentbar/answers.d/$SID-p1.json   # expect: {"behavior":"allow"}
 rm -f ~/.agentbar/state.d/$SID.json ~/.agentbar/requests.d/$SID-p1.json ~/.agentbar/answers.d/$SID-p1.json
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Sources/AgentBar/MenuBuilder.swift Sources/AgentBar/StatusItemController.swift
@@ -804,7 +804,7 @@ git commit -m "feat: Allow/Deny approval submenu on permission rows"
 - Modify: `CHANGELOG.md` (new entry)
 - Modify: `docs/specs/2026-07-23-agentbar-design.md` (cross-link line at the top)
 
-- [ ] **Step 1: Amend rule 3 in `CLAUDE.md`**
+- [x] **Step 1: Amend rule 3 in `CLAUDE.md`**
 
 Replace:
 
@@ -820,7 +820,7 @@ with:
    the human, and must always time out silently to the normal terminal prompt.
 ```
 
-- [ ] **Step 2: Add the README section**
+- [x] **Step 2: Add the README section**
 
 Append to `README.md` (adjust placement to fit the existing structure — after the features list):
 
@@ -844,7 +844,7 @@ Known cosmetic issue: the terminal permission dialog can flash briefly even when
 approved from the menu (upstream claude-code #12176).
 ```
 
-- [ ] **Step 3: Changelog entry**
+- [x] **Step 3: Changelog entry**
 
 Add at the top of `CHANGELOG.md` under a new version heading (match the file's existing format):
 
@@ -856,7 +856,7 @@ Add at the top of `CHANGELOG.md` under a new version heading (match the file's e
 - Best-effort keystroke approval for Codex and Copilot sessions (Accessibility).
 ```
 
-- [ ] **Step 4: Cross-link the spec**
+- [x] **Step 4: Cross-link the spec**
 
 In `docs/specs/2026-07-23-agentbar-design.md`, add under the title:
 
@@ -864,7 +864,7 @@ In `docs/specs/2026-07-23-agentbar-design.md`, add under the title:
 > Extended by: [Remote Allow/Deny design](2026-07-23-remote-approval-design.md)
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add CLAUDE.md README.md CHANGELOG.md docs/specs/2026-07-23-agentbar-design.md
@@ -877,7 +877,7 @@ git commit -m "docs: remote approval feature docs and rule amendment"
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Refresh the installed hooks**
+- [x] **Step 1: Refresh the installed hooks**
 
 `./Scripts/build.sh && open build/AgentBar.app` — relaunching copies the new `permission.js` to `~/.agentbar/hooks/claude/` and rewires `~/.claude/settings.json`.
 
@@ -902,7 +902,7 @@ print("ok")
 EOF
 ```
 
-- [ ] **Step 2: Walk the checklist in a fresh `claude-work` session**
+- [x] **Step 2: Walk the checklist in a fresh `claude-work` session**
 
 Start a new Claude Code session in any project, then verify each:
 
@@ -914,7 +914,7 @@ Start a new Claude Code session in any project, then verify each:
 6. Trigger a prompt → ignore it → after `AGENTBAR_APPROVAL_TIMEOUT` (export a small value like 30 in the session's environment first, or wait 10 min) the terminal prompt appears.
 7. Codex (if installed): trigger an approval, use *Approve in terminal (sends keystroke)*; verify the key mapping in `Agents.swift` matches Codex's current prompt, adjust the `approveKeys` entry if not. Same for Copilot.
 
-- [ ] **Step 3: Record results**
+- [x] **Step 3: Record results**
 
 Note any deviations (especially item 7 key mappings and the item 1 flash) in the PR/commit message; fix `Agents.swift` mappings inline if wrong, rerun, commit as `fix: correct approval keystrokes for <agent>`.
 
