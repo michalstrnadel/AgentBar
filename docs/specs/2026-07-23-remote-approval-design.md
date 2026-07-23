@@ -46,8 +46,8 @@ Flow:
    - On answer:
      - `allow` → stdout `{"hookSpecificOutput": {"hookEventName": "PermissionRequest",
        "decision": {"behavior": "allow"}}}`
-     - `always` → same as allow plus `"rule": <ruleSuggestion>` (only offered when a
-       suggestion exists).
+     - `always` → same as allow plus `"updatedPermissions": [<ruleSuggestion>]` — the
+       hook echoes a Claude-supplied suggestion verbatim (only offered when one exists).
      - `deny` → `decision.behavior: "deny"`.
      - `defer` → no output, exit 0 → Claude Code shows the normal terminal prompt.
      - In all cases: delete the answer file and the request file.

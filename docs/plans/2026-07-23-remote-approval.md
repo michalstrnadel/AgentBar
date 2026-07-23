@@ -117,7 +117,7 @@ Expected: FAIL — node cannot find `Scripts/hooks/claude/permission.js` (module
 
 - [ ] **Step 3: Verify one schema detail against the docs**
 
-The hook's output uses the PermissionRequest decision schema. Confirm the exact field for persisting a rule (`decision.rule` below) at https://code.claude.com/docs/en/hooks#permissionrequest — if the docs name it differently (e.g. `updatedPermissions`), adjust the single line marked `// RULE FIELD` in Step 4 and the spec. The rest of the schema (`hookSpecificOutput.hookEventName`, `decision.behavior: "allow"|"deny"`) is already verified.
+The hook's output uses the PermissionRequest decision schema. Resolved during implementation: the docs name it `decision.updatedPermissions` (an array; the hook echoes one `permission_suggestions` entry verbatim). Step 4 below already uses it. The rest of the schema (`hookSpecificOutput.hookEventName`, `decision.behavior: "allow"|"deny"`) is already verified.
 
 - [ ] **Step 4: Write the hook**
 
@@ -237,7 +237,8 @@ function run() {
       const b = a.behavior;
       if (b === "allow" || b === "always") {
         const decision = { behavior: "allow" };
-        if (b === "always" && a.rule) decision.rule = a.rule; // RULE FIELD (see Step 3)
+        // Echoing a permission_suggestions entry as updatedPermissions == "always allow".
+        if (b === "always" && a.rule) decision.updatedPermissions = [a.rule];
         respond(decision);
       } else if (b === "deny") {
         respond({ behavior: "deny" });
@@ -260,7 +261,7 @@ function respond(decision) {
 - [ ] **Step 5: Run the tests until green**
 
 Run: `./Scripts/test/permission-hook-test.sh`
-Expected: `17 passed, 0 failed`, exit 0.
+Expected: `15 passed, 0 failed`, exit 0.
 
 - [ ] **Step 6: Commit**
 
@@ -919,5 +920,5 @@ Note any deviations (especially item 7 key mappings and the item 1 flash) in the
 ## Self-review notes
 
 - Spec coverage: hook + protocol (Task 1), installer (Task 2), app model (Task 3), keystroke backend (Task 4), menu UX incl. rule-in-item-text and tooltips (Task 5), docs/rule/changelog (Task 6), E2E incl. fallback modes (Task 7). Notifications/history remain out of scope per spec.
-- The `decision.rule` field name is the one unverified API detail; Task 1 Step 3 pins it against the docs before the code is written.
+- The rule-persistence field was verified during Task 1: `decision.updatedPermissions` (array of echoed suggestion entries).
 - Type consistency: `ApprovalRequest.fileName`/`ruleSuggestion`/`ruleDescription`, `AnswerWriter.write(behavior:rule:for:)`, `Agent.approveKeys`, `ApprovalAction(request:behavior:session:)` are used with identical spellings across Tasks 3–5.
