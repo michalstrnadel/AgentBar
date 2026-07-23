@@ -12,12 +12,31 @@ enum HookInstaller {
             guard let bundled = Bundle.main.resourceURL?.appendingPathComponent("hooks") else { return }
             do {
                 try copyScripts(from: bundled)
-                try installClaude()
+                for dir in claudeConfigDirs() { try installClaude(configDir: dir) }
                 try installCodex()
             } catch {
                 NSLog("AgentBar hook install failed: \(error)")
             }
         }
+    }
+
+    /// Every Claude config dir we should wire hooks into. Covers a custom
+    /// `CLAUDE_CONFIG_DIR` (issue #4) — read from the app's environment if present, or
+    /// from a hint file the installer drops (the app is launched via `open`, so it
+    /// usually doesn't inherit the shell's env). The default `~/.claude` is always
+    /// included so a user who runs Claude both ways stays covered. Deduped.
+    private static func claudeConfigDirs() -> [URL] {
+        var dirs = [home.appendingPathComponent(".claude")]
+        if let env = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"], !env.isEmpty {
+            dirs.append(URL(fileURLWithPath: (env as NSString).expandingTildeInPath))
+        }
+        let hint = home.appendingPathComponent(".agentbar/claude-config-dir")
+        if let raw = try? String(contentsOf: hint, encoding: .utf8) {
+            let path = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !path.isEmpty { dirs.append(URL(fileURLWithPath: (path as NSString).expandingTildeInPath)) }
+        }
+        var seen = Set<String>()
+        return dirs.filter { seen.insert($0.resolvingSymlinksInPath().path).inserted }
     }
 
     /// Always refresh the script copies — they're versioned with the app.
@@ -53,11 +72,11 @@ enum HookInstaller {
         return out.isEmpty ? nil : out
     }
 
-    // MARK: - Claude Code (~/.claude/settings.json)
+    // MARK: - Claude Code (<configDir>/settings.json)
 
-    private static func installClaude() throws {
+    private static func installClaude(configDir: URL) throws {
         guard let node = findNode() else { NSLog("AgentBar: node not found, Claude hooks skipped"); return }
-        let settingsURL = home.appendingPathComponent(".claude/settings.json")
+        let settingsURL = configDir.appendingPathComponent("settings.json")
         let fm = FileManager.default
         try fm.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
 

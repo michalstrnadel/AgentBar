@@ -56,6 +56,14 @@ main() {
   ditto "$APP" "$DEST/AgentBar.app"
   # Ad-hoc signed app: clear quarantine so the launch you just asked for isn't blocked.
   xattr -dr com.apple.quarantine "$DEST/AgentBar.app" 2>/dev/null || true
+
+  # Bridge a custom CLAUDE_CONFIG_DIR to the app (launched via `open`, it can't see the
+  # shell env). The app reads this hint and wires hooks into that config too (issue #4).
+  if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+    mkdir -p "$HOME/.agentbar"
+    printf '%s\n' "$CLAUDE_CONFIG_DIR" > "$HOME/.agentbar/claude-config-dir"
+  fi
+
   open "$DEST/AgentBar.app"
 
   echo
