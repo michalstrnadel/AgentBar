@@ -10,8 +10,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var sessions: [Session] = []
     private var animationTimer: Timer?
     private var wordTimer: Timer?
+    private var hopTimer: Timer?
     private var frameIndex = 0
     private var currentWord = ""
+    private var previousTopState: Session.State?
 
     private static let thinkingWords = [
         "Thinking", "Brewing", "Pondering", "Tinkering", "Cooking",
@@ -33,8 +35,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         store.onChange = { [weak self] sessions in
             self?.sessions = sessions
             self?.render()
+            self?.refreshOpenMenu()   // keep an open dropdown live as state changes
         }
         store.start()
+        requestStore.onChange = { [weak self] in self?.refreshOpenMenu() }
         requestStore.start()
         UpdateChecker.shared.onChange = { [weak self] in self?.refreshOpenMenu() }
         UpdateChecker.shared.startPeriodicChecks()
@@ -50,29 +54,33 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let agent = Agent.byID(topSession?.agentID ?? "claude")
         let sprite = IconRenderer.shared.sprite(for: agent)
         let frames = systemColor ? sprite.templateFrames : sprite.colorFrames
+        let resting = systemColor ? sprite.restingTemplate : sprite.restingColor
+        let state = topSession?.state
+        defer { previousTopState = state }
 
-        switch topSession?.state {
+        switch state {
         case .some(let s) where s.isWorking:
+            stopHop()
             startAnimation(frames: frames, fps: sprite.fps)
             startWords()
         case .permission:
-            stopAnimation()
-            stopWords()
-            button.image = IconRenderer.withPermissionDot(
-                systemColor ? sprite.restingTemplate : sprite.restingColor)
+            stopHop(); stopAnimation(); stopWords()
+            button.image = IconRenderer.withPermissionDot(resting)
             button.title = ""
         case .question:
-            stopAnimation()
-            stopWords()
-            button.image = IconRenderer.withPermissionDot(
-                systemColor ? sprite.restingTemplate : sprite.restingColor,
-                color: IconRenderer.questionDot)
+            stopHop(); stopAnimation(); stopWords()
+            button.image = IconRenderer.withPermissionDot(resting, color: IconRenderer.questionDot)
             button.title = ""
         default:
             stopAnimation()
             stopWords()
-            button.image = systemColor ? sprite.restingTemplate : sprite.restingColor
             button.title = ""
+            // A task just finished → a brief celebratory hop, then settle to calm.
+            if state == .some(.done), previousTopState?.isWorking == true {
+                playHop(resting: resting)
+            } else if hopTimer == nil {
+                button.image = resting
+            }
         }
     }
 
@@ -113,6 +121,37 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.button?.title = ""
     }
 
+    /// One-shot "yay, done" hop: two small bounces over ~0.5s, then rest. Art-free —
+    /// just redraws the resting mark at a vertical offset.
+    private func playHop(resting: NSImage) {
+        stopHop()
+        let steps = 12
+        var i = 0
+        statusItem.button?.image = resting
+        hopTimer = Timer.scheduledTimer(withTimeInterval: 0.04, repeats: true) { [weak self] _ in
+            guard let self, let button = self.statusItem.button else { return }
+            if i >= steps { self.stopHop(); button.image = resting; return }
+            let dy = abs(sin(Double(i) / Double(steps) * .pi * 2)) * 3.0  // two hops
+            button.image = Self.offset(resting, dy: CGFloat(dy))
+            i += 1
+        }
+    }
+
+    private func stopHop() {
+        hopTimer?.invalidate()
+        hopTimer = nil
+    }
+
+    /// Copy of a mark drawn shifted up by `dy` points (top clips a hair; fine for a hop).
+    private static func offset(_ img: NSImage, dy: CGFloat) -> NSImage {
+        let out = NSImage(size: img.size)
+        out.lockFocus()
+        img.draw(at: NSPoint(x: 0, y: dy), from: .zero, operation: .sourceOver, fraction: 1)
+        out.unlockFocus()
+        out.isTemplate = img.isTemplate
+        return out
+    }
+
     // MARK: - NSMenuDelegate
 
     private var menuIsOpen = false
@@ -131,9 +170,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         UpdateChecker.shared.clearTransient()
     }
 
-    /// Live-refresh the dropdown while it is open (update check finishing, etc.).
+    /// Live-refresh the dropdown while it is open (state change, new request, update
+    /// check finishing). Skips the rebuild while the user is on an item or inside a
+    /// submenu, so `Open ▸ Terminal` doesn't collapse mid-hover — the store's 2s poll
+    /// (or the next event once they move) catches up.
     private func refreshOpenMenu() {
-        guard menuIsOpen, let menu = statusItem.menu else { return }
+        guard menuIsOpen, let menu = statusItem.menu, menu.highlightedItem == nil else { return }
         MenuBuilder.populate(menu, sessions: sessions, requests: requestStore.requests,
                              controller: self)
     }
