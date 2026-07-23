@@ -16,8 +16,6 @@ AI coding sessions — Claude Code today, with Codex, GitHub Copilot, and Google
 Antigravity in the same bar. Each agent gets its own animated mascot; the bar always
 surfaces the session that needs you most.
 
-Created by **Michal Strnadel**.
-
 ## Features
 
 - **Live status per agent** — an animated mascot walks the bar while an agent works
