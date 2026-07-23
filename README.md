@@ -8,13 +8,15 @@
 **One menu bar item for all your AI coding agents.**
 
 <p align="center">
-  <img src="docs/assets/demo.gif" width="640" alt="AgentBar demo: working session, needs-approval, one-click Allow">
+  <img src="docs/assets/demo-claude-codex.gif" width="640" alt="AgentBar demo: Claude session works, needs approval, one-click Allow, then a Codex session takes over the bar">
 </p>
 
 AgentBar is a lightweight, native macOS menu bar app that shows the live state of your
 AI coding sessions — Claude Code today, with Codex, GitHub Copilot, and Google
-Antigravity in the same bar. Each agent gets its own animated mascot; the bar always
-surfaces the session that needs you most.
+Antigravity in the same bar. Each agent gets its own animated mascot built from its
+real identity — Clawd the crab for Claude, the OpenAI knot with a braille dot-matrix
+for Codex, the official pixel-art head for Copilot, the pixel rainbow arch for
+Antigravity — and the bar always surfaces the session that needs you most.
 
 ## Quick start
 
@@ -32,8 +34,10 @@ That's the whole loop. More install options below; troubleshooting at the bottom
 
 ## Features
 
-- **Live status per agent** — an animated mascot walks the bar while an agent works
-  (Clawd the crab for Claude; each agent has its own mark).
+- **Live status per agent** — an animated mascot works the bar while an agent works:
+  Clawd the crab (Claude), the knot + a braille dot-matrix that literally spells
+  *codex* (Codex), the pixel mascot head + dots spelling *copilot* (Copilot), and the
+  animated pixel rainbow arch (Antigravity).
 - **Permission alerts** — an amber dot the moment an agent waits for your approval.
 - **Multi-session** — every running session listed with project, git branch, and state;
   click a row to jump to its app or terminal.
@@ -99,12 +103,18 @@ rm -rf ~/.agentbar
 
 ## Agent support
 
-| Agent | Live status | Open | Notes |
-|---|---|---|---|
-| Claude Code (CLI + desktop) | full | yes | hooks: prompt, tool, permission, stop, lifecycle |
-| Codex CLI | turn-complete | yes | via Codex `notify`; no per-tool granularity upstream |
-| GitHub Copilot | — | yes | no public event API yet; mascot ready |
-| Google Antigravity | — | yes | no public event API yet; mascot ready |
+| Agent | Live status | Open | Animated mascot | Notes |
+|---|---|---|---|---|
+| Claude Code (CLI + desktop) | full | yes | Clawd the crab | hooks: prompt, tool, permission, stop, lifecycle |
+| Codex CLI | turn-complete | yes | knot + braille dot-matrix | via Codex `notify` (auto-installed); no per-tool granularity upstream |
+| GitHub Copilot | — | yes | official pixel head + dot-matrix | no public event API yet; everything else is wired and waiting |
+| Google Antigravity | — | yes | official pixel rainbow arch | no public event API yet; everything else is wired and waiting |
+
+Hook readiness: Claude Code hooks and the Codex `notify` bridge install automatically
+on first launch. Copilot and Antigravity ship with their mascots, menu entries, and
+(for Copilot) the keystroke-approval backend already in place — the moment either tool
+exposes session events, support is one small hook script away
+(see `Scripts/hooks/copilot/README.md` and `Scripts/hooks/antigravity/README.md`).
 
 ## Remote Allow/Deny
 
