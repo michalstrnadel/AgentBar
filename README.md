@@ -37,7 +37,27 @@ surfaces the session that needs you most.
 
 ## Install
 
+**One-liner** — downloads the latest release (or builds from source when none exists):
+
 ```bash
+curl -fsSL https://raw.githubusercontent.com/michalstrnadel/AgentBar/main/Scripts/install.sh | bash
+```
+
+**Homebrew:**
+
+```bash
+brew install --cask michalstrnadel/tap/agentbar
+```
+
+**Via your AI agent** — paste into Claude Code (or any coding agent):
+
+> Install AgentBar: run
+> `curl -fsSL https://raw.githubusercontent.com/michalstrnadel/AgentBar/main/Scripts/install.sh | bash`
+
+**From source:**
+
+```bash
+git clone https://github.com/michalstrnadel/AgentBar.git && cd AgentBar
 ./Scripts/build.sh
 open "build/AgentBar.app"
 ```

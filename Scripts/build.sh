@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP="build/AgentBar.app"
-VERSION="1.1.0"
+VERSION="1.2.0"
 BUNDLE_ID="com.michalstrnadel.agentbar"
 
 rm -rf "$APP"

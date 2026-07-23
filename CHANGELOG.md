@@ -3,6 +3,22 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.2.0 - 2026-07-23
+
+### Changed
+- Approval UI: inline ✓ Allow / ✓ Always / ✕ Deny button strip directly under the
+  session row replaces the second-level submenu; the fourth button adapts to the
+  session surface (⌨ Terminal for CLI, ⧉ Claude app for desktop). Clicking the
+  session row hands the prompt back to that surface.
+- "Always allow" now shows the rule as readable text (e.g. `Bash(git push:*)`)
+  instead of raw JSON.
+
+### Added
+- One-line installer (`Scripts/install.sh`) that fetches the prebuilt universal
+  app from the latest GitHub release, plus a Homebrew tap
+  (`brew install --cask michalstrnadel/tap/agentbar`).
+- README: requirements, uninstall, troubleshooting; SECURITY.md; CI hardening.
+
 ## 1.1.0 - 2026-07-23
 
 ### Added

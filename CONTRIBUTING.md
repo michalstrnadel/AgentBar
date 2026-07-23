@@ -38,5 +38,9 @@ needed. See `docs/specs/` for the design documents.
 
 ## Releases
 
-Bump `VERSION` in `Scripts/build.sh`, add a `CHANGELOG.md` section, tag `vX.Y.Z`,
-and create a GitHub release with the changelog section as notes.
+1. Bump `VERSION` in `Scripts/build.sh`, add a `CHANGELOG.md` section.
+2. Tag `vX.Y.Z`, create a GitHub release with the changelog section as notes.
+3. Attach the prebuilt app: `./Scripts/build.sh && ditto -c -k --keepParent
+   build/AgentBar.app AgentBar.app.zip && gh release upload vX.Y.Z AgentBar.app.zip`.
+4. Update `Casks/agentbar.rb` in `michalstrnadel/homebrew-tap` (version + sha256
+   of the zip).
