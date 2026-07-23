@@ -10,9 +10,17 @@ struct ApprovalRequest {
     let display: String             // one line, e.g. "Bash: git push origin main"
     let toolInputPretty: String     // full tool input for the tooltip
     let ruleSuggestion: [String: Any]?  // Claude-supplied; passed back verbatim on Always allow
+    let context: Context?           // structured detail for the inline mini-diff / command
     let pid: Int32                  // the waiting hook's parent (the claude process)
     let hookPid: Int32              // the waiting hook itself; primary liveness handle
     let ts: TimeInterval
+
+    /// What's being approved, in enough detail to render inline without the terminal.
+    enum Context {
+        case bash(String)                              // full command
+        case diff(old: String, new: String, more: Int) // Edit/MultiEdit (more = extra edits)
+        case write(String)                             // Write content preview
+    }
 
     init?(fileURL: URL) {
         guard let data = try? Data(contentsOf: fileURL),
@@ -25,9 +33,22 @@ struct ApprovalRequest {
         display         = o["display"] as? String ?? (o["toolName"] as? String ?? "request")
         toolInputPretty = o["toolInputPretty"] as? String ?? ""
         ruleSuggestion  = o["ruleSuggestion"] as? [String: Any]
+        context         = Self.decodeContext(o["context"] as? [String: Any])
         pid             = Int32(o["pid"] as? Int ?? 0)
         hookPid         = Int32(o["hookPid"] as? Int ?? 0)
         ts              = o["ts"] as? TimeInterval ?? 0
+    }
+
+    private static func decodeContext(_ c: [String: Any]?) -> Context? {
+        guard let c, let kind = c["kind"] as? String else { return nil }
+        switch kind {
+        case "bash":  return .bash(c["command"] as? String ?? "")
+        case "diff":  return .diff(old: c["old"] as? String ?? "",
+                                   new: c["new"] as? String ?? "",
+                                   more: c["more"] as? Int ?? 0)
+        case "write": return .write(c["preview"] as? String ?? "")
+        default:      return nil
+        }
     }
 
     /// Text of the rule "Always allow" would persist — shown in the menu item.

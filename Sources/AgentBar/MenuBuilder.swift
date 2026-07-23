@@ -233,6 +233,13 @@ enum MenuBuilder {
             ])
             menu.addItem(what)
 
+            // Inline detail: the mini-diff / full command, when the hook supplied it.
+            if let context = r.context {
+                let ctx = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+                ctx.view = ApprovalContextView(context: context)
+                menu.addItem(ctx)
+            }
+
             let buttons = NSMenuItem(title: "", action: nil, keyEquivalent: "")
             buttons.view = ApprovalButtonsRow(
                 hasRule: r.ruleDescription != nil,

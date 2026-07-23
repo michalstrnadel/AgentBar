@@ -48,6 +48,24 @@ const oneLine = (s, n = 60) => {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
 };
 
+const cap = (s, n) => { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n) + "…" : s; };
+
+// Structured, per-field-capped detail so the menu can show a mini-diff / full command
+// inline (not just a hover tooltip). Null for tools where the one-line display is enough.
+function buildContext(tool, input) {
+  const t = String(tool || ""), i = input || {};
+  if (t === "Bash") return { kind: "bash", command: cap(i.command, 2000) };
+  if (t === "Edit") return { kind: "diff", old: cap(i.old_string, 1500), new: cap(i.new_string, 1500), more: 0 };
+  if (t === "MultiEdit") {
+    const edits = Array.isArray(i.edits) ? i.edits : [];
+    const first = edits[0] || {};
+    return { kind: "diff", old: cap(first.old_string, 1500), new: cap(first.new_string, 1500),
+             more: Math.max(0, edits.length - 1) };
+  }
+  if (t === "Write") return { kind: "write", preview: cap(i.content, 1200) };
+  return null;
+}
+
 function displaySummary(tool, input, cwd) {
   const t = String(tool || "unknown");
   const i = input || {};
@@ -131,6 +149,7 @@ function run() {
       // safeId to match Session.id, which the app derives from the state file name.
       sessionId: safeId(p.session_id), agent: "claude",
       toolName: p.tool_name || "", display, toolInputPretty: pretty,
+      context: buildContext(p.tool_name, p.tool_input),
       ruleSuggestion: suggestion, pid: process.ppid, hookPid: process.pid,
       ts: Math.floor(Date.now() / 1000),
     });
