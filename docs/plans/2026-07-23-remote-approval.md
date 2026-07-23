@@ -261,7 +261,7 @@ function respond(decision) {
 - [ ] **Step 5: Run the tests until green**
 
 Run: `./Scripts/test/permission-hook-test.sh`
-Expected: `15 passed, 0 failed`, exit 0.
+Expected: all checks green, 0 failed, exit 0 (18 checks after the review-fix round).
 
 - [ ] **Step 6: Commit**
 
@@ -350,6 +350,7 @@ struct ApprovalRequest {
     let toolInputPretty: String     // full tool input for the tooltip
     let ruleSuggestion: [String: Any]?  // Claude-supplied; passed back verbatim on Always allow
     let pid: Int32                  // the waiting hook's parent (the claude process)
+    let hookPid: Int32              // the waiting hook itself; primary liveness handle
     let ts: TimeInterval
 
     init?(fileURL: URL) {
@@ -364,6 +365,7 @@ struct ApprovalRequest {
         toolInputPretty = o["toolInputPretty"] as? String ?? ""
         ruleSuggestion  = o["ruleSuggestion"] as? [String: Any]
         pid             = Int32(o["pid"] as? Int ?? 0)
+        hookPid         = Int32(o["hookPid"] as? Int ?? 0)
         ts              = o["ts"] as? TimeInterval ?? 0
     }
 
@@ -429,8 +431,9 @@ final class RequestStore {
         var found: [ApprovalRequest] = []
         for url in files where url.pathExtension == "json" {
             guard let r = ApprovalRequest(fileURL: url) else { continue }
-            // Orphans: the waiting hook died, or outlived its timeout window.
-            let dead = r.pid > 0 && kill(r.pid, 0) != 0 && errno == ESRCH
+            // Orphans: the waiting hook died (SIGKILL leaves no cleanup), or expired.
+            let watched = r.hookPid > 0 ? r.hookPid : r.pid
+            let dead = watched > 0 && kill(watched, 0) != 0 && errno == ESRCH
             let expired = r.ts > 0 && Date().timeIntervalSince1970 - r.ts > Self.maxAge
             if dead || expired {
                 try? fm.removeItem(at: url)
