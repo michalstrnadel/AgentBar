@@ -1,8 +1,4 @@
-<p align="center">
-  <img src="docs/assets/app-icon.png" width="128" alt="AgentBar icon">
-</p>
-
-# AgentBar
+# <img src="docs/assets/app-icon.png" width="42" alt="" align="top"> AgentBar
 
 [![CI](https://github.com/michalstrnadel/AgentBar/actions/workflows/ci.yml/badge.svg)](https://github.com/michalstrnadel/AgentBar/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
