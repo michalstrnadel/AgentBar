@@ -3,6 +3,21 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.5.0 - 2026-07-23
+
+### Added
+- Animated mascots for the other agents, built from each tool's real visual
+  identity: Codex = OpenAI knot + a braille dot-matrix that spells "codex"
+  (echo of the Codex CLI thinking indicator); Copilot = GitHub's official
+  pixel-art mascot head (traced pixel-by-pixel) + a purple dot-matrix spelling
+  "copilot"; Antigravity = the official pixel rainbow arch with a traveling
+  color wave. All three animate through the same sprite pipeline as Clawd and
+  work in both Color and System (monochrome) modes.
+- `Scripts/mascots/`: self-contained generators for the mascot frame sets.
+- `docs/archive/2026-07-23-mascot-concepts/`: the original character concepts
+  (walking terminal robot, paper plane, astronaut) kept as ready alternatives —
+  the paper plane especially is on deck as a reserve Copilot look.
+
 ## 1.4.0 - 2026-07-23
 
 ### Changed

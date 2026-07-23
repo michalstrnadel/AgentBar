@@ -35,18 +35,17 @@ struct Agent {
               approveKeys: nil),
         Agent(id: "codex", name: "Codex",
               brand: NSColor(srgbRed: 0.063, green: 0.639, blue: 0.498, alpha: 1), // #10A37F
-              artwork: .tintedMark(codexLogoPNG),
+              artwork: .frames(codexMascotFramePNGs, fps: 11),
               open: .terminal,
               approveKeys: [36]), // Return — Codex prompts default to approve
         Agent(id: "copilot", name: "Copilot",
               brand: NSColor(srgbRed: 0.510, green: 0.314, blue: 0.875, alpha: 1), // #8250DF
-              artwork: .tintedMark(copilotLogoPNG),
+              artwork: .frames(copilotMascotFramePNGs, fps: 11),
               open: .terminal,
               approveKeys: [16, 36]), // "y" then Return
-        // Tinted, not colorMark: the original light gradient washes out at 15px in the bar.
         Agent(id: "antigravity", name: "Antigravity",
               brand: NSColor(srgbRed: 0.259, green: 0.522, blue: 0.957, alpha: 1), // #4285F4
-              artwork: .tintedMark(antigravityLogoPNG),
+              artwork: .frames(antigravityMascotFramePNGs, fps: 11),
               open: .appNamed("Antigravity"),
               approveKeys: nil),
     ]

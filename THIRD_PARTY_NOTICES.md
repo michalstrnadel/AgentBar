@@ -6,8 +6,13 @@ property of their respective owners.
 
 - **OpenAI logo** (shown for Codex sessions) — trademark of OpenAI. Vector sourced from
   the public simple-icons collection (icons released under CC0; the trademark itself is not).
-- **GitHub Copilot logo** — trademark of GitHub, Inc. Vector sourced from simple-icons (CC0).
-- **Google Antigravity logo** — trademark of Google LLC. Vector sourced from svgl.app.
+  The animated Codex mark pairs it with a generic braille dot-matrix (not a trademark).
+- **GitHub Copilot logo and pixel-art mascot head** — trademarks of GitHub, Inc. The
+  animated Copilot mark is a faithful pixel-by-pixel reproduction of GitHub's official
+  pixel-art Copilot mascot; logo vector sourced from simple-icons (CC0).
+- **Google Antigravity logo** — trademark of Google LLC. The animated Antigravity mark
+  is a faithful pixel-by-pixel reproduction of the official pixel rainbow arch; static
+  vector sourced from svgl.app.
 - **Clawd crab sprite** (shown for Claude sessions) — pixel-art frames derived from
   `Clawd-CrabWalking.gif`; Clawd is the community mascot of Anthropic's Claude.
 
