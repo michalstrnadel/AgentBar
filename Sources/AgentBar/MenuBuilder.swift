@@ -82,6 +82,16 @@ enum MenuBuilder {
         colorParent.submenu = colorSub
         menu.addItem(colorParent)
 
+        // Opt-in global Allow/Deny shortcut for the newest pending request.
+        let shortcut = NSMenuItem(title: "Global Allow / Deny shortcut",
+                                  action: #selector(StatusItemController.toggleApprovalShortcut(_:)),
+                                  keyEquivalent: "")
+        shortcut.target = controller
+        shortcut.state = controller.approvalShortcutEnabled ? .on : .off
+        shortcut.image = NSImage(systemSymbolName: "command", accessibilityDescription: nil)
+        shortcut.toolTip = "⌥⌘A allow · ⌥⌘D deny the newest pending request, without opening the menu"
+        menu.addItem(shortcut)
+
         menu.addItem(.separator())
         menu.addItem(updateRow(controller))
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))

@@ -42,7 +42,32 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         requestStore.start()
         UpdateChecker.shared.onChange = { [weak self] in self?.refreshOpenMenu() }
         UpdateChecker.shared.startPeriodicChecks()
+        applyHotKeyState()
         render()
+    }
+
+    // MARK: - Global Allow/Deny shortcut (opt-in)
+
+    var approvalShortcutEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: "globalApprovalShortcut") }
+        set { UserDefaults.standard.set(newValue, forKey: "globalApprovalShortcut"); applyHotKeyState() }
+    }
+
+    private var lastHotkey = Date.distantPast
+
+    private func applyHotKeyState() {
+        HotKeyCenter.shared.setEnabled(approvalShortcutEnabled,
+            allow: { [weak self] in self?.hotkeyAnswer("allow") },
+            deny:  { [weak self] in self?.hotkeyAnswer("deny") })
+    }
+
+    /// Answer the newest pending request. Debounced so a held chord can't double-fire.
+    private func hotkeyAnswer(_ behavior: String) {
+        let now = Date()
+        guard now.timeIntervalSince(lastHotkey) > 1 else { return }
+        lastHotkey = now
+        guard let r = requestStore.requests.first else { return }  // no-op when nothing pending
+        AnswerWriter.write(behavior: behavior, for: r)
     }
 
     // MARK: - Rendering
@@ -210,6 +235,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc func chooseColor(_ sender: NSMenuItem) {
         systemColor = (sender.representedObject as? Bool) ?? false
+    }
+
+    @objc func toggleApprovalShortcut(_ sender: NSMenuItem) {
+        approvalShortcutEnabled.toggle()
     }
 
     /// Called by the inline Allow/Always/Deny button strip on permission rows.
