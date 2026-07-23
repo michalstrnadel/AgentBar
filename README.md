@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/icon.png?v=1.4.0" width="128" alt="AgentBar icon">
+  <img src="docs/assets/app-icon.png" width="128" alt="AgentBar icon">
 </p>
 
 # AgentBar
