@@ -3,6 +3,20 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.6.0 - 2026-07-23
+
+### Added
+- Built-in updates: a quiet daily check against GitHub Releases plus a
+  "Check for Updates…" row in the menu (current version shown as its badge —
+  the separate Version line is gone). One click on "Update to X — Install &
+  Relaunch" downloads the release, verifies the bundle version, swaps the app
+  in place (with automatic rollback on failure), and relaunches. No Sparkle,
+  no windows, no extra processes.
+
+### Fixed
+- Menu: the bottom section no longer shows ragged indentation on macOS 26 —
+  the update row carries an icon so the section keeps one consistent gutter.
+
 ## 1.5.0 - 2026-07-23
 
 ### Added

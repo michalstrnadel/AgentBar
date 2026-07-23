@@ -83,10 +83,56 @@ enum MenuBuilder {
         menu.addItem(colorParent)
 
         menu.addItem(.separator())
-        let version = NSMenuItem(title: "Version \(appVersion)", action: nil, keyEquivalent: "")
-        version.isEnabled = false
-        menu.addItem(version)
+        menu.addItem(updateRow(controller))
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+    }
+
+    /// One row that is the whole update UI: check → checking → result / install.
+    /// The current version rides along as a badge, so no separate "Version" row.
+    /// Carries an icon so the bottom section (Quit gets a system icon on new macOS)
+    /// keeps one consistent icon gutter instead of ragged indents.
+    private static func updateRow(_ controller: StatusItemController) -> NSMenuItem {
+        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        var badge = appVersion
+        var symbol = "arrow.triangle.2.circlepath"
+        switch UpdateChecker.shared.status {
+        case .idle:
+            item.title = "Check for Updates…"
+            item.action = #selector(StatusItemController.checkForUpdatesClicked(_:))
+            item.target = controller
+        case .checking:
+            item.title = "Checking for updates…"
+        case .upToDate:
+            item.title = "Up to date"
+            symbol = "checkmark.circle"
+        case .available(let v):
+            item.attributedTitle = NSAttributedString(
+                string: "Update to \(v) — Install & Relaunch",
+                attributes: [.foregroundColor: NSColor.controlAccentColor,
+                             .font: NSFont.menuFont(ofSize: 0)])
+            item.action = #selector(StatusItemController.installUpdateClicked(_:))
+            item.target = controller
+            symbol = "arrow.down.circle.fill"
+            badge = ""
+        case .downloading(let v):
+            item.title = "Downloading \(v)…"
+            symbol = "arrow.down.circle"
+            badge = ""
+        case .failed(let reason):
+            item.title = "\(reason) — Retry"
+            item.action = #selector(StatusItemController.checkForUpdatesClicked(_:))
+            item.target = controller
+            symbol = "exclamationmark.arrow.triangle.2.circlepath"
+        }
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        if !badge.isEmpty {
+            if #available(macOS 14.0, *) {
+                item.badge = NSMenuItemBadge(string: badge)
+            } else {
+                item.toolTip = "AgentBar \(badge)"
+            }
+        }
+        return item
     }
 
     private static var appVersion: String {

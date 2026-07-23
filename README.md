@@ -45,6 +45,8 @@ That's the whole loop. More install options below; troubleshooting at the bottom
 - **Two looks** — full-color mascots, or a monochrome System mode that matches the menu bar.
 - **Remote Allow/Deny** — answer Claude Code permission prompts straight from the menu:
   see exactly what's requested, then Allow once, Always allow, Deny, or defer to terminal.
+- **Built-in updates** — a quiet daily check of GitHub Releases plus **Check for
+  Updates…** in the menu; one click installs the new version and relaunches.
 - **Nothing else** — no dock icon, no windows, no countdown timers, no sounds. One process, tiny footprint.
 
 ## Requirements
@@ -82,6 +84,10 @@ open "build/AgentBar.app"
 
 First launch installs the Claude Code hooks automatically (and the Codex notify hook if
 `~/.codex` exists). New agent sessions appear in the bar from then on.
+
+**Updating:** the app checks GitHub Releases daily and offers new versions in the menu
+(**Check for Updates…** works any time). Homebrew users can keep using
+`brew upgrade --cask agentbar` — both paths install the same bundle.
 
 > **What install touches:** hook scripts are copied to `~/.agentbar/hooks/`, hook
 > entries are merged into `~/.claude/settings.json` (existing hooks are preserved),

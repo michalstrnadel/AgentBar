@@ -36,6 +36,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         store.start()
         requestStore.start()
+        UpdateChecker.shared.onChange = { [weak self] in self?.refreshOpenMenu() }
+        UpdateChecker.shared.startPeriodicChecks()
         render()
     }
 
@@ -113,9 +115,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     // MARK: - NSMenuDelegate
 
+    private var menuIsOpen = false
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         store.refresh()
         requestStore.refresh()
+        MenuBuilder.populate(menu, sessions: sessions, requests: requestStore.requests,
+                             controller: self)
+    }
+
+    func menuWillOpen(_ menu: NSMenu) { menuIsOpen = true }
+
+    func menuDidClose(_ menu: NSMenu) {
+        menuIsOpen = false
+        UpdateChecker.shared.clearTransient()
+    }
+
+    /// Live-refresh the dropdown while it is open (update check finishing, etc.).
+    private func refreshOpenMenu() {
+        guard menuIsOpen, let menu = statusItem.menu else { return }
         MenuBuilder.populate(menu, sessions: sessions, requests: requestStore.requests,
                              controller: self)
     }
@@ -168,6 +186,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         default:
             AnswerWriter.write(behavior: a.behavior, for: a.request)
         }
+    }
+
+    @objc func checkForUpdatesClicked(_ sender: NSMenuItem) {
+        UpdateChecker.shared.check(manual: true)
+    }
+
+    @objc func installUpdateClicked(_ sender: NSMenuItem) {
+        UpdateChecker.shared.installAvailable()
     }
 
     @objc func keystrokeApproveClicked(_ sender: NSMenuItem) {
