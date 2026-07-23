@@ -143,6 +143,12 @@ writes `requests.d/`, the app answers into `answers.d/`.
   into your existing notify chain manually.
 - **Keystroke approval does nothing** — grant AgentBar the Accessibility permission
   (the menu item offers to open System Settings).
+- **macOS says it "cannot verify AgentBar is free of malware"** — the app is ad-hoc
+  signed, not notarized. Don't click *Move to Trash*; click *Done*, then either
+  right-click the app ▸ Open, or run
+  `xattr -dr com.apple.quarantine /Applications/AgentBar.app` and open it again.
+  The install script and the Homebrew cask do this for you; the dialog mainly
+  appears after downloading the zip manually from Releases.
 
 ## License
 
