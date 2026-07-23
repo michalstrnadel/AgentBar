@@ -3,6 +3,17 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.2.1 - 2026-07-23
+
+### Fixed
+- Sessions no longer get stuck on "needs approval": the legacy Notification hook
+  could land late (including after the upstream dialog-flash race) and overwrite
+  newer state with a stale permission flag. Permission state is now written solely
+  by permission.js; the Notification hook is no longer installed and old
+  registrations are cleaned up on next launch.
+- The permission-dot icon now adapts to the menu bar appearance in System mode
+  instead of rendering a hard-black glyph.
+
 ## 1.2.0 - 2026-07-23
 
 ### Changed

@@ -160,14 +160,23 @@ final class IconRenderer {
     static func withPermissionDot(_ src: NSImage) -> NSImage {
         let dot: CGFloat = 7
         let size = NSSize(width: src.size.width + dot / 2, height: max(src.size.height, 18))
-        let out = NSImage(size: size)
-        out.lockFocus()
-        src.draw(in: NSRect(x: 0, y: (size.height - src.size.height) / 2,
-                            width: src.size.width, height: src.size.height))
-        NSColor(srgbRed: 0.95, green: 0.73, blue: 0.18, alpha: 1).setFill()
-        NSBezierPath(ovalIn: NSRect(x: size.width - dot, y: size.height - dot,
-                                    width: dot, height: dot)).fill()
-        out.unlockFocus()
+        let wasTemplate = src.isTemplate
+        // Drawing handler runs at render time, so labelColor resolves against the
+        // menu bar's current appearance — a plain rasterized template would bake in
+        // black and stay black on dark bars.
+        let out = NSImage(size: size, flipped: false) { _ in
+            let imgRect = NSRect(x: 0, y: (size.height - src.size.height) / 2,
+                                 width: src.size.width, height: src.size.height)
+            src.draw(in: imgRect)
+            if wasTemplate {
+                NSColor.labelColor.setFill()
+                imgRect.fill(using: .sourceAtop) // tint glyph pixels only
+            }
+            NSColor(srgbRed: 0.95, green: 0.73, blue: 0.18, alpha: 1).setFill()
+            NSBezierPath(ovalIn: NSRect(x: size.width - dot, y: size.height - dot,
+                                        width: dot, height: dot)).fill()
+            return true
+        }
         out.isTemplate = false // the dot must stay amber even in System mode
         return out
     }

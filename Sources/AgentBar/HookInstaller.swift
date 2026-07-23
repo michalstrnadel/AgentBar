@@ -75,20 +75,27 @@ enum HookInstaller {
             ("UserPromptSubmit", "\"\(node)\" \"\(dir)/update.js\" prompt", false, nil),
             ("PreToolUse",       "\"\(node)\" \"\(dir)/update.js\" pre", true, nil),
             ("PostToolUse",      "\"\(node)\" \"\(dir)/update.js\" post", true, nil),
-            ("Notification",     "\"\(node)\" \"\(dir)/update.js\" notify", false, nil),
             // Blocking approval hook: its own wait is 600s, so give Claude Code slack.
+            // (No Notification hook: late permission notifications used to overwrite
+            // newer state and strand sessions on "needs approval".)
             ("PermissionRequest","\"\(node)\" \"\(dir)/permission.js\"", true, 630),
             ("Stop",             "\"\(node)\" \"\(dir)/update.js\" stop", false, nil),
         ]
 
-        for e in events {
-            var rules = hooks[e.event] as? [[String: Any]] ?? []
-            // Drop any earlier AgentBar entries (path match), keep everything else untouched.
+        // Drop earlier AgentBar entries from EVERY event (path match), so events we
+        // no longer register (e.g. Notification) don't linger from old installs.
+        for (event, value) in hooks {
+            guard var rules = value as? [[String: Any]] else { continue }
             rules.removeAll { rule in
                 ((rule["hooks"] as? [[String: Any]]) ?? []).contains { cmd in
                     (cmd["command"] as? String)?.contains("/.agentbar/hooks/claude/") == true
                 }
             }
+            if rules.isEmpty { hooks.removeValue(forKey: event) } else { hooks[event] = rules }
+        }
+
+        for e in events {
+            var rules = hooks[e.event] as? [[String: Any]] ?? []
             var hookEntry: [String: Any] = ["type": "command", "command": e.cmd]
             if let t = e.timeout { hookEntry["timeout"] = t }
             var rule: [String: Any] = ["hooks": [hookEntry]]
