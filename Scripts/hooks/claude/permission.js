@@ -34,6 +34,15 @@ const appRunning = () => {
   try { cp.execSync("pgrep -x AgentBar", { stdio: "ignore" }); return true; } catch { return false; }
 };
 
+// Stable JSON: objects re-keyed in sorted order at every depth, so two parses of
+// the same document compare equal regardless of serializer key ordering.
+const canonical = (v) => {
+  if (Array.isArray(v)) return "[" + v.map(canonical).join(",") + "]";
+  if (v && typeof v === "object")
+    return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canonical(v[k])).join(",") + "}";
+  return JSON.stringify(v);
+};
+
 const oneLine = (s, n = 60) => {
   s = String(s || "").split("\n")[0].trim();
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
@@ -125,12 +134,13 @@ function run() {
           const b = a.behavior;
           if (b === "allow" || b === "always") {
             const decision = { behavior: "allow" };
-            // Only pin a standing rule when it's exactly one Claude Code itself
+            // Only pin a standing rule when it's structurally one Claude Code itself
             // suggested for this request. Same-user forgery of a single one-shot
             // "allow" is out of scope, but a forged "always" must not be able to
-            // mint a permission Claude never offered.
+            // mint a permission Claude never offered. Key-order-insensitive: the app
+            // round-trips the suggestion through JSONSerialization, which may reorder.
             const isSuggested = b === "always" && a.rule &&
-              suggestions.some((s) => JSON.stringify(s) === JSON.stringify(a.rule));
+              suggestions.some((s) => canonical(s) === canonical(a.rule));
             if (isSuggested) decision.updatedPermissions = [a.rule];
             respond(decision);
           } else if (b === "deny") {

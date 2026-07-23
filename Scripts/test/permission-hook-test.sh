@@ -107,7 +107,17 @@ kill -TERM "$hookpid"
 wait "$hookpid" 2>/dev/null
 check "SIGTERM cleans up request"   '[ ! -e "$HOME/.agentbar/requests.d/$REQ" ]'
 
-# 9. forged rule (doesn't match any received suggestion) -> plain allow, no updatedPermissions
+# 9. reordered-keys rule (same structure as the suggestion) -> still accepted; the app's
+# JSON round trip may reorder keys, so matching must be structural, not byte-wise
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"behavior":"always","rule":{"rule":"Bash(git push:*)","type":"rule"}}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "reordered rule keys still accepted" 'grep -q "updatedPermissions" "$HOME/out.json"'
+
+# 10. forged rule (doesn't match any received suggestion) -> plain allow, no updatedPermissions
 fresh_home
 AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
 hookpid=$!
