@@ -17,7 +17,7 @@ jobs:
     name: Hook protocol tests (macOS)
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Run permission hook test suite
         run: ./Scripts/test/permission-hook-test.sh
       - name: Run CLI test suite
@@ -27,8 +27,8 @@ jobs:
     name: Hook + CLI tests (Linux)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 20
       - name: Run permission hook test suite
@@ -40,7 +40,7 @@ jobs:
     name: Build app (universal)
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build AgentBar.app
         run: ./Scripts/build.sh
       - name: Verify bundle contents
