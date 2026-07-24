@@ -14,12 +14,27 @@ on:
 
 jobs:
   hook-tests:
-    name: Hook protocol tests
+    name: Hook protocol tests (macOS)
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - name: Run permission hook test suite
         run: ./Scripts/test/permission-hook-test.sh
+      - name: Run CLI test suite
+        run: ./Scripts/test/cli-test.sh
+
+  linux-tests:
+    name: Hook + CLI tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run permission hook test suite
+        run: ./Scripts/test/permission-hook-test.sh
+      - name: Run CLI test suite
+        run: ./Scripts/test/cli-test.sh
 
   build:
     name: Build app (universal)

@@ -3,6 +3,7 @@
 [![CI](https://github.com/michalstrnadel/AgentBar/actions/workflows/ci.yml/badge.svg)](https://github.com/michalstrnadel/AgentBar/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![macOS 12+](https://img.shields.io/badge/macOS-12%2B-black)
+![Linux CLI](https://img.shields.io/badge/Linux-CLI-yellow)
 ![Swift](https://img.shields.io/badge/Swift-AppKit-orange)
 
 **One menu bar item for all your AI coding agents.**
@@ -12,11 +13,12 @@
 </p>
 
 AgentBar is a lightweight, native macOS menu bar app that shows the live state of your
-AI coding sessions — Claude Code today, with Codex, GitHub Copilot, and Google
-Antigravity in the same bar. Each agent gets its own animated mascot built from its
+AI coding sessions — Claude Code, Codex, Cursor CLI, Gemini CLI, plus GitHub Copilot
+and Google Antigravity in the same bar. Each agent gets its own mark built from its
 real identity — Clawd the crab for Claude, the OpenAI knot with a braille dot-matrix
 for Codex, the official pixel-art head for Copilot, the pixel rainbow arch for
 Antigravity — and the bar always surfaces the session that needs you most.
+On Linux, the same protocol drives the [`agentbar` CLI](#linux-cli).
 
 ## Quick start
 
@@ -62,6 +64,8 @@ don't use. Hooks are snapshotted per session — start a new agent session after
   see exactly what's requested, then Allow once, Always allow, Deny, or defer to terminal.
 - **Built-in updates** — a quiet daily check of GitHub Releases plus **Check for
   Updates…** in the menu; one click installs the new version and relaunches.
+- **Linux too** — the [`agentbar` CLI](#linux-cli) is a full peer of the menu bar app:
+  live status, pending approvals, `a`/`d` remote Allow/Deny, waybar module.
 - **Nothing else** — no dock icon, no windows, no countdown timers, no sounds. One process, tiny footprint.
 
 ## Requirements
@@ -106,12 +110,14 @@ First launch installs the Claude Code hooks automatically (and the Codex notify 
 `brew upgrade --cask agentbar` — both paths install the same bundle.
 
 > **What install touches:** hook scripts are copied to `~/.agentbar/hooks/`, hook
-> entries are merged into `~/.claude/settings.json` (existing hooks are preserved),
-> and a `notify` line is added to `~/.codex/config.toml` only if none exists.
-> The Claude SessionStart hook also auto-launches AgentBar in the background when a
-> session begins. Hooks are snapshotted per session — start a new agent session after
-> installing.
-> If you run Claude Code with a custom `CLAUDE_CONFIG_DIR`, see issue #4.
+> entries are merged into your Claude `settings.json` (`~/.claude` **and** a custom
+> `CLAUDE_CONFIG_DIR`, both; existing hooks are preserved), a `notify` line is added
+> to `~/.codex/config.toml` only if none exists, and — only for tools you already
+> have — hook entries are merged into `~/.cursor/hooks.json` and
+> `~/.gemini/settings.json`. A config that exists but isn't valid JSON is never
+> touched. The Claude SessionStart hook also auto-launches AgentBar in the
+> background when a session begins. Hooks are snapshotted per session — start a new
+> agent session after installing.
 
 ## Linux (CLI)
 
