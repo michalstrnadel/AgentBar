@@ -6,7 +6,9 @@ Thanks for your interest! AgentBar is intentionally small — please keep it tha
 
 1. **One file, one responsibility.** Keep the unit layout from
    `docs/specs/2026-07-23-agentbar-design.md`; don't grow a god-object controller.
-2. **Menu bar only.** No windows, no dock icon, no heavy dependencies.
+2. **Menu bar only.** No dock icon, no heavy dependencies. The sole window is
+   the small Settings panel (`SettingsWindow.swift`); everything else stays in
+   the menu.
 3. **Hooks must never block the host agent** — async, atomic writes, exit fast.
    Sole exception: `permission.js` (see the comment at its top).
 4. **Adding an agent** = one entry in `Agents.swift`, a sprite in
@@ -20,6 +22,8 @@ Thanks for your interest! AgentBar is intentionally small — please keep it tha
 ./Scripts/build.sh                        # builds build/AgentBar.app
 open build/AgentBar.app
 ./Scripts/test/permission-hook-test.sh    # hook protocol tests
+./Scripts/test/cli-test.sh                # cross-platform CLI tests
+./Scripts/test/antigravity-watcher-test.sh # live-app integration test (needs the app running)
 ```
 
 `swift build` works for quick compile checks and SourceKit-LSP; the shippable app
