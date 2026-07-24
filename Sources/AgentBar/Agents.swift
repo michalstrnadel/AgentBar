@@ -10,6 +10,9 @@ struct Agent {
         case tintedMark(String)
         /// Single full-color mark (base64 PNG); animated as a bob.
         case colorMark(String)
+        /// Full-color app-icon-style mark on an opaque dark plate; templates as a
+        /// knockout (plate becomes ink, bright artwork is cut out). Animated as a bob.
+        case appIconMark(String)
     }
 
     enum OpenAction {
@@ -50,13 +53,13 @@ struct Agent {
               approveKeys: nil),
         // Hook-driven live status (Cursor: ~/.cursor/hooks.json; Gemini CLI: hooks).
         Agent(id: "cursor", name: "Cursor",
-              brand: NSColor(srgbRed: 0.024, green: 0.714, blue: 0.831, alpha: 1), // #06B6D4
-              artwork: .tintedMark(cursorLogoPNG),
+              brand: .labelColor, // Cursor's brand is monochrome; adapt to menu appearance
+              artwork: .appIconMark(cursorLogoPNG),
               open: .terminal,
               approveKeys: nil),
         Agent(id: "gemini", name: "Gemini",
-              brand: NSColor(srgbRed: 0.486, green: 0.420, blue: 0.961, alpha: 1), // #7C6BF5
-              artwork: .tintedMark(geminiLogoPNG),
+              brand: NSColor(srgbRed: 0.102, green: 0.502, blue: 0.992, alpha: 1), // #1A80FD — CLI icon blue
+              artwork: .colorMark(geminiLogoPNG),
               open: .terminal,
               approveKeys: nil),
     ]

@@ -5,6 +5,15 @@ All notable changes to AgentBar are documented here. This project follows
 
 ## Unreleased
 
+### Changed
+- Cursor and Gemini menu bar marks replaced with the current official app icons
+  (Cursor's cube from cursor.com, Gemini CLI's gradient "&gt;" from
+  geminicli.com), shown full-color with the bob animation instead of a
+  flat-tinted glyph. In System (template) mode the Cursor icon renders as a
+  knockout — ink plate with the cube cut out — via a new `appIconMark` artwork
+  style. Menu dot colors follow: Gemini uses the icon's blue (#1A80FD), Cursor
+  adapts to the menu appearance.
+
 ### Fixed
 - The CLI test suite no longer inherits `CLAUDE_CONFIG_DIR` from the runner's
   shell — it used to wire the runner's real Claude config to the suite's

@@ -26,7 +26,7 @@ final class IconRenderer {
         case .frames(let pngs, let fps):
             let frames = pngs.compactMap(Self.decode).map { Self.fit($0, height: 17) }
             let color = frames
-            let template = frames.map(Self.adaptiveTemplate)
+            let template = frames.map { Self.adaptiveTemplate($0) }
             return Sprite(colorFrames: color, templateFrames: template, fps: fps)
 
         case .tintedMark(let png):
@@ -41,6 +41,12 @@ final class IconRenderer {
             let mark = Self.fit(Self.trim(Self.decode(png) ?? NSImage()), height: 15)
             return Sprite(colorFrames: Self.bobFrames(mark),
                           templateFrames: Self.bobFrames(Self.adaptiveTemplate(mark)),
+                          fps: 8)
+
+        case .appIconMark(let png):
+            let mark = Self.fit(Self.trim(Self.decode(png) ?? NSImage()), height: 15)
+            return Sprite(colorFrames: Self.bobFrames(mark),
+                          templateFrames: Self.bobFrames(Self.adaptiveTemplate(mark, knockout: true)),
                           fps: 8)
         }
     }
@@ -104,7 +110,9 @@ final class IconRenderer {
     /// bright body stays solid ink, darker shading goes gray, darkest details (eyes,
     /// outlines) drop out as transparent holes. Ported from AI Status Notifier's
     /// crab renderer; thresholds tuned against the crab sprite.
-    static func adaptiveTemplate(_ src: NSImage) -> NSImage {
+    /// `knockout` inverts the mapping for app-icon marks on an opaque dark plate:
+    /// the plate becomes solid ink and the bright artwork is cut out.
+    static func adaptiveTemplate(_ src: NSImage, knockout: Bool = false) -> NSImage {
         guard let bmp = bitmap(src), let cgSrc = bmp.cgImage else { return src }
         let pw = bmp.pixelsWide, ph = bmp.pixelsHigh
         guard let ctx = CGContext(data: nil, width: pw, height: ph, bitsPerComponent: 8,
@@ -126,12 +134,9 @@ final class IconRenderer {
             let b = Double(px[off + 2]) / (255 * af)
             let lum = 0.299 * r + 0.587 * g + 0.114 * b
             px[off] = 0; px[off + 1] = 0; px[off + 2] = 0
-            if lum < darkCut {
-                px[off + 3] = 0
-            } else {
-                let t = min(1, (lum - darkCut) / (bodyLevel - darkCut))
-                px[off + 3] = UInt8(max(0, min(255, Double(rawA) * pow(t, gamma))))
-            }
+            let t = lum < darkCut ? 0 : min(1, (lum - darkCut) / (bodyLevel - darkCut))
+            let ink = knockout ? 1 - pow(t, gamma) : pow(t, gamma)
+            px[off + 3] = UInt8(max(0, min(255, Double(rawA) * ink)))
         }
         guard let outCG = ctx.makeImage() else { return src }
         let img = NSImage(cgImage: outCG, size: src.size)
