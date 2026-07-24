@@ -3,6 +3,17 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+- Real screenshot of the remote approval menu in the README (#6).
+- The README demo GIF generator is checked in as `Scripts/demo/demo-gif.swift`
+  (#10); it reads mascot frames from the shipped sprite sources, so the GIF can
+  be regenerated after any sprite change.
+- Integration test for the Antigravity liveness watcher
+  (`Scripts/test/antigravity-watcher-test.sh`): synthetic turn transcript walks
+  thinking → permission → done against the running app.
+
 ## 1.9.0 - 2026-07-24
 
 ### Added
