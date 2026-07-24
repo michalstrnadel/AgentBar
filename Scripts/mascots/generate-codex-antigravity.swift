@@ -99,9 +99,15 @@ func tinted(_ src: NSImage, _ col: NSColor) -> NSImage {
 }
 let knot = tinted(knotRaw, NSColor(srgbRed: 0.078, green: 0.702, blue: 0.580, alpha: 1)) // #14B394
 
-// Even 10x3 dot-matrix with a diagonal activity wave sweeping left→right —
-// a regular "processing" shimmer (the braille word looked top-heavy in the bar).
-let dotCols = 10, dotRows = 3
+// Irregular braille-style dot cluster (echo of the Codex CLI / paper.design
+// thinking indicator). No fixed glyph: every dot twinkles on its own cyclic
+// phase, so the pattern keeps reshaping like streaming braille characters
+// while staying statistically even across all three rows.
+let dotCellCount = 5
+func dotHash(_ i: Int) -> CGFloat {
+    let x = sin(CGFloat(i) * 12.9898 + 78.233) * 43758.5453
+    return x - x.rounded(.down)
+}
 
 let CXW = 42, CXH = 20
 func codexFrame(_ f: Int, _ n: Int) -> CGImage {
@@ -117,20 +123,30 @@ func codexFrame(_ f: Int, _ n: Int) -> CGImage {
     knot.draw(in: NSRect(x: kx * P, y: ky * P, width: kw * P, height: kw * P))
     NSGraphicsContext.current = nil
 
+    // braille cells: dot pitch 2.3u, cell gap 1.9u
     let pitch: CGFloat = 2.3
-    let x0 = knotU + 4.2
-    let y0 = (CGFloat(CXH) - CGFloat(dotRows - 1) * pitch) / 2
-    for colI in 0..<dotCols {
-        for rowI in 0..<dotRows {
-            let cx = x0 + CGFloat(colI) * pitch
-            let cy = y0 + CGFloat(rowI) * pitch
-            let phase = CGFloat(colI) * 0.6 + CGFloat(rowI) * 0.25 - t * 2
-            let w = max(0, sin(phase))
-            let r: CGFloat = 0.55 + 0.23 * w
-            c.setFillColor(color(0x14B394, 0.22 + 0.78 * w))
+    let cellW = pitch
+    let gap: CGFloat = 1.9
+    var x = knotU + 4.2
+    let rowsY: [CGFloat] = [3, 2, 1].map { (CGFloat(CXH) - 3 * pitch) / 2 + (CGFloat($0) - 0.5) * pitch }
+    for ci in 0..<dotCellCount {
+        for slot in 1...6 {
+            let colI = slot <= 3 ? 0 : 1
+            let rowI = (slot - 1) % 3
+            let cx = x + CGFloat(colI) * pitch
+            let cy = rowsY[rowI]
+            // per-dot cyclic twinkle: integer frequency keeps the loop seamless
+            let id = ci * 6 + slot
+            let freq = CGFloat(1 + id % 2)
+            let s = sin(t * freq + dotHash(id) * 2 * .pi)
+            let a = max(0, s)
+            let r: CGFloat = 0.58 + 0.20 * a
+            c.setFillColor(color(0x14B394, 0.12 + 0.88 * pow(a, 1.4)))
             c.fillEllipse(in: CGRect(x: (cx - r) * P, y: (cy - r) * P,
                                      width: r * 2 * P, height: r * 2 * P))
         }
+        x += cellW + pitch + gap - cellW  // advance one cell: 2 cols + gap
+        x += cellW
     }
     return c.makeImage()!
 }
