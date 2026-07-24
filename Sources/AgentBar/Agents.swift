@@ -53,7 +53,7 @@ struct Agent {
               brand: NSColor(srgbRed: 0.259, green: 0.522, blue: 0.957, alpha: 1), // #4285F4
               artwork: .markFrames(antigravityMascotFramePNGs, fps: 11),
               open: .appNamed("Antigravity"),
-              approveKeys: nil),
+              approveKeys: [36]), // Return — the approval dialog preselects "Yes, allow this time"
         // Hook-driven live status (Cursor: ~/.cursor/hooks.json; Gemini CLI: hooks).
         Agent(id: "cursor", name: "Cursor",
               brand: .labelColor, // Cursor's brand is monochrome; adapt to menu appearance

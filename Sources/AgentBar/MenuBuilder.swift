@@ -419,8 +419,9 @@ enum MenuBuilder {
         note.isEnabled = false
         menu.addItem(note)
         if agent.approveKeys != nil {
+            let target = s.entrypoint == "antigravity-app" ? agent.name : "terminal"
             let title = KeystrokeApprover.trusted
-                ? "Approve in terminal (sends keystroke)" : "Grant Accessibility…"
+                ? "Approve in \(target) (sends keystroke)" : "Grant Accessibility…"
             let item = NSMenuItem(title: title,
                                   action: #selector(StatusItemController.keystrokeApproveClicked(_:)),
                                   keyEquivalent: "")

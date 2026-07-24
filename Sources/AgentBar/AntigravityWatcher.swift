@@ -28,42 +28,69 @@ final class AntigravityWatcher {
         for dir in dirs {
             let transcript = dir.appendingPathComponent(".system_generated/logs/transcript_full.jsonl")
             guard let mtime = (try? fm.attributesOfItem(atPath: transcript.path))?[.modificationDate]
-                    as? Date, now - mtime.timeIntervalSince1970 < 10 else { continue }
-            upsert(id: dir.lastPathComponent, ts: mtime.timeIntervalSince1970,
-                   state: Self.turnFinished(transcript) ? "done" : "thinking")
+                    as? Date else { continue }
+            let ts = mtime.timeIntervalSince1970
+            let age = now - ts
+            if age < 10 {
+                // Live turn. A final MODEL …_RESPONSE without tool_calls means the
+                // agent has answered — flip to done immediately, no decay wait.
+                let last = Self.lastEntry(transcript)
+                upsert(id: dir.lastPathComponent, ts: ts,
+                       state: Self.isFinalResponse(last) ? "done" : "thinking")
+            } else if age < 900 {
+                // Quiet with an unexecuted tool request as the last entry: the app
+                // is sitting on its own approval prompt (auto-allowed tools append
+                // their result within moments).
+                if let tool = Self.pendingToolCall(Self.lastEntry(transcript)) {
+                    upsert(id: dir.lastPathComponent, ts: ts, state: "permission", label: tool)
+                }
+            }
         }
     }
 
-    /// Transcript entries are appended complete, so a final MODEL …_RESPONSE with
-    /// status DONE as the last line means the agent has answered — the turn is
-    /// over the moment it lands, no need to wait for the decay timeout.
-    private static func turnFinished(_ url: URL) -> Bool {
-        guard let fh = try? FileHandle(forReadingFrom: url) else { return false }
+    private static func lastEntry(_ url: URL) -> [String: Any]? {
+        guard let fh = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? fh.close() }
         let size = (try? fh.seekToEnd()) ?? 0
         try? fh.seek(toOffset: size - min(size, 8192))
         guard let data = try? fh.readToEnd(),
               let text = String(data: data, encoding: .utf8),
               let last = text.split(separator: "\n")
-                .last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }),
-              let o = try? JSONSerialization.jsonObject(with: Data(last.utf8)) as? [String: Any]
-        else { return false }
+                .last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty })
+        else { return nil }
+        return (try? JSONSerialization.jsonObject(with: Data(last.utf8))) as? [String: Any]
+    }
+
+    private static func isFinalResponse(_ o: [String: Any]?) -> Bool {
+        guard let o else { return false }
         return o["source"] as? String == "MODEL"
             && o["status"] as? String == "DONE"
             && (o["type"] as? String ?? "").hasSuffix("RESPONSE")
+            && o["tool_calls"] == nil
     }
 
-    private func upsert(id: String, ts: TimeInterval, state: String) {
+    private static func pendingToolCall(_ o: [String: Any]?) -> String? {
+        guard let o, o["source"] as? String == "MODEL",
+              let calls = o["tool_calls"] as? [[String: Any]], let first = calls.first
+        else { return nil }
+        return first["name"] as? String ?? "tool"
+    }
+
+    private func upsert(id: String, ts: TimeInterval, state: String, label: String? = nil) {
         let safe = String(id.filter { $0.isLetter || $0.isNumber || "-_.".contains($0) }.prefix(64))
         guard !safe.isEmpty else { return }
         let url = SessionStore.stateDir.appendingPathComponent(safe + ".json")
         var o = ((try? Data(contentsOf: url))
             .flatMap { try? JSONSerialization.jsonObject(with: $0) }) as? [String: Any] ?? [:]
         guard (o["agent"] as? String ?? "antigravity") == "antigravity" else { return }
-        guard ts > (o["ts"] as? Double ?? 0) else { return } // a hook wrote something newer
+        // A hook write with a newer ts is authoritative; a same-ts state change
+        // (thinking → permission after the quiet threshold) must still land.
+        let prevTs = o["ts"] as? Double ?? 0
+        guard ts > prevTs || (ts >= prevTs && state != (o["state"] as? String)) else { return }
         o["agent"] = "antigravity"
         o["state"] = state
         o["started"] = true
+        if let label { o["label"] = label }
         o["ts"] = Int(ts)
         o["sessionId"] = safe
         // This watcher reads the desktop app's conversations dir only, so every

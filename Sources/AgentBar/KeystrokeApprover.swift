@@ -14,8 +14,16 @@ enum KeystrokeApprover {
     }
 
     static func approve(session: Session, keys: [CGKeyCode]) {
-        StatusItemController.focusTerminal(named: session.termProgram)
-        // Give the terminal time to come forward before typing into it.
+        if session.entrypoint == "antigravity-app" {
+            // Desktop Antigravity sessions live in the app, not a terminal.
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+            p.arguments = ["-a", "Antigravity"]
+            try? p.run()
+        } else {
+            StatusItemController.focusTerminal(named: session.termProgram)
+        }
+        // Give the target time to come forward before typing into it.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
             for key in keys { post(key) }
         }
