@@ -106,7 +106,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         case .some(let s) where s.isWorking:
             stopHop()
             startAnimation(frames: frames, fps: sprite.fps)
-            startWords()
+            // Rotating verbs are Clawd's voice; other agents' dot clusters carry
+            // the "working" signal on their own.
+            if agent.id == "claude" { startWords() } else { stopWords() }
         case .permission:
             stopHop(); stopAnimation(); stopWords()
             button.image = IconRenderer.withPermissionDot(resting)
