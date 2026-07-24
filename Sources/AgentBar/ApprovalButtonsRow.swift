@@ -5,7 +5,8 @@ import Cocoa
 final class ApprovalButtonsRow: NSView {
     private let onChoose: (String) -> Void
 
-    init(hasRule: Bool, ruleToolTip: String?, deferTitle: String,
+    /// Fully custom strip: (title, behavior, tooltip) per button.
+    init(buttons: [(title: String, behavior: String, toolTip: String?)],
          onChoose: @escaping (String) -> Void) {
         self.onChoose = onChoose
         super.init(frame: NSRect(x: 0, y: 0, width: 280, height: 30))
@@ -22,18 +23,24 @@ final class ApprovalButtonsRow: NSView {
             stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
-
-        stack.addArrangedSubview(makeButton("✓ Allow", behavior: "allow"))
-        if hasRule {
-            let always = makeButton("✓ Always", behavior: "always")
-            always.toolTip = ruleToolTip
-            stack.addArrangedSubview(always)
+        for spec in buttons {
+            let b = makeButton(spec.title, behavior: spec.behavior)
+            b.toolTip = spec.toolTip
+            stack.addArrangedSubview(b)
         }
-        stack.addArrangedSubview(makeButton("✕ Deny", behavior: "deny"))
+    }
+
+    /// The native-request strip (Claude): Allow / Always / Deny / defer.
+    convenience init(hasRule: Bool, ruleToolTip: String?, deferTitle: String,
+                     onChoose: @escaping (String) -> Void) {
+        var specs: [(title: String, behavior: String, toolTip: String?)] = [
+            ("✓ Allow", "allow", nil)
+        ]
+        if hasRule { specs.append(("✓ Always", "always", ruleToolTip)) }
+        specs.append(("✕ Deny", "deny", nil))
         // "⌨ Terminal" for CLI sessions, "⧉ Claude app" for desktop ones.
-        let deferButton = makeButton(deferTitle, behavior: "defer")
-        deferButton.toolTip = "Answer in \(deferTitle.dropFirst(2)) instead"
-        stack.addArrangedSubview(deferButton)
+        specs.append((deferTitle, "defer", "Answer in \(deferTitle.dropFirst(2)) instead"))
+        self.init(buttons: specs, onChoose: onChoose)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }

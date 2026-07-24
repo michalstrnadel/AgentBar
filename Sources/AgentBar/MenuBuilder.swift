@@ -29,7 +29,14 @@ enum MenuBuilder {
                                           controller: controller)
                         continue
                     }
-                    // No request file (non-Claude agent): best-effort keystroke path.
+                    // No request file (non-Claude agent). With a keystroke backend
+                    // the row gets a Claude-style inline strip; otherwise an info
+                    // submenu is all we can offer.
+                    if Agent.byID(s.agentID).approveKeys != nil {
+                        menu.addItem(item)
+                        addKeystrokeApproval(to: menu, for: s, controller: controller)
+                        continue
+                    }
                     item.submenu = keystrokeSubmenu(for: s, controller: controller)
                 }
                 menu.addItem(item)
@@ -408,6 +415,29 @@ enum MenuBuilder {
             .font: NSFont.monospacedSystemFont(ofSize: 9, weight: .semibold),
         ]))
         return title
+    }
+
+    /// Claude-look button strip for agents whose approval lives in their own UI
+    /// (Antigravity dialog, Codex/Copilot terminal prompt): Allow submits the
+    /// preselected option via keystroke; the second button jumps to the prompt.
+    private static func addKeystrokeApproval(to menu: NSMenu, for s: Session,
+                                             controller: StatusItemController) {
+        let agent = Agent.byID(s.agentID)
+        let target = s.entrypoint == "antigravity-app" ? "⧉ \(agent.name)" : "⌨ Terminal"
+        let specs: [(title: String, behavior: String, toolTip: String?)] =
+            KeystrokeApprover.trusted
+            ? [("✓ Allow", "allow",
+                "Brings the prompt forward and submits its preselected option (sends ⏎)"),
+               (target, "open", "Answer there yourself")]
+            : [("Grant Accessibility…", "grant",
+                "Needed to send the approval keystroke"),
+               (target, "open", "Answer there yourself")]
+        let buttons = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        buttons.view = ApprovalButtonsRow(buttons: specs) { [weak controller] behavior in
+            controller?.keystrokeAnswer(behavior, session: s)
+        }
+        buttons.representedObject = "kstrip:\(s.id)" // not "req:" — refresh must not mute it
+        menu.addItem(buttons)
     }
 
     private static func keystrokeSubmenu(for s: Session, controller: StatusItemController) -> NSMenu {

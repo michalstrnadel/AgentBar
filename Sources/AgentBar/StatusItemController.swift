@@ -375,6 +375,27 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         UpdateChecker.shared.installAvailable()
     }
 
+    /// Inline strip on keystroke-backed permission rows (Antigravity, Codex, Copilot).
+    func keystrokeAnswer(_ behavior: String, session: Session) {
+        switch behavior {
+        case "allow":
+            guard let keys = Agent.byID(session.agentID).approveKeys else { return }
+            if KeystrokeApprover.trusted {
+                KeystrokeApprover.approve(session: session, keys: keys)
+            } else {
+                KeystrokeApprover.requestAccess()
+            }
+        case "grant":
+            KeystrokeApprover.requestAccess()
+        default: // "open" — jump to the prompt and answer there
+            if session.entrypoint == "antigravity-app" {
+                openAgent(Agent.byID(session.agentID))
+            } else {
+                Self.focusTerminal(named: session.termProgram)
+            }
+        }
+    }
+
     @objc func keystrokeApproveClicked(_ sender: NSMenuItem) {
         guard let s = sender.representedObject as? Session,
               let keys = Agent.byID(s.agentID).approveKeys else { return }

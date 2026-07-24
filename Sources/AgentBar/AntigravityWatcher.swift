@@ -42,7 +42,9 @@ final class AntigravityWatcher {
                 // is sitting on its own approval prompt (auto-allowed tools append
                 // their result within moments).
                 if let tool = Self.pendingToolCall(Self.lastEntry(transcript)) {
-                    upsert(id: dir.lastPathComponent, ts: ts, state: "permission", label: tool)
+                    // ask_permission is the prompt itself, not a tool worth naming
+                    upsert(id: dir.lastPathComponent, ts: ts, state: "permission",
+                           label: tool == "ask_permission" ? "" : tool)
                 }
             }
         }
