@@ -28,10 +28,18 @@ const writeAtomic = (file, obj) => {
   fs.writeFileSync(tmp, JSON.stringify(obj));
   fs.renameSync(tmp, file);
 };
+// "Somebody can answer": the macOS app (pgrep), or the cross-platform CLI's
+// watch/waybar mode, which heartbeats ~/.agentbar/watcher.json while it runs.
 const appRunning = () => {
   if (process.env.AGENTBAR_FORCE_APP === "1") return true;
   if (process.env.AGENTBAR_FORCE_APP === "0") return false;
-  try { cp.execSync("pgrep -x AgentBar", { stdio: "ignore" }); return true; } catch { return false; }
+  if (process.platform === "darwin") {
+    try { cp.execSync("pgrep -x AgentBar", { stdio: "ignore" }); return true; } catch {}
+  }
+  try {
+    const w = JSON.parse(fs.readFileSync(path.join(base, "watcher.json"), "utf8"));
+    return Date.now() / 1000 - w.ts < 60;
+  } catch { return false; }
 };
 
 // Stable JSON: objects re-keyed in sorted order at every depth, so two parses of

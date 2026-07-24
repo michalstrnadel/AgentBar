@@ -17,7 +17,16 @@ const STATE = {
 };
 
 const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";
-const running = () => { try { cp.execSync(`pgrep -x ${EXEC}`, { stdio: "ignore" }); return true; } catch { return false; } };
+// The macOS app, or the CLI's watch/waybar heartbeat (any platform).
+const running = () => {
+  if (process.platform === "darwin") {
+    try { cp.execSync(`pgrep -x ${EXEC}`, { stdio: "ignore" }); return true; } catch {}
+  }
+  try {
+    const w = JSON.parse(fs.readFileSync(path.join(stateDir, "..", "watcher.json"), "utf8"));
+    return Date.now() / 1000 - w.ts < 60;
+  } catch { return false; }
+};
 const writeAtomic = (f, o) => { const t = f + "." + process.pid + ".tmp"; fs.writeFileSync(t, JSON.stringify(o)); fs.renameSync(t, f); };
 
 let input = "", done = false;
@@ -56,6 +65,7 @@ function run() {
       ts: Math.floor(Date.now() / 1000),
     });
   } catch {}
-  if (state === "idle") cp.spawn("open", ["-g", "-b", BUNDLE_ID], { stdio: "ignore", detached: true }).unref();
+  if (state === "idle" && process.platform === "darwin")
+    cp.spawn("open", ["-g", "-b", BUNDLE_ID], { stdio: "ignore", detached: true }).unref();
   process.exit(0);
 }

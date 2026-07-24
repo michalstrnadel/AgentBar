@@ -1,0 +1,372 @@
+#!/usr/bin/env node
+// agentbar — cross-platform CLI over the AgentBar file protocol (~/.agentbar).
+// The folder is the protocol, so this CLI is a full peer of the macOS app: on Linux
+// it IS AgentBar. Contract: docs/protocol.md. No dependencies, Node >= 16.
+//
+//   agentbar status [--json]        live sessions
+//   agentbar requests [--json]      pending approvals with inline detail
+//   agentbar approve [n] [--always] answer the newest (or n-th) pending request
+//   agentbar deny [n]
+//   agentbar watch [-i SEC]         live view; keys: a allow · d deny · q quit.
+//                                   Holds the watcher heartbeat, so hooks offer
+//                                   remote approval while it runs.
+//   agentbar waybar                 one-line JSON for waybar/polybar custom modules
+//                                   (each call refreshes the heartbeat; poll <= 30s)
+//   agentbar install-hooks          wire agent hooks (Claude/Codex/Cursor/Gemini) —
+//                                   the Linux equivalent of the macOS app's installer
+
+"use strict";
+const fs = require("fs"), os = require("os"), path = require("path");
+
+const base = path.join(os.homedir(), ".agentbar");
+const stateDir = path.join(base, "state.d");
+const reqDir = path.join(base, "requests.d");
+const ansDir = path.join(base, "answers.d");
+const watcherFile = path.join(base, "watcher.json");
+const PRESENCE_TTL = 60; // seconds a heartbeat stays valid (hooks use the same value)
+
+const now = () => Math.floor(Date.now() / 1000);
+const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
+const writeAtomic = (f, obj) => {
+  const t = f + "." + process.pid + ".tmp";
+  fs.writeFileSync(t, JSON.stringify(obj));
+  fs.renameSync(t, f);
+};
+const alive = (pid) => {
+  if (!pid || pid <= 0) return false;
+  try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; }
+};
+
+const tty = process.stdout.isTTY;
+const c = (code, s) => (tty ? `\x1b[${code}m${s}\x1b[0m` : s);
+const dim = (s) => c("2", s), bold = (s) => c("1", s);
+const yellow = (s) => c("33", s), blue = (s) => c("34", s), green = (s) => c("32", s), red = (s) => c("31", s);
+
+// MARK: - Stores (liveness rules mirror the app; docs/protocol.md is normative)
+
+function sessions() {
+  let files = []; try { files = fs.readdirSync(stateDir); } catch { return []; }
+  const out = [];
+  for (const f of files) {
+    if (!f.endsWith(".json")) continue;
+    const p = path.join(stateDir, f);
+    const s = readJSON(p);
+    if (!s) continue;
+    const dead = s.pid > 0 && !alive(s.pid);
+    const stale = s.ts > 0 && now() - s.ts > 86400;
+    if (dead || stale) { try { fs.rmSync(p, { force: true }); } catch {} continue; }
+    if (!s.started) continue;
+    s.id = f.slice(0, -".json".length);
+    out.push(s);
+  }
+  const prio = { permission: 3, question: 2, thinking: 1, tool: 1 };
+  out.sort((a, b) => ((prio[b.state] || 0) - (prio[a.state] || 0)) || ((b.ts || 0) - (a.ts || 0)));
+  return out;
+}
+
+function requests() {
+  let files = []; try { files = fs.readdirSync(reqDir); } catch { return []; }
+  const out = [];
+  for (const f of files) {
+    if (!f.endsWith(".json")) continue;
+    const p = path.join(reqDir, f);
+    const r = readJSON(p);
+    if (!r) continue;
+    const watched = r.hookPid > 0 ? r.hookPid : r.pid;
+    const dead = watched > 0 && !alive(watched);
+    const expired = r.ts > 0 && now() - r.ts > 660;
+    if (dead || expired) { try { fs.rmSync(p, { force: true }); } catch {} continue; }
+    r.fileName = f;
+    out.push(r);
+  }
+  out.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  return out;
+}
+
+function answer(r, behavior, always) {
+  fs.mkdirSync(ansDir, { recursive: true });
+  const obj = { behavior };
+  // "always" only sticks when the hook can match it to a rule Claude itself
+  // suggested; without a suggestion it degrades to a plain one-shot allow there.
+  if (behavior === "always" && r.ruleSuggestion) obj.rule = r.ruleSuggestion;
+  writeAtomic(path.join(ansDir, r.fileName), obj);
+}
+
+// Same .git/HEAD trick as the app: no git invocation, handles worktrees.
+function gitBranch(cwd) {
+  if (!cwd) return null;
+  try {
+    let g = path.join(cwd, ".git");
+    const st = fs.statSync(g);
+    if (!st.isDirectory()) {
+      const m = fs.readFileSync(g, "utf8").match(/^gitdir:\s*(.+)$/m);
+      if (!m) return null;
+      g = m[1].trim();
+    }
+    const head = fs.readFileSync(path.join(g, "HEAD"), "utf8").trim();
+    return head.startsWith("ref: refs/heads/") ? head.slice("ref: refs/heads/".length) : head.slice(0, 7);
+  } catch { return null; }
+}
+
+// MARK: - Rendering
+
+const DOTS = { permission: yellow("●"), question: blue("●"), thinking: green("●"), tool: green("●"), idle: dim("●"), done: dim("●") };
+
+function sessionLine(s) {
+  const name = s.project || "session";
+  const branch = gitBranch(s.cwd);
+  const label = s.state === "permission" ? yellow("needs approval")
+    : s.state === "question" ? blue(s.label || "waiting for your answer")
+    : (s.label ? dim(s.label) : dim(s.state));
+  return `${DOTS[s.state] || dim("●")} ${bold(name)}${branch ? dim(" · " + branch) : ""}  ${label}  ${dim((s.agent || "?").toUpperCase())}`;
+}
+
+function printStatus(json) {
+  const ss = sessions();
+  if (json) return console.log(JSON.stringify(ss, null, 2));
+  if (!ss.length) return console.log(dim("No active sessions"));
+  for (const s of ss) console.log(sessionLine(s));
+}
+
+function printRequests(json) {
+  const rs = requests();
+  if (json) return console.log(JSON.stringify(rs, null, 2));
+  if (!rs.length) return console.log(dim("No pending requests"));
+  rs.forEach((r, i) => {
+    console.log(`${bold(String(i + 1) + ".")} ${yellow(r.display || r.toolName || "request")}  ${dim(r.agent || "")}`);
+    const ctx = r.context || {};
+    const lines = (s, mark) => String(s || "").split("\n").slice(0, 6).forEach((l) => console.log(`   ${mark}${l}`));
+    if (ctx.kind === "bash") lines(ctx.command, dim("$ "));
+    if (ctx.kind === "diff") { lines(ctx.old, red("− ")); lines(ctx.new, green("+ ")); if (ctx.more) console.log(dim(`   +${ctx.more} more edit(s)`)); }
+    if (ctx.kind === "write") lines(ctx.preview, dim("  "));
+    if (r.ruleSuggestion) console.log(dim("   --always available"));
+  });
+}
+
+function decide(behavior, argv) {
+  const n = parseInt(argv.find((a) => /^\d+$/.test(a)) || "1", 10);
+  const always = argv.includes("--always");
+  const rs = requests();
+  if (!rs.length) { console.error("No pending requests."); process.exit(1); }
+  const r = rs[n - 1];
+  if (!r) { console.error(`No request #${n} (have ${rs.length}).`); process.exit(1); }
+  answer(r, behavior === "allow" && always ? "always" : behavior, always);
+  console.log(`${behavior === "deny" ? red("✕ denied") : green("✓ " + (always ? "always allowed" : "allowed"))}  ${r.display || r.toolName}`);
+}
+
+// MARK: - Presence (what makes hooks block for remote approval on Linux)
+
+function heartbeat() {
+  fs.mkdirSync(base, { recursive: true });
+  writeAtomic(watcherFile, { pid: process.pid, ts: now() });
+}
+function clearHeartbeat() {
+  const w = readJSON(watcherFile);
+  if (w && w.pid === process.pid) { try { fs.rmSync(watcherFile, { force: true }); } catch {} }
+}
+
+function waybar() {
+  heartbeat(); // each poll refreshes presence; keep the module interval <= 30s
+  const ss = sessions(), rs = requests();
+  const pending = ss.filter((s) => s.state === "permission").length;
+  const working = ss.filter((s) => s.state === "thinking" || s.state === "tool").length;
+  const cls = pending ? "permission" : working ? "working" : ss.length ? "idle" : "empty";
+  const text = pending ? `✋ ${pending}` : working ? `● ${working}` : ss.length ? `${ss.length}` : "";
+  const tooltip = ss.map((s) => `${s.project || "session"} — ${s.state}${s.label ? " · " + s.label : ""} (${s.agent})`)
+    .concat(rs.map((r) => `pending: ${r.display}`)).join("\n") || "no sessions";
+  console.log(JSON.stringify({ text, alt: cls, class: cls, tooltip }));
+}
+
+function watch(argv) {
+  const i = argv.indexOf("-i");
+  const interval = Math.max(1, parseInt(i >= 0 ? argv[i + 1] : "2", 10) || 2);
+  const render = () => {
+    heartbeat();
+    let out = "\x1b[2J\x1b[H" + bold("AgentBar") + dim(`  ·  a allow · d deny · q quit\n\n`);
+    const ss = sessions();
+    out += ss.length ? ss.map(sessionLine).join("\n") + "\n" : dim("No active sessions\n");
+    const rs = requests();
+    if (rs.length) {
+      out += "\n" + bold("Pending") + "\n";
+      rs.forEach((r, k) => { out += `${k + 1}. ${yellow(r.display || r.toolName)}\n`; });
+    }
+    process.stdout.write(out);
+  };
+  const timer = setInterval(render, interval * 1000);
+  const quit = () => { clearInterval(timer); clearHeartbeat(); process.stdout.write("\n"); process.exit(0); };
+  process.on("SIGINT", quit);
+  process.on("SIGTERM", quit);
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.on("data", (b) => {
+      const k = b.toString();
+      if (k === "q" || k === "\x03") return quit();
+      const rs = requests();
+      if (!rs.length) return;
+      if (k === "a") { answer(rs[0], "allow", false); render(); }
+      if (k === "d") { answer(rs[0], "deny", false); render(); }
+    });
+  }
+  render();
+}
+
+// MARK: - install-hooks (Linux counterpart of the macOS app's HookInstaller;
+// same safety rules: never touch an unparseable config, write only on change)
+
+function installHooks() {
+  const srcHooks = path.join(__dirname, "..", "hooks");
+  if (!fs.existsSync(srcHooks)) { console.error("hooks/ not found next to this CLI — run from a repo checkout"); process.exit(1); }
+  const hooksDir = path.join(base, "hooks");
+  fs.mkdirSync(base, { recursive: true });
+  fs.rmSync(hooksDir, { recursive: true, force: true });
+  fs.cpSync(srcHooks, hooksDir, { recursive: true });
+  const node = process.execPath; // absolute node running this CLI — always valid
+
+  // Cursor runs its hook via shebang: pin it, PATH of a GUI Cursor is unreliable.
+  const cursorJs = path.join(hooksDir, "cursor", "cursor.js");
+  if (fs.existsSync(cursorJs)) {
+    const t = fs.readFileSync(cursorJs, "utf8");
+    if (t.startsWith("#!")) fs.writeFileSync(cursorJs, "#!" + node + t.slice(t.indexOf("\n")));
+    fs.chmodSync(cursorJs, 0o755);
+  }
+
+  const readConfig = (file) => {
+    if (!fs.existsSync(file)) return {};
+    const parsed = readJSON(file);
+    if (!parsed || typeof parsed !== "object") {
+      console.error(`skip: ${file} exists but is not parseable JSON — left untouched`);
+      return null;
+    }
+    return parsed;
+  };
+  const sortedStringify = (v) => JSON.stringify(v, (k, val) =>
+    val && typeof val === "object" && !Array.isArray(val)
+      ? Object.keys(val).sort().reduce((o, kk) => ((o[kk] = val[kk]), o), {})
+      : val, 2);
+  const writeIfChanged = (file, root) => {
+    const data = sortedStringify(root) + "\n";
+    try { if (fs.readFileSync(file, "utf8") === data) return false; } catch {}
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const t = file + "." + process.pid + ".tmp";
+    fs.writeFileSync(t, data);
+    fs.renameSync(t, file);
+    return true;
+  };
+  const report = (name, changed) => console.log(`${changed ? "wired" : "ok   "}  ${name}`);
+
+  // Claude Code — <configDir>/settings.json (default + CLAUDE_CONFIG_DIR + hint file)
+  const claudeDirs = new Set([path.join(os.homedir(), ".claude")]);
+  if (process.env.CLAUDE_CONFIG_DIR) claudeDirs.add(process.env.CLAUDE_CONFIG_DIR.replace(/^~/, os.homedir()));
+  try {
+    const raw = fs.readFileSync(path.join(base, "claude-config-dir"), "utf8").trim();
+    if (raw) claudeDirs.add(raw.replace(/^~/, os.homedir()));
+  } catch {}
+  const dir = path.join(hooksDir, "claude");
+  const claudeEvents = [
+    ["SessionStart", `"${node}" "${dir}/lifecycle.js" start`, false, null],
+    ["SessionEnd", `"${node}" "${dir}/lifecycle.js" end`, false, null],
+    ["UserPromptSubmit", `"${node}" "${dir}/update.js" prompt`, false, null],
+    ["PreToolUse", `"${node}" "${dir}/update.js" pre`, true, null],
+    ["PostToolUse", `"${node}" "${dir}/update.js" post`, true, null],
+    ["PermissionRequest", `"${node}" "${dir}/permission.js"`, true, 630],
+    ["Stop", `"${node}" "${dir}/update.js" stop`, false, null],
+  ];
+  for (const cfgDir of claudeDirs) {
+    const file = path.join(cfgDir, "settings.json");
+    const root = readConfig(file);
+    if (root === null) continue;
+    const hooks = root.hooks && typeof root.hooks === "object" ? root.hooks : {};
+    for (const [ev, rules] of Object.entries(hooks)) {
+      if (!Array.isArray(rules)) continue;
+      const kept = rules.filter((rule) => !((rule.hooks || []).some((h) => String(h.command || "").includes("/.agentbar/hooks/claude/"))));
+      if (kept.length) hooks[ev] = kept; else delete hooks[ev];
+    }
+    for (const [ev, cmd, matcher, timeout] of claudeEvents) {
+      const entry = { type: "command", command: cmd };
+      if (timeout) entry.timeout = timeout;
+      const rule = { hooks: [entry] };
+      if (matcher) rule.matcher = "*";
+      hooks[ev] = (hooks[ev] || []).concat([rule]);
+    }
+    root.hooks = hooks;
+    report(`claude  ${file}`, writeIfChanged(file, root));
+  }
+
+  // Codex — ~/.codex/config.toml notify hook (append-only, never rewrite TOML)
+  const codexDir = path.join(os.homedir(), ".codex");
+  if (fs.existsSync(codexDir)) {
+    const file = path.join(codexDir, "config.toml");
+    let toml = ""; try { toml = fs.readFileSync(file, "utf8"); } catch {}
+    if (toml.includes("/.agentbar/hooks/codex/")) report("codex   " + file, false);
+    else if (/^\s*notify\s*=/m.test(toml)) console.error(`skip: ${file} already has a notify hook — left untouched`);
+    else {
+      if (toml && !toml.endsWith("\n")) toml += "\n";
+      toml += `notify = ["${node}", "${path.join(hooksDir, "codex", "notify.js")}"]\n`;
+      fs.writeFileSync(file, toml);
+      report("codex   " + file, true);
+    }
+  }
+
+  // Cursor — ~/.cursor/hooks.json (command is a single executable path)
+  const cursorDir = path.join(os.homedir(), ".cursor");
+  if (fs.existsSync(cursorDir)) {
+    const file = path.join(cursorDir, "hooks.json");
+    const root = readConfig(file);
+    if (root !== null) {
+      root.version = root.version || 1;
+      const hooks = root.hooks && typeof root.hooks === "object" ? root.hooks : {};
+      for (const ev of ["sessionStart", "sessionEnd", "preToolUse", "postToolUse", "afterAgentResponse", "stop"]) {
+        hooks[ev] = (Array.isArray(hooks[ev]) ? hooks[ev] : [])
+          .filter((r) => !String(r.command || "").includes("/.agentbar/hooks/cursor/"))
+          .concat([{ command: cursorJs }]);
+      }
+      root.hooks = hooks;
+      report("cursor  " + file, writeIfChanged(file, root));
+    }
+  }
+
+  // Gemini — ~/.gemini/settings.json (timeout in ms)
+  const geminiDir = path.join(os.homedir(), ".gemini");
+  if (fs.existsSync(geminiDir)) {
+    const file = path.join(geminiDir, "settings.json");
+    const root = readConfig(file);
+    if (root !== null) {
+      const hooks = root.hooks && typeof root.hooks === "object" ? root.hooks : {};
+      const cmd = `"${node}" "${path.join(hooksDir, "gemini", "gemini.js")}"`;
+      const ours = (g) => (g.hooks || []).some((h) => String(h.command || "").includes("/.agentbar/hooks/gemini/"));
+      for (const ev of ["SessionStart", "SessionEnd", "BeforeAgent", "BeforeTool", "AfterTool", "AfterAgent"]) {
+        hooks[ev] = (Array.isArray(hooks[ev]) ? hooks[ev] : []).filter((g) => !ours(g))
+          .concat([{ hooks: [{ type: "command", command: cmd, timeout: 5000 }] }]);
+      }
+      root.hooks = hooks;
+      report("gemini  " + file, writeIfChanged(file, root));
+    }
+  }
+  console.log("Done. Start a NEW agent session to see it (hooks snapshot at session start).");
+}
+
+// MARK: - Main
+
+const [cmd, ...argv] = process.argv.slice(2);
+const json = argv.includes("--json");
+switch (cmd) {
+  case "status": case undefined: printStatus(json); break;
+  case "requests": printRequests(json); break;
+  case "approve": case "allow": decide("allow", argv); break;
+  case "deny": decide("deny", argv); break;
+  case "watch": watch(argv); break;
+  case "waybar": waybar(); break;
+  case "install-hooks": installHooks(); break;
+  case "--help": case "help": default:
+    console.log(`agentbar — AI coding agents' status & remote approval (file protocol: ~/.agentbar)
+
+  agentbar [status] [--json]      live sessions
+  agentbar requests [--json]      pending approvals with detail
+  agentbar approve [n] [--always] answer newest (or n-th) request
+  agentbar deny [n]
+  agentbar watch [-i SEC]         live view + keys (a/d/q); enables remote approval
+  agentbar waybar                 JSON for waybar/polybar (poll <= 30s)
+  agentbar install-hooks          wire Claude/Codex/Cursor/Gemini hooks (Linux installer)`);
+    break;
+}

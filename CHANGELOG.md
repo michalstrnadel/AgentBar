@@ -3,6 +3,32 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+- Linux support via the `agentbar` CLI (`Scripts/cli/agentbar`, plain Node, no
+  dependencies): `status`, `requests` (with the inline mini-diff / full command),
+  `approve [--always]` / `deny`, `watch` (live view with a/d/q keys), `waybar`
+  (JSON for waybar/polybar modules), and `install-hooks` — the Linux counterpart
+  of the macOS hook installer, with the same safety rules (never touches an
+  unparseable config, writes only on change, pins the Cursor shebang to an
+  absolute node).
+- Remote Allow/Deny without the macOS app: hooks now also block when a CLI
+  watcher heartbeat (`~/.agentbar/watcher.json`, refreshed by `watch`/`waybar`,
+  60 s TTL) is fresh — so `agentbar watch` on Linux answers Claude Code
+  permission prompts exactly like the menu bar does on macOS.
+- `docs/protocol.md`: the `~/.agentbar` file protocol as a normative, OS-neutral
+  contract (schemas, atomicity, pruning rules, presence) — any frontend or agent
+  bridge can be written against it.
+- Test suite for the CLI (`Scripts/test/cli-test.sh`, 17 checks) covering
+  listing, pruning, answers, the heartbeat→blocking-hook flow end-to-end, and
+  installer safety.
+
+### Changed
+- Hook bridge scripts are platform-clean: macOS-only bits (`open`,
+  `pgrep -x AgentBar`) are guarded by platform checks; everything else already
+  ran on Linux unchanged.
+
 ## 1.7.1 - 2026-07-24
 
 ### Fixed

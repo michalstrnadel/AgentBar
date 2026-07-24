@@ -66,9 +66,10 @@ don't use. Hooks are snapshotted per session — start a new agent session after
 
 ## Requirements
 
-- macOS 12+ (Apple Silicon or Intel)
+- macOS 12+ (Apple Silicon or Intel) for the menu bar app — or Linux via the
+  [`agentbar` CLI](#linux-cli)
 - Node.js (for the hook scripts; found via Homebrew paths or your login shell)
-- Xcode Command Line Tools to build from source
+- Xcode Command Line Tools to build the macOS app from source
 
 ## Install
 
@@ -111,6 +112,36 @@ First launch installs the Claude Code hooks automatically (and the Codex notify 
 > session begins. Hooks are snapshotted per session — start a new agent session after
 > installing.
 > If you run Claude Code with a custom `CLAUDE_CONFIG_DIR`, see issue #4.
+
+## Linux (CLI)
+
+The protocol is just files (`~/.agentbar`, see [docs/protocol.md](docs/protocol.md))
+and the hooks are plain Node — so on Linux, the `agentbar` CLI is the frontend:
+
+```bash
+git clone https://github.com/michalstrnadel/AgentBar.git && cd AgentBar
+./Scripts/cli/agentbar install-hooks   # wires Claude/Codex/Cursor/Gemini hooks
+sudo ln -s "$PWD/Scripts/cli/agentbar" /usr/local/bin/agentbar   # optional
+
+agentbar                 # session list (same rows as the macOS menu)
+agentbar watch           # live view; a = allow, d = deny, q = quit
+agentbar requests        # pending approvals with the mini-diff / full command
+agentbar approve --always
+```
+
+Remote Allow/Deny works exactly like on macOS: while `agentbar watch` (or a
+`waybar` poll) is running, a Claude Code permission prompt appears in the CLI and
+your `a`/`d` answers it; with no watcher running, hooks stay silent and the normal
+terminal prompt appears. Waybar module:
+
+```jsonc
+"custom/agentbar": {
+  "exec": "agentbar waybar", "return-type": "json", "interval": 15
+}
+```
+
+The CLI works on macOS too (same protocol, handy over SSH). A native tray app
+(StatusNotifierItem) may come later if there's demand.
 
 ## Uninstall
 
