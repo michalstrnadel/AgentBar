@@ -3,7 +3,7 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 1.8.0 - 2026-07-24
 
 ### Added
 - Linux support via the `agentbar` CLI (`Scripts/cli/agentbar`, plain Node, no
