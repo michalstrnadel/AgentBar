@@ -31,7 +31,7 @@ final class AntigravityWatcher {
                     as? Date else { continue }
             let ts = mtime.timeIntervalSince1970
             let age = now - ts
-            if age < 10 {
+            if age < 6 {
                 // Live turn. A final MODEL …_RESPONSE without tool_calls means the
                 // agent has answered — flip to done immediately, no decay wait.
                 let last = Self.lastEntry(transcript)
