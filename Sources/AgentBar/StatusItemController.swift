@@ -42,6 +42,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         requestStore.start()
         UpdateChecker.shared.onChange = { [weak self] in self?.refreshOpenMenu() }
         UpdateChecker.shared.startPeriodicChecks()
+        SettingsWindow.shared.onChange = { [weak self] in
+            self?.applyHotKeyState()
+            self?.refreshOpenMenu()   // tooltip on the shortcut row shows the combos
+        }
         applyHotKeyState()
         render()
     }
@@ -57,8 +61,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private func applyHotKeyState() {
         HotKeyCenter.shared.setEnabled(approvalShortcutEnabled,
-            allow: { [weak self] in self?.hotkeyAnswer("allow") },
-            deny:  { [weak self] in self?.hotkeyAnswer("deny") })
+            allow: KeyCombo.allow, deny: KeyCombo.deny,
+            onAllow: { [weak self] in self?.hotkeyAnswer("allow") },
+            onDeny:  { [weak self] in self?.hotkeyAnswer("deny") })
     }
 
     /// Answer the newest pending request. Debounced so a held chord can't double-fire.
@@ -180,29 +185,70 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     // MARK: - NSMenuDelegate
 
     private var menuIsOpen = false
+    /// Root + any visible submenu (MenuBuilder wires every submenu's delegate here).
+    private var openMenuDepth = 0
+    /// What the currently displayed menu was built from — refresh skips rebuilds
+    /// that would reproduce the exact same rows.
+    private var builtSignature = ""
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === statusItem.menu else { return } // submenus are built by populate
         store.refresh()
         requestStore.refresh()
-        MenuBuilder.populate(menu, sessions: sessions, requests: requestStore.requests,
-                             controller: self)
+        populateRootMenu(menu)
     }
 
-    func menuWillOpen(_ menu: NSMenu) { menuIsOpen = true }
+    func menuWillOpen(_ menu: NSMenu) {
+        openMenuDepth += 1
+        if menu === statusItem.menu { menuIsOpen = true }
+    }
 
     func menuDidClose(_ menu: NSMenu) {
-        menuIsOpen = false
-        UpdateChecker.shared.clearTransient()
+        openMenuDepth = max(0, openMenuDepth - 1)
+        if menu === statusItem.menu {
+            menuIsOpen = false
+            openMenuDepth = 0 // survive out-of-order submenu close notifications
+            UpdateChecker.shared.clearTransient()
+        }
     }
 
     /// Live-refresh the dropdown while it is open (state change, new request, update
-    /// check finishing). Skips the rebuild while the user is on an item or inside a
-    /// submenu, so `Open ▸ Terminal` doesn't collapse mid-hover — the store's 2s poll
-    /// (or the next event once they move) catches up.
+    /// check finishing). Existing rows are updated in place — an open NSMenu window
+    /// never shrinks, so removing rows would leave a blank band at the bottom — and
+    /// a full rebuild happens only for growth (new session / request). Skipped while
+    /// the user is on an item or any submenu is showing (a rebuild would orphan it),
+    /// and when the content signature is unchanged, so the menu never flickers for a
+    /// no-op. The store's 2s poll catches up once the user moves.
     private func refreshOpenMenu() {
-        guard menuIsOpen, let menu = statusItem.menu, menu.highlightedItem == nil else { return }
+        guard menuIsOpen, let menu = statusItem.menu,
+              menu.highlightedItem == nil, openMenuDepth <= 1 else { return }
+        let content = contentSignature()
+        guard content != builtSignature else { return }
+        if MenuBuilder.updateInPlace(menu, sessions: sessions, requests: requestStore.requests,
+                                     controller: self) {
+            builtSignature = content
+        } else {
+            populateRootMenu(menu) // growth: needs new rows, which an open menu renders fine
+        }
+    }
+
+    private func populateRootMenu(_ menu: NSMenu) {
         MenuBuilder.populate(menu, sessions: sessions, requests: requestStore.requests,
                              controller: self)
+        builtSignature = contentSignature()
+    }
+
+    /// Everything the menu renders from, flattened. Must cover the same fields the
+    /// row builders read, or a real change would be skipped as a no-op.
+    private func contentSignature() -> String {
+        let rows = sessions.map {
+            "\($0.id)|\($0.state.rawValue)|\($0.label)|\($0.project)|\($0.gitBranch ?? "")|\($0.termProgram)"
+        }
+        let pending = requestStore.requests.map(\.fileName)
+        return (rows + ["req:"] + pending
+                + ["upd:\(UpdateChecker.shared.status)",
+                   "hk:\(approvalShortcutEnabled):\(KeyCombo.allow.display)\(KeyCombo.deny.display)",
+                   "mode:\(systemColor)"]).joined(separator: "\n")
     }
 
     // MARK: - Actions (targets for MenuBuilder items)
@@ -237,8 +283,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         systemColor = (sender.representedObject as? Bool) ?? false
     }
 
-    @objc func toggleApprovalShortcut(_ sender: NSMenuItem) {
-        approvalShortcutEnabled.toggle()
+    @objc func openShortcutSettings(_ sender: NSMenuItem) {
+        SettingsWindow.shared.show()
     }
 
     /// Called by the inline Allow/Always/Deny button strip on permission rows.

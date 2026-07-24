@@ -5,6 +5,25 @@ All notable changes to AgentBar are documented here. This project follows
 
 ## Unreleased
 
+### Added
+- Settings window (the app's only window) for the global Allow/Deny shortcut:
+  enable it and record custom key combos for Allow and Deny (defaults stay
+  ⌥⌘A / ⌥⌘D). The menu row now opens Settings instead of blind-toggling; its
+  tooltip shows the active combos. Recording temporarily suspends the live
+  hotkeys so the current combo can be re-recorded, Esc cancels, and a combo
+  must include ⌘/⌥/⌃; Allow and Deny can't share one combo.
+
+### Fixed
+- Open dropdown no longer grows a blank band at the bottom when a session ends
+  or an approval resolves while the menu is showing. Root cause: an open
+  NSMenu window never shrinks, and the live refresh rebuilt the menu from
+  scratch on every change. The refresh now reconciles rows in place — surviving
+  rows update, vanished sessions dim to an "ended" row, resolved approval
+  strips fade with their buttons disarmed — and a full rebuild happens only
+  for growth (new session / request), which an open menu renders fine. Rebuilds
+  are also skipped while any submenu is showing (replacing items would orphan
+  it) and when nothing visible changed, so the menu never flickers for a no-op.
+
 ### Changed
 - Cursor and Gemini menu bar marks replaced with the current official app icons
   (Cursor's cube from cursor.com, Gemini CLI's gradient "&gt;" from
@@ -13,6 +32,10 @@ All notable changes to AgentBar are documented here. This project follows
   knockout — ink plate with the cube cut out — via a new `appIconMark` artwork
   style. Menu dot colors follow: Gemini uses the icon's blue (#1A80FD), Cursor
   adapts to the menu appearance.
+- Menu polish: `Open` and `Color` rows carry icons so the section shares one
+  icon gutter, and the Open submenu's agent marks are drawn centered on one
+  shared canvas at full resolution — identical bounds, no per-row jitter, and
+  the Cursor/Gemini marks now match the mascots' solid weight.
 
 ### Fixed
 - The CLI test suite no longer inherits `CLAUDE_CONFIG_DIR` from the runner's

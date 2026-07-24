@@ -13,7 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 let app = NSApplication.shared
-app.setActivationPolicy(.accessory) // menu bar only: no dock icon, no windows
+app.setActivationPolicy(.accessory) // menu bar only: no dock icon; sole window is Settings
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()

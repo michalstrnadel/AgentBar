@@ -39,7 +39,9 @@ enum MenuBuilder {
 
         // Open
         let openParent = NSMenuItem(title: "Open", action: nil, keyEquivalent: "")
+        openParent.image = NSImage(systemSymbolName: "arrow.up.forward.app", accessibilityDescription: nil)
         let openSub = NSMenu()
+        openSub.delegate = controller // report open/close so live refresh can hold off
         for agent in Agent.all {
             let item = NSMenuItem(title: agent.name, action: #selector(StatusItemController.openAgentClicked(_:)),
                                   keyEquivalent: "")
@@ -53,6 +55,7 @@ enum MenuBuilder {
         // open into. Clicking opens it and remembers it as the preferred terminal.
         let termParent = NSMenuItem(title: "Terminal", action: nil, keyEquivalent: "")
         let termSub = NSMenu()
+        termSub.delegate = controller
         let preferred = TerminalApp.preferred(sessions: sessions)
         for terminal in TerminalApp.installed {
             let item = NSMenuItem(title: terminal.name,
@@ -70,7 +73,9 @@ enum MenuBuilder {
 
         // Color
         let colorParent = NSMenuItem(title: "Color", action: nil, keyEquivalent: "")
+        colorParent.image = NSImage(systemSymbolName: "paintpalette", accessibilityDescription: nil)
         let colorSub = NSMenu()
+        colorSub.delegate = controller
         for (title, system) in [("Color", false), ("System", true)] {
             let item = NSMenuItem(title: title, action: #selector(StatusItemController.chooseColor(_:)),
                                   keyEquivalent: "")
@@ -82,14 +87,14 @@ enum MenuBuilder {
         colorParent.submenu = colorSub
         menu.addItem(colorParent)
 
-        // Opt-in global Allow/Deny shortcut for the newest pending request.
-        let shortcut = NSMenuItem(title: "Global Allow / Deny shortcut",
-                                  action: #selector(StatusItemController.toggleApprovalShortcut(_:)),
+        // Opt-in global Allow/Deny shortcut; the row opens Settings (enable + rebind).
+        let shortcut = NSMenuItem(title: "Global Allow / Deny shortcut…",
+                                  action: #selector(StatusItemController.openShortcutSettings(_:)),
                                   keyEquivalent: "")
+        shortcut.identifier = NSUserInterfaceItemIdentifier("shortcutRow")
         shortcut.target = controller
-        shortcut.state = controller.approvalShortcutEnabled ? .on : .off
         shortcut.image = NSImage(systemSymbolName: "command", accessibilityDescription: nil)
-        shortcut.toolTip = "⌥⌘A allow · ⌥⌘D deny the newest pending request, without opening the menu"
+        configureShortcutRow(shortcut, controller: controller)
         menu.addItem(shortcut)
 
         menu.addItem(.separator())
@@ -103,6 +108,18 @@ enum MenuBuilder {
     /// keeps one consistent icon gutter instead of ragged indents.
     private static func updateRow(_ controller: StatusItemController) -> NSMenuItem {
         let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        item.identifier = NSUserInterfaceItemIdentifier("updateRow")
+        configureUpdateRow(item, controller: controller)
+        return item
+    }
+
+    /// (Re)applies the whole update-row appearance — also called by `updateInPlace`
+    /// on the live item, so every field it can set is reset first.
+    private static func configureUpdateRow(_ item: NSMenuItem, controller: StatusItemController) {
+        item.attributedTitle = nil
+        item.action = nil
+        item.target = nil
+        item.toolTip = nil
         var badge = appVersion
         var symbol = "arrow.triangle.2.circlepath"
         switch UpdateChecker.shared.status {
@@ -135,14 +152,11 @@ enum MenuBuilder {
             symbol = "exclamationmark.arrow.triangle.2.circlepath"
         }
         item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-        if !badge.isEmpty {
-            if #available(macOS 14.0, *) {
-                item.badge = NSMenuItemBadge(string: badge)
-            } else {
-                item.toolTip = "AgentBar \(badge)"
-            }
+        if #available(macOS 14.0, *) {
+            item.badge = badge.isEmpty ? nil : NSMenuItemBadge(string: badge)
+        } else if !badge.isEmpty {
+            item.toolTip = "AgentBar \(badge)"
         }
-        return item
     }
 
     private static var appVersion: String {
@@ -192,33 +206,57 @@ enum MenuBuilder {
     }
 
     /// Small resting mark used as the item icon in the Open submenu. Every mark is
-    /// tight-trimmed to its glyph and normalized to one cap height, so all four
-    /// left-align in the icon gutter and read at the same visual weight. Codex and
-    /// Copilot use their clean dot-free glyph (the bar sprite carries a dot-matrix);
-    /// Claude and Antigravity use their resting frame, which has no dots.
+    /// tight-trimmed to its glyph, normalized to one cap height, then centered on
+    /// one shared canvas (sized by the widest glyph) — identical image bounds give
+    /// every row the same gutter and title inset, with no per-glyph jitter. Codex
+    /// and Copilot use their clean dot-free glyph (the bar sprite carries a
+    /// dot-matrix); Cursor and Gemini knock out their full-res app icon so both
+    /// read at the same solid weight as the mascots.
     private static let markCapHeight: CGFloat = 13
 
-    private static func menuMark(for agent: Agent) -> NSImage {
-        let template: NSImage
-        switch agent.id {
-        case "codex":
-            template = IconRenderer.decode(codexMascotMarkPNG).map {
-                IconRenderer.solidTemplate(IconRenderer.trim($0))
-            } ?? trimmedTemplate(for: agent)
-        case "copilot":
-            template = IconRenderer.decode(copilotMascotMarkPNG).map {
-                IconRenderer.adaptiveTemplate(IconRenderer.trim($0))
-            } ?? trimmedTemplate(for: agent)
-        default:
-            template = trimmedTemplate(for: agent)
+    private static let menuMarks: [String: NSImage] = {
+        let glyphs: [(String, NSImage)] = Agent.all.map { agent in
+            let template: NSImage
+            switch agent.id {
+            case "codex":
+                template = IconRenderer.decode(codexMascotMarkPNG).map {
+                    IconRenderer.solidTemplate(IconRenderer.trim($0))
+                } ?? trimmedTemplate(for: agent)
+            case "copilot":
+                template = IconRenderer.decode(copilotMascotMarkPNG).map {
+                    IconRenderer.adaptiveTemplate(IconRenderer.trim($0))
+                } ?? trimmedTemplate(for: agent)
+            case "cursor":
+                template = IconRenderer.decode(cursorLogoPNG).map {
+                    IconRenderer.adaptiveTemplate(IconRenderer.trim($0), knockout: true)
+                } ?? trimmedTemplate(for: agent)
+            case "gemini":
+                template = IconRenderer.decode(geminiLogoPNG).map {
+                    IconRenderer.adaptiveTemplate(IconRenderer.trim($0), knockout: true)
+                } ?? trimmedTemplate(for: agent)
+            default:
+                template = trimmedTemplate(for: agent)
+            }
+            let img = template.copy() as! NSImage
+            let scale = markCapHeight / max(img.size.height, 1)
+            img.size = NSSize(width: (img.size.width * scale).rounded(), height: markCapHeight)
+            return (agent.id, img)
         }
-        let img = template.copy() as! NSImage
-        img.isTemplate = true
-        // Normalize on a fixed box so a short-wide glyph (the arch) and a tall glyph
-        // (the crab) share a baseline instead of one floating in empty padding.
-        let scale = markCapHeight / max(img.size.height, 1)
-        img.size = NSSize(width: (img.size.width * scale).rounded(), height: markCapHeight)
-        return img
+        let boxWidth = glyphs.map { $0.1.size.width }.max() ?? markCapHeight
+        return Dictionary(uniqueKeysWithValues: glyphs.map { id, glyph in
+            let out = NSImage(size: NSSize(width: boxWidth, height: markCapHeight))
+            out.lockFocus()
+            NSGraphicsContext.current?.imageInterpolation = .high
+            glyph.draw(in: NSRect(x: ((boxWidth - glyph.size.width) / 2).rounded(),
+                                  y: 0, width: glyph.size.width, height: markCapHeight))
+            out.unlockFocus()
+            out.isTemplate = true
+            return (id, out)
+        })
+    }()
+
+    private static func menuMark(for agent: Agent) -> NSImage {
+        menuMarks[agent.id] ?? trimmedTemplate(for: agent)
     }
 
     /// Resting template of an agent's sprite, tight-trimmed and re-flagged as template.
@@ -234,9 +272,11 @@ enum MenuBuilder {
                                           requests: [ApprovalRequest],
                                           controller: StatusItemController) {
         for r in requests {
+            let tag = "req:\(r.fileName)" // lets updateInPlace find a strip's rows
             let what = NSMenuItem(title: "", action: nil, keyEquivalent: "")
             what.isEnabled = false
             what.toolTip = r.toolInputPretty
+            what.representedObject = tag
             what.attributedTitle = NSAttributedString(string: "      \(r.display)", attributes: [
                 .font: NSFont.menuFont(ofSize: 11),
                 .foregroundColor: NSColor.secondaryLabelColor,
@@ -247,6 +287,7 @@ enum MenuBuilder {
             if let context = r.context {
                 let ctx = NSMenuItem(title: "", action: nil, keyEquivalent: "")
                 ctx.view = ApprovalContextView(context: context)
+                ctx.representedObject = tag
                 menu.addItem(ctx)
             }
 
@@ -258,12 +299,120 @@ enum MenuBuilder {
                 onChoose: { [weak controller] behavior in
                     controller?.answer(ApprovalAction(request: r, behavior: behavior, session: s))
                 })
+            buttons.representedObject = tag
             menu.addItem(buttons)
         }
     }
 
+    // MARK: - Live refresh of an open menu
+
+    /// Reconcile an OPEN menu with fresh state without adding or removing rows.
+    /// An open NSMenu window never shrinks — removing rows leaves a blank band
+    /// hanging at the bottom until the menu closes — so surviving rows are
+    /// updated in place and vanished ones are dimmed (`ended` sessions, muted
+    /// approval strips); the next open rebuilds cleanly. Returns false when
+    /// fresh state needs rows that aren't displayed (new session or request):
+    /// growth needs a real populate, which an open menu handles fine.
+    static func updateInPlace(_ menu: NSMenu, sessions: [Session], requests: [ApprovalRequest],
+                              controller: StatusItemController) -> Bool {
+        var displayedSessions = Set<String>()
+        var displayedRequests = Set<String>()
+        for item in menu.items {
+            if let s = item.representedObject as? Session { displayedSessions.insert(s.id) }
+            if let tag = item.representedObject as? String, tag.hasPrefix("req:") {
+                displayedRequests.insert(String(tag.dropFirst(4)))
+            }
+        }
+        guard Set(sessions.map(\.id)).isSubset(of: displayedSessions),
+              Set(requests.map(\.fileName)).isSubset(of: displayedRequests) else { return false }
+
+        let live = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
+        let liveRequests = Set(requests.map(\.fileName))
+        for item in menu.items {
+            if let s = item.representedObject as? Session {
+                if let updated = live[s.id] {
+                    item.representedObject = updated
+                    item.attributedTitle = rowTitle(updated)
+                    item.toolTip = updated.cwd
+                    // Keystroke fallback appears/disappears with the permission state.
+                    let hasStrip = requests.contains { $0.sessionId == updated.id }
+                    item.submenu = (updated.state == .permission && !hasStrip)
+                        ? keystrokeSubmenu(for: updated, controller: controller) : nil
+                } else {
+                    item.attributedTitle = endedRowTitle(s)
+                    item.submenu = nil
+                }
+            } else if let tag = item.representedObject as? String, tag.hasPrefix("req:"),
+                      !liveRequests.contains(String(tag.dropFirst(4))) {
+                mute(item)
+            } else if item.identifier?.rawValue == "updateRow" {
+                configureUpdateRow(item, controller: controller)
+            } else if item.identifier?.rawValue == "shortcutRow" {
+                configureShortcutRow(item, controller: controller)
+            }
+        }
+        return true
+    }
+
+    static func configureShortcutRow(_ item: NSMenuItem, controller: StatusItemController) {
+        item.state = controller.approvalShortcutEnabled ? .on : .off
+        item.toolTip = controller.approvalShortcutEnabled
+            ? "\(KeyCombo.allow.display) allow · \(KeyCombo.deny.display) deny the newest pending request — click to configure"
+            : "Off — click to enable and pick the keys"
+    }
+
+    /// A vanished approval strip: fade the custom views and disarm their buttons
+    /// so an already-answered request can't be answered twice; the summary line
+    /// dims to match.
+    private static func mute(_ item: NSMenuItem) {
+        if let view = item.view {
+            guard view.alphaValue > 0.55 else { return } // already muted
+            view.alphaValue = 0.5
+            disableControls(in: view)
+        } else if let title = item.attributedTitle {
+            let dimmed = NSMutableAttributedString(attributedString: title)
+            dimmed.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor,
+                                range: NSRange(location: 0, length: dimmed.length))
+            item.attributedTitle = dimmed
+        }
+    }
+
+    private static func disableControls(in view: NSView) {
+        for sub in view.subviews {
+            (sub as? NSControl)?.isEnabled = false
+            disableControls(in: sub)
+        }
+    }
+
+    /// Row for a session that ended while the menu was open: dimmed, tagged, still
+    /// clickable (focuses the terminal it lived in).
+    private static func endedRowTitle(_ s: Session) -> NSAttributedString {
+        let agent = Agent.byID(s.agentID)
+        let title = NSMutableAttributedString()
+        title.append(NSAttributedString(string: "● ", attributes: [
+            .foregroundColor: NSColor.quaternaryLabelColor,
+            .font: NSFont.menuFont(ofSize: 11),
+        ]))
+        var name = s.project.isEmpty ? "session" : s.project
+        if let branch = s.gitBranch { name += " · \(branch)" }
+        title.append(NSAttributedString(string: name, attributes: [
+            .foregroundColor: NSColor.secondaryLabelColor,
+            .font: NSFont.menuFont(ofSize: 0),
+        ]))
+        title.append(NSAttributedString(string: "  ended", attributes: [
+            .foregroundColor: NSColor.tertiaryLabelColor,
+            .font: NSFont.menuFont(ofSize: 11),
+        ]))
+        title.append(NSAttributedString(string: "   \(agent.name.uppercased())", attributes: [
+            .foregroundColor: NSColor.tertiaryLabelColor,
+            .font: NSFont.monospacedSystemFont(ofSize: 9, weight: .semibold),
+        ]))
+        return title
+    }
+
     private static func keystrokeSubmenu(for s: Session, controller: StatusItemController) -> NSMenu {
         let menu = NSMenu()
+        menu.delegate = controller
         let agent = Agent.byID(s.agentID)
         let note = NSMenuItem(title: "Can't show the request for \(agent.name)",
                               action: nil, keyEquivalent: "")

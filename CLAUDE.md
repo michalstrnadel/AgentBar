@@ -17,7 +17,8 @@ open "build/AgentBar.app"
 ## Rules
 1. One file, one responsibility — keep the unit layout from the spec; don't grow a
    god-object controller.
-2. Menu bar only: no windows, no dock icon, no heavy dependencies.
+2. Menu bar only: no dock icon, no heavy dependencies. The sole window is the
+   small Settings panel (`SettingsWindow.swift`); everything else stays in the menu.
 3. Hooks must never block the host agent: async, atomic writes, exit fast.
    Sole exception: `permission.js` blocks while the session is already waiting on
    the human, and must always time out silently to the normal terminal prompt.
