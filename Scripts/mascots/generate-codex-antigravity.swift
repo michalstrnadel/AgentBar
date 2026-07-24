@@ -99,9 +99,9 @@ func tinted(_ src: NSImage, _ col: NSColor) -> NSImage {
 }
 let knot = tinted(knotRaw, NSColor(srgbRed: 0.078, green: 0.702, blue: 0.580, alpha: 1)) // #14B394
 
-// braille codex: c=1,4  o=1,3,5  d=1,4,5  e=1,5  x=1,3,4,6
-// dot numbering: 1=TL 2=ML 3=BL 4=TR 5=MR 6=BR
-let brailleWord: [[Int]] = [[1, 4], [1, 3, 5], [1, 4, 5], [1, 5], [1, 3, 4, 6]]
+// Even 10x3 dot-matrix with a diagonal activity wave sweeping left→right —
+// a regular "processing" shimmer (the braille word looked top-heavy in the bar).
+let dotCols = 10, dotRows = 3
 
 let CXW = 42, CXH = 20
 func codexFrame(_ f: Int, _ n: Int) -> CGImage {
@@ -117,34 +117,20 @@ func codexFrame(_ f: Int, _ n: Int) -> CGImage {
     knot.draw(in: NSRect(x: kx * P, y: ky * P, width: kw * P, height: kw * P))
     NSGraphicsContext.current = nil
 
-    // braille cells: dot pitch 2.3u, cell gap 1.9u
     let pitch: CGFloat = 2.3
-    let cellW = pitch
-    let gap: CGFloat = 1.9
-    var x = knotU + 4.2
-    let rowsY: [CGFloat] = [3, 2, 1].map { (CGFloat(CXH) - 3 * pitch) / 2 + (CGFloat($0) - 0.5) * pitch }
-    for (ci, dots) in brailleWord.enumerated() {
-        for slot in 1...6 {
-            let colI = slot <= 3 ? 0 : 1
-            let rowI = (slot - 1) % 3
-            let cx = x + CGFloat(colI) * pitch
-            let cy = rowsY[rowI]
-            let active = dots.contains(slot)
-            let phase = (CGFloat(ci) * 2 + CGFloat(colI)) * 0.55 - t * 2
-            let r: CGFloat = active ? 0.78 : 0.5
-            let col: CGColor
-            if active {
-                let a = 0.45 + 0.55 * max(0, sin(phase))
-                col = color(0x14B394, 0.35 + 0.65 * a)
-            } else {
-                col = color(0x8B939C, 0.16)
-            }
-            c.setFillColor(col)
+    let x0 = knotU + 4.2
+    let y0 = (CGFloat(CXH) - CGFloat(dotRows - 1) * pitch) / 2
+    for colI in 0..<dotCols {
+        for rowI in 0..<dotRows {
+            let cx = x0 + CGFloat(colI) * pitch
+            let cy = y0 + CGFloat(rowI) * pitch
+            let phase = CGFloat(colI) * 0.6 + CGFloat(rowI) * 0.25 - t * 2
+            let w = max(0, sin(phase))
+            let r: CGFloat = 0.55 + 0.23 * w
+            c.setFillColor(color(0x14B394, 0.22 + 0.78 * w))
             c.fillEllipse(in: CGRect(x: (cx - r) * P, y: (cy - r) * P,
                                      width: r * 2 * P, height: r * 2 * P))
         }
-        x += cellW + pitch + gap - cellW  // advance one cell: 2 cols + gap
-        x += cellW
     }
     return c.makeImage()!
 }
