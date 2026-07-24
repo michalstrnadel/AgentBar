@@ -3,6 +3,14 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+- The CLI test suite no longer inherits `CLAUDE_CONFIG_DIR` from the runner's
+  shell — it used to wire the runner's real Claude config to the suite's
+  throwaway temp dir, breaking hooks after the temp dir was cleaned up. The env
+  is sanitized and a contained `CLAUDE_CONFIG_DIR` regression test was added.
+
 ## 1.8.0 - 2026-07-24
 
 ### Added

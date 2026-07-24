@@ -6,6 +6,11 @@ cd "$(dirname "$0")/../.."
 CLI="Scripts/cli/agentbar"
 NODE="${NODE:-node}"
 
+# install-hooks honors CLAUDE_CONFIG_DIR — a value inherited from the runner's
+# shell would make the test wire hooks into the runner's REAL Claude config,
+# pointing at this suite's throwaway temp dir (learned the hard way).
+unset CLAUDE_CONFIG_DIR AGENTBAR_FORCE_APP AGENTBAR_APPROVAL_TIMEOUT
+
 pass=0; fail=0
 check() {
   if eval "$2"; then echo "ok   $1"; pass=$((pass+1)); else echo "FAIL $1"; fail=$((fail+1)); fi
@@ -93,6 +98,8 @@ check "install-hooks idempotent"       '[ "$SNAP" = "$(cat "$HOME/.gemini/settin
 echo '{broken' > "$HOME/.gemini/settings.json"
 "$CLI" install-hooks >/dev/null 2>&1
 check "unparseable config untouched"   '[ "$(cat "$HOME/.gemini/settings.json")" = "{broken" ]'
+CLAUDE_CONFIG_DIR="$HOME/.claude-custom" "$CLI" install-hooks >/dev/null 2>&1
+check "CLAUDE_CONFIG_DIR wired (contained)" 'grep -q PermissionRequest "$HOME/.claude-custom/settings.json"'
 
 echo "---"
 echo "$pass passed, $fail failed"
