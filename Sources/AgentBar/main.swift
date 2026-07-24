@@ -5,10 +5,12 @@ import Cocoa
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let controller = StatusItemController()
+    private let antigravityWatcher = AntigravityWatcher()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller.start()
         HookInstaller.installIfNeeded()
+        antigravityWatcher.start()
     }
 }
 

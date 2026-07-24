@@ -32,6 +32,16 @@ const running = () => {
 };
 const writeAtomic = (f, o) => { const t = f + "." + process.pid + ".tmp"; fs.writeFileSync(t, JSON.stringify(o)); fs.renameSync(t, f); };
 
+let _isApp;
+const isApp = () => {
+  if (_isApp === undefined) {
+    let cmd = "";
+    try { cmd = cp.execSync(`ps -o comm= -p ${process.ppid}`).toString(); } catch {}
+    _isApp = /language_server/.test(cmd);
+  }
+  return _isApp;
+};
+
 let input = "", done = false;
 process.stdin.on("data", (d) => (input += d));
 process.stdin.on("end", run);
@@ -62,10 +72,10 @@ function run() {
       ...prev, agent: AGENT, state,
       label: state === "tool" && tool ? String(tool) : (state === "done" ? "Done" : ""),
       project: cwd ? path.basename(cwd) : "", cwd, sessionId: id,
-      // TERM_PROGRAM set -> hook spawned under a terminal (agy CLI); empty -> the
-      // desktop app, whose sessions should focus the app itself on row click.
-      entrypoint: process.env.TERM_PROGRAM ? "cli" : "antigravity-app",
-      term_program: process.env.TERM_PROGRAM || "",
+      // Desktop sessions come from the app's language_server; TERM_PROGRAM can't
+      // be trusted (the app inherits it when launched from a terminal via `open`).
+      entrypoint: isApp() ? "antigravity-app" : "cli",
+      term_program: isApp() ? "" : (process.env.TERM_PROGRAM || ""),
       pid: process.ppid, started: true,
       ts: Math.floor(Date.now() / 1000),
     });

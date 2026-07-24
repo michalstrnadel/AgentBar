@@ -6,6 +6,10 @@ All notable changes to AgentBar are documented here. This project follows
 ## Unreleased
 
 ### Added
+- Antigravity liveness watcher: the desktop engine fires no hook at all for
+  chat-only turns, so the app also watches conversation-database mtimes under
+  `~/.gemini/antigravity/conversations/` and upserts the same state files the
+  hooks write (hooks stay authoritative; quiet sessions decay to done).
 - Google Antigravity live status (#7, #2): an observe-only hook bridge
   (`Scripts/hooks/antigravity/antigravity.js`) auto-wired into
   `~/.gemini/antigravity/hooks.json` and `~/.gemini/antigravity-cli/hooks.json`
