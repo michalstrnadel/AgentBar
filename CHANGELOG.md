@@ -3,9 +3,19 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 1.9.0 - 2026-07-24
 
 ### Added
+- Antigravity approval flow (#2): a session waiting on Antigravity's own
+  permission dialog flips to "needs approval" (amber dot) within ~6 s — the
+  turn transcript's last entry is an unexecuted tool request while the dialog
+  is up. The session row carries the same inline button strip as Claude:
+  Allow brings the app forward and submits the dialog's preselected option
+  (Return); Codex/Copilot permission rows get the identical strip instead of
+  the old keystroke submenu. Requires the Accessibility permission.
+- Instant end-of-turn detection for Antigravity: the final model response in
+  the turn transcript flips the session to done immediately; the 90 s decay
+  stays as a fallback for cancelled turns.
 - Antigravity liveness watcher: the desktop engine fires no hook at all for
   chat-only turns, so the app also watches conversation-database mtimes under
   `~/.gemini/antigravity/conversations/` and upserts the same state files the
@@ -30,6 +40,8 @@ All notable changes to AgentBar are documented here. This project follows
   must include ⌘/⌥/⌃; Allow and Deny can't share one combo.
 
 ### Fixed
+- Antigravity liveness reads the per-turn transcript, not the conversation
+  databases — background housekeeping kept idle sessions animating forever.
 - Open dropdown no longer grows a blank band at the bottom when a session ends
   or an approval resolves while the menu is showing. Root cause: an open
   NSMenu window never shrinks, and the live refresh rebuilt the menu from
@@ -41,6 +53,10 @@ All notable changes to AgentBar are documented here. This project follows
   it) and when nothing visible changed, so the menu never flickers for a no-op.
 
 ### Changed
+- Rotating thinking verbs (Pondering…, Cooking…) appear only next to Clawd —
+  the other agents' dot clusters carry the working signal on their own.
+- Antigravity desktop session rows (and their approval strip) focus the
+  Antigravity app instead of a terminal.
 - Cursor and Gemini menu bar marks replaced with the current official app icons
   (Cursor's cube from cursor.com, Gemini CLI's gradient "&gt;" from
   geminicli.com), shown full-color with the bob animation instead of a
