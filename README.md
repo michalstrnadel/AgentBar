@@ -19,6 +19,8 @@ real identity — Clawd the crab for Claude, the OpenAI knot with a braille dot-
 for Codex, the official pixel-art head for Copilot, the pixel rainbow arch for
 Antigravity — and the bar always surfaces the session that needs you most.
 On Linux, the same protocol drives the [`agentbar` CLI](#linux-cli).
+On Windows, [AgentBar for Windows](https://github.com/michalstrnadel/AgentBar-Windows) is a
+native system-tray counterpart that shares the same `~/.agentbar` hook protocol.
 
 ## Quick start
 
