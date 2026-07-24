@@ -2,18 +2,20 @@ import Foundation
 
 /// Liveness for Google Antigravity beyond its sparse hooks: the desktop engine
 /// (2.3.x) fires only PostToolUse, so chat-only turns emit no hook events at
-/// all. But the conversation databases in ~/.gemini/antigravity/conversations/
-/// are written continuously while a turn runs — a fresh mtime is the "working"
-/// signal. The watcher upserts state files on the same ~/.agentbar/state.d
+/// all. The per-conversation turn transcript under brain/<id>/ is appended to
+/// only while the agent actually generates — a fresh mtime is the "working"
+/// signal. (The conversation .db files are NOT usable for this: the app also
+/// touches them during background housekeeping, which kept sessions "working"
+/// forever.) The watcher upserts state files on the same ~/.agentbar/state.d
 /// protocol the hooks use (hooks stay authoritative: a newer hook write wins),
 /// and SessionStore's decay turns quiet sessions to done.
 final class AntigravityWatcher {
-    private let conversationsDir = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".gemini/antigravity/conversations", isDirectory: true)
+    private let brainDir = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".gemini/antigravity/brain", isDirectory: true)
     private var timer: Timer?
 
     func start() {
-        guard FileManager.default.fileExists(atPath: conversationsDir.path) else { return }
+        guard FileManager.default.fileExists(atPath: brainDir.path) else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.scan()
         }
@@ -22,13 +24,12 @@ final class AntigravityWatcher {
     private func scan() {
         let fm = FileManager.default
         let now = Date().timeIntervalSince1970
-        let files = (try? fm.contentsOfDirectory(
-            at: conversationsDir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        for url in files where url.pathExtension == "db" {
-            guard let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
-                    .contentModificationDate?.timeIntervalSince1970,
-                  now - mtime < 10 else { continue }
-            upsert(id: url.deletingPathExtension().lastPathComponent, ts: mtime)
+        let dirs = (try? fm.contentsOfDirectory(at: brainDir, includingPropertiesForKeys: nil)) ?? []
+        for dir in dirs {
+            let transcript = dir.appendingPathComponent(".system_generated/logs/transcript_full.jsonl")
+            guard let mtime = (try? fm.attributesOfItem(atPath: transcript.path))?[.modificationDate]
+                    as? Date, now - mtime.timeIntervalSince1970 < 10 else { continue }
+            upsert(id: dir.lastPathComponent, ts: mtime.timeIntervalSince1970)
         }
     }
 
