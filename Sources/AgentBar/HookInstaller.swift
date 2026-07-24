@@ -21,6 +21,7 @@ enum HookInstaller {
                 try installCodex()
                 try installCursor()
                 try installGemini()
+                try installAntigravity()
             } catch {
                 NSLog("AgentBar hook install failed: \(error)")
             }
@@ -214,6 +215,40 @@ enum HookInstaller {
         text = "#!\(node)\(rest)"
         try text.write(to: scriptURL, atomically: false, encoding: .utf8) // keep inode + mode
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptURL.path)
+    }
+
+    // MARK: - Antigravity (~/.gemini/antigravity{,-cli}/hooks.json)
+
+    /// Antigravity 2.x (desktop app and `agy` CLI) reads hooks.json from its own
+    /// customization dir. Top level is named rule groups; we own exactly one key
+    /// ("agentbar") and never touch the rest. The script runs via its shebang, so
+    /// the node path is pinned the same way as Cursor's bridge.
+    private static func installAntigravity() throws {
+        let scriptURL = hooksDir.appendingPathComponent("antigravity/antigravity.js")
+        let dirs = ["antigravity", "antigravity-cli"].map {
+            home.appendingPathComponent(".gemini/\($0)", isDirectory: true)
+        }.filter { FileManager.default.fileExists(atPath: $0.path) }
+        guard !dirs.isEmpty else { return } // not an Antigravity user
+        try pinNodeShebang(of: scriptURL)
+
+        // Observational events only; PreToolUse stays decision-free (no stdout).
+        // The stdin payload carries no event name, so it rides along as an argument.
+        var group: [String: Any] = [:]
+        for event in ["PreInvocation", "PreToolUse", "PostToolUse", "PostInvocation", "Stop"] {
+            let entry: [String: Any] = ["type": "command",
+                                        "command": "\"\(scriptURL.path)\" \(event)",
+                                        "timeout": 5]
+            var rule: [String: Any] = ["hooks": [entry]]
+            if event.hasSuffix("ToolUse") { rule["matcher"] = "*" }
+            group[event] = [rule]
+        }
+        for dir in dirs {
+            let cfgURL = dir.appendingPathComponent("hooks.json")
+            guard var root = readConfig(at: cfgURL) else { continue }
+            root["agentbar"] = group
+            let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+            try writeIfChanged(data, to: cfgURL)
+        }
     }
 
     // MARK: - Gemini CLI (~/.gemini/settings.json)

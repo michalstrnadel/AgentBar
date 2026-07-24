@@ -79,8 +79,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private var topSession: Session? { sessions.first }
 
+    /// One entry per agent with a live session, most urgent first. Sessions are
+    /// already sorted by (priority, recency), so the first session seen for an
+    /// agent is that agent's most urgent one.
+    private var agentRow: [(agent: Agent, state: Session.State)] {
+        var seen = Set<String>()
+        var row: [(Agent, Session.State)] = []
+        for s in sessions where seen.insert(s.agentID).inserted {
+            row.append((Agent.byID(s.agentID), s.state))
+        }
+        return row
+    }
+
     private func render() {
         guard let button = statusItem.button else { return }
+        let row = agentRow
+        if row.count > 1 { return renderMulti(row, button: button) }
         let agent = Agent.byID(topSession?.agentID ?? "claude")
         let sprite = IconRenderer.shared.sprite(for: agent)
         let frames = systemColor ? sprite.templateFrames : sprite.colorFrames
@@ -111,6 +125,43 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             } else if hopTimer == nil {
                 button.image = resting
             }
+        }
+    }
+
+    /// Two or more agents live at once: their marks sit side by side, no words.
+    /// Each mark reflects its own agent's most urgent session — working agents
+    /// animate, a waiting one carries the amber/blue dot, the rest sit still.
+    private func renderMulti(_ row: [(agent: Agent, state: Session.State)],
+                             button: NSStatusBarButton) {
+        stopHop(); stopWords()
+        defer { previousTopState = topSession?.state }
+        let parts = row.map { (sprite: IconRenderer.shared.sprite(for: $0.agent), state: $0.state) }
+        let sys = systemColor
+        let build: (Int) -> NSImage = { idx in
+            IconRenderer.compose(parts.map { p in
+                let resting = sys ? p.sprite.restingTemplate : p.sprite.restingColor
+                switch p.state {
+                case .permission:
+                    return IconRenderer.withPermissionDot(resting)
+                case .question:
+                    return IconRenderer.withPermissionDot(resting, color: IconRenderer.questionDot)
+                case let s where s.isWorking:
+                    let frames = sys ? p.sprite.templateFrames : p.sprite.colorFrames
+                    return frames.isEmpty ? resting : frames[idx % frames.count]
+                default:
+                    return resting
+                }
+            })
+        }
+        stopAnimation()
+        button.title = ""
+        button.image = build(0)
+        guard row.contains(where: { $0.state.isWorking }) else { return }
+        frameIndex = 0
+        animationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self, let button = self.statusItem.button else { return }
+            self.frameIndex += 1
+            button.image = build(self.frameIndex)
         }
     }
 
@@ -263,6 +314,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
         if s.entrypoint == "claude-desktop" {
             openAgent(Agent.byID("claude"))
+            return
+        }
+        if s.entrypoint == "antigravity-app" {
+            openAgent(Agent.byID("antigravity"))
             return
         }
         Self.focusTerminal(named: s.termProgram)

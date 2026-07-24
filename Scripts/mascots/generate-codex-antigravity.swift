@@ -54,25 +54,49 @@ func shifted(_ hex: UInt32, hue dh: CGFloat, brightness db: CGFloat) -> CGColor 
     return out.cgColor
 }
 
-let AGW = 26, AGH = 18   // units
+// Same layout language as the Codex mascot: the official mark at left, a
+// braille-style twinkling dot cluster at right (Google blue). The arch keeps
+// its real colors, static — the dots carry the "working" motion.
+let AGW = 42, AGH = 20   // units
 func antigravityFrame(_ f: Int, _ n: Int) -> CGImage {
     let c = makeCtx(AGW * Int(P), AGH * Int(P))
     let t = CGFloat(f) / CGFloat(n) * 2 * .pi
-    let cellU: CGFloat = 1.55
-    let x0 = (CGFloat(AGW) - CGFloat(archCols) * cellU) / 2
+    let cellU: CGFloat = 1.15
+    let x0: CGFloat = 1.2
     let y0 = (CGFloat(AGH) - CGFloat(archRows) * cellU) / 2
     for (ry, row) in arch.enumerated() {
         for (cx, cell) in row.enumerated() {
             guard let hex = cell else { continue }
-            // wave travels along the arch left→right
-            let phase = CGFloat(cx) * 0.55 - t * 2
-            let dh = 0.045 * sin(phase)
-            let db = 0.10 * sin(phase + .pi / 3)
-            c.setFillColor(shifted(hex, hue: dh, brightness: db))
+            c.setFillColor(color(hex))
             let y = y0 + CGFloat(archRows - 1 - ry) * cellU
             c.fill(CGRect(x: (x0 + CGFloat(cx) * cellU) * P, y: y * P,
                           width: cellU * P + 0.5, height: cellU * P + 0.5))
         }
+    }
+
+    // twinkle cluster (see codexFrame); different hash seed -> its own pattern
+    let pitch: CGFloat = 2.3
+    let cellW = pitch
+    let gap: CGFloat = 1.9
+    var x = x0 + CGFloat(archCols) * cellU + 3.4
+    let rowsY: [CGFloat] = [3, 2, 1].map { (CGFloat(AGH) - 3 * pitch) / 2 + (CGFloat($0) - 0.5) * pitch }
+    for ci in 0..<dotCellCount {
+        for slot in 1...6 {
+            let colI = slot <= 3 ? 0 : 1
+            let rowI = (slot - 1) % 3
+            let cx = x + CGFloat(colI) * pitch
+            let cy = rowsY[rowI]
+            let id = ci * 6 + slot
+            let freq = CGFloat(1 + id % 2)
+            let s = sin(t * freq + dotHash(id + 37) * 2 * .pi)
+            let a = max(0, s)
+            let r: CGFloat = 0.58 + 0.20 * a
+            c.setFillColor(color(0x4285F4, 0.12 + 0.88 * pow(a, 1.4)))
+            c.fillEllipse(in: CGRect(x: (cx - r) * P, y: (cy - r) * P,
+                                     width: r * 2 * P, height: r * 2 * P))
+        }
+        x += cellW + pitch + gap - cellW
+        x += cellW
     }
     return c.makeImage()!
 }

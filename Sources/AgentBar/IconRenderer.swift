@@ -189,6 +189,32 @@ final class IconRenderer {
         return out
     }
 
+    /// Side-by-side row of marks for the multi-agent bar. Template parts are tinted
+    /// with labelColor inside the drawing handler (resolved per appearance at render
+    /// time), so the row mixes color dots and adaptive monochrome correctly.
+    static func compose(_ parts: [NSImage], gap: CGFloat = 7) -> NSImage {
+        guard !parts.isEmpty else { return NSImage() }
+        let h = parts.map(\.size.height).max() ?? 18
+        let w = parts.reduce(0) { $0 + $1.size.width } + gap * CGFloat(parts.count - 1)
+        let templates = parts.map(\.isTemplate)
+        let out = NSImage(size: NSSize(width: w, height: h), flipped: false) { _ in
+            var x: CGFloat = 0
+            for (i, p) in parts.enumerated() {
+                let r = NSRect(x: x, y: (h - p.size.height) / 2,
+                               width: p.size.width, height: p.size.height)
+                p.draw(in: r)
+                if templates[i] {
+                    NSColor.labelColor.setFill()
+                    r.fill(using: .sourceAtop) // tints only this part's pixels
+                }
+                x += p.size.width + gap
+            }
+            return true
+        }
+        out.isTemplate = false
+        return out
+    }
+
     private static func bitmap(_ src: NSImage) -> NSBitmapImageRep? {
         guard let tiff = src.tiffRepresentation else { return nil }
         return NSBitmapImageRep(data: tiff)

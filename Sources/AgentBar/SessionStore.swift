@@ -55,7 +55,15 @@ final class SessionStore {
                 continue
             }
             guard s.started else { continue } // opened but never used: stays out of the menu
-            sessions.append(s)
+            var live = s
+            // Antigravity emits no terminal event (2.3.1 fires only PostToolUse), so a
+            // working session that has gone quiet decays to done instead of animating
+            // the bar forever.
+            if live.agentID == "antigravity", live.state.isWorking,
+               Date().timeIntervalSince1970 - live.ts > 90 {
+                live.state = .done
+            }
+            sessions.append(live)
         }
         sessions.sort { ($0.priority, $0.ts) > ($1.priority, $1.ts) }
 

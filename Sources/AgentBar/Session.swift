@@ -11,7 +11,7 @@ struct Session {
 
     let id: String
     let agentID: String
-    let state: State
+    var state: State
     let label: String
     let project: String
     let cwd: String

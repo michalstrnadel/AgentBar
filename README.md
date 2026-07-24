@@ -172,12 +172,12 @@ rm -rf ~/.agentbar
 | Cursor CLI | working / done | yes | pointer | hooks in `~/.cursor/hooks.json` (auto-wired if Cursor is installed) |
 | Gemini CLI | working / done | yes | spark | hooks in `~/.gemini/settings.json` (auto-wired if Gemini is installed) |
 | GitHub Copilot | — | yes | pixel head + dot-matrix | no public event API yet; everything else is wired and waiting |
-| Google Antigravity | — | yes | pixel rainbow arch | no public event API yet; everything else is wired and waiting |
+| Google Antigravity | working / done | yes | pixel rainbow arch + dot-matrix | hooks in `~/.gemini/antigravity{,-cli}/hooks.json` (auto-wired); desktop 2.3.x only honors per-workspace `.agents/hooks.json`, and only `PostToolUse` fires — quiet sessions decay to done |
 
-Hook readiness: Claude Code, Codex (`notify`), Cursor (`hooks.json`), and Gemini
-(`settings.json`) hooks all install automatically at launch (idempotently — every
-launch re-checks, nothing is duplicated) for the tools you have. Copilot and Antigravity ship with their mascots, menu entries, and (for Copilot)
-the keystroke-approval backend already in place — the moment either exposes session
+Hook readiness: Claude Code, Codex (`notify`), Cursor (`hooks.json`), Gemini
+(`settings.json`), and Antigravity (`hooks.json`) hooks all install automatically at launch (idempotently — every
+launch re-checks, nothing is duplicated) for the tools you have. Copilot ships with its mascot, menu entry, and
+the keystroke-approval backend already in place — the moment it exposes session
 events, support is one small hook script away.
 
 ## Remote Allow/Deny

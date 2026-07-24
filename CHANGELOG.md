@@ -6,6 +6,18 @@ All notable changes to AgentBar are documented here. This project follows
 ## Unreleased
 
 ### Added
+- Google Antigravity live status (#7, #2): an observe-only hook bridge
+  (`Scripts/hooks/antigravity/antigravity.js`) auto-wired into
+  `~/.gemini/antigravity/hooks.json` and `~/.gemini/antigravity-cli/hooks.json`
+  under a dedicated `"agentbar"` rule group. Verified against desktop 2.3.1:
+  the payload carries no event name (passed as an argument instead), only
+  per-workspace `.agents/hooks.json` is honored, and only `PostToolUse` fires —
+  so working sessions with no events for 90 s decay to done.
+- Multi-agent menu bar: when two or more agents have live sessions, the bar
+  shows their marks side by side (no status words) — working agents animate,
+  a waiting one carries the amber/blue dot. Single-agent behavior unchanged.
+- Antigravity mascot now matches the Codex layout language: the official pixel
+  arch plus a twinkling braille-style dot cluster in Google blue.
 - Settings window (the app's only window) for the global Allow/Deny shortcut:
   enable it and record custom key combos for Allow and Deny (defaults stay
   ⌥⌘A / ⌥⌘D). The menu row now opens Settings instead of blind-toggling; its
