@@ -45,7 +45,11 @@ final class AntigravityWatcher {
         o["started"] = true
         o["ts"] = Int(ts)
         o["sessionId"] = safe
-        if o["entrypoint"] == nil { o["entrypoint"] = "antigravity-app" }
+        // This watcher reads the desktop app's conversations dir only, so every
+        // session it touches belongs to the app — row clicks must focus it, not
+        // a terminal (an early bridge version misdetected "cli" here).
+        o["entrypoint"] = "antigravity-app"
+        o["term_program"] = ""
         guard let data = try? JSONSerialization.data(withJSONObject: o) else { return }
         try? FileManager.default.createDirectory(at: SessionStore.stateDir,
                                                  withIntermediateDirectories: true)
