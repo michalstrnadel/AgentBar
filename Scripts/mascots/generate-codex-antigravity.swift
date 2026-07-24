@@ -58,7 +58,7 @@ func shifted(_ hex: UInt32, hue dh: CGFloat, brightness db: CGFloat) -> CGColor 
 // braille-style twinkling dot cluster at right (Google blue). The arch keeps
 // its real colors, static — the dots carry the "working" motion.
 let AGW = 42, AGH = 20   // units
-func antigravityFrame(_ f: Int, _ n: Int) -> CGImage {
+func antigravityFrame(_ f: Int, _ n: Int, dots: Bool = true) -> CGImage {
     let c = makeCtx(AGW * Int(P), AGH * Int(P))
     let t = CGFloat(f) / CGFloat(n) * 2 * .pi
     let cellU: CGFloat = 1.15
@@ -75,6 +75,7 @@ func antigravityFrame(_ f: Int, _ n: Int) -> CGImage {
     }
 
     // twinkle cluster (see codexFrame); different hash seed -> its own pattern
+    guard dots else { return c.makeImage()! }
     let pitch: CGFloat = 2.3
     let cellW = pitch
     let gap: CGFloat = 1.9
@@ -134,7 +135,7 @@ func dotHash(_ i: Int) -> CGFloat {
 }
 
 let CXW = 42, CXH = 20
-func codexFrame(_ f: Int, _ n: Int) -> CGImage {
+func codexFrame(_ f: Int, _ n: Int, dots: Bool = true) -> CGImage {
     let c = makeCtx(CXW * Int(P), CXH * Int(P))
     let t = CGFloat(f) / CGFloat(n) * 2 * .pi
 
@@ -148,6 +149,7 @@ func codexFrame(_ f: Int, _ n: Int) -> CGImage {
     NSGraphicsContext.current = nil
 
     // braille cells: dot pitch 2.3u, cell gap 1.9u
+    guard dots else { return c.makeImage()! }
     let pitch: CGFloat = 2.3
     let cellW = pitch
     let gap: CGFloat = 1.9
@@ -234,8 +236,8 @@ let darkBar = color(0x23252B), lightBar = color(0xE9E4DC)
 
 struct Out { let id: String; let frames: [CGImage]; let delay: Double }
 let outs = [
-    Out(id: "antigravity2", frames: (0..<16).map { antigravityFrame($0, 16) }, delay: 0.09),
-    Out(id: "codex2", frames: (0..<14).map { codexFrame($0, 14) }, delay: 0.09),
+    Out(id: "antigravity2", frames: [antigravityFrame(0, 16, dots: false)] + (0..<16).map { antigravityFrame($0, 16) }, delay: 0.09),
+    Out(id: "codex2", frames: [codexFrame(0, 14, dots: false)] + (0..<14).map { codexFrame($0, 14) }, delay: 0.09),
 ]
 for o in outs {
     let dir = "\(outDir)/frames/\(o.id)"

@@ -6,6 +6,9 @@ struct Agent {
     enum Artwork {
         /// Multi-frame full-color sprite sheet (base64 PNGs) played at `fps`.
         case frames([String], fps: Double)
+        /// Like `frames`, but frame 0 is a resting-only mark (shown when the agent
+        /// is idle/done) and the animation loops over frames 1…N while working.
+        case markFrames([String], fps: Double)
         /// Single monochrome mark (base64 PNG), tinted with `brand`; animated as a bob.
         case tintedMark(String)
         /// Single full-color mark (base64 PNG); animated as a bob.
@@ -38,7 +41,7 @@ struct Agent {
               approveKeys: nil),
         Agent(id: "codex", name: "Codex",
               brand: NSColor(srgbRed: 0.063, green: 0.639, blue: 0.498, alpha: 1), // #10A37F
-              artwork: .frames(codexMascotFramePNGs, fps: 11),
+              artwork: .markFrames(codexMascotFramePNGs, fps: 11),
               open: .terminal,
               approveKeys: [36]), // Return — Codex prompts default to approve
         Agent(id: "copilot", name: "Copilot",
@@ -48,7 +51,7 @@ struct Agent {
               approveKeys: [16, 36]), // "y" then Return
         Agent(id: "antigravity", name: "Antigravity",
               brand: NSColor(srgbRed: 0.259, green: 0.522, blue: 0.957, alpha: 1), // #4285F4
-              artwork: .frames(antigravityMascotFramePNGs, fps: 11),
+              artwork: .markFrames(antigravityMascotFramePNGs, fps: 11),
               open: .appNamed("Antigravity"),
               approveKeys: nil),
         // Hook-driven live status (Cursor: ~/.cursor/hooks.json; Gemini CLI: hooks).

@@ -7,8 +7,17 @@ final class IconRenderer {
         let colorFrames: [NSImage]     // Color mode animation
         let templateFrames: [NSImage]  // System mode animation (monochrome adaptive)
         let fps: Double
-        var restingColor: NSImage { colorFrames[0] }
-        var restingTemplate: NSImage { templateFrames[0] }
+        let restingColor: NSImage      // idle/done mark (markFrames: dot-free)
+        let restingTemplate: NSImage
+
+        init(colorFrames: [NSImage], templateFrames: [NSImage], fps: Double,
+             restingColor: NSImage? = nil, restingTemplate: NSImage? = nil) {
+            self.colorFrames = colorFrames
+            self.templateFrames = templateFrames
+            self.fps = fps
+            self.restingColor = restingColor ?? colorFrames[0]
+            self.restingTemplate = restingTemplate ?? templateFrames[0]
+        }
     }
 
     static let shared = IconRenderer()
@@ -28,6 +37,20 @@ final class IconRenderer {
             let color = frames
             let template = frames.map { Self.adaptiveTemplate($0) }
             return Sprite(colorFrames: color, templateFrames: template, fps: fps)
+
+        case .markFrames(let pngs, let fps):
+            // Frame 0 is the dot-free resting mark; the working loop is 1…N.
+            // The animation canvas reserves width for the dot cluster, so the
+            // resting mark is cropped to content width (full height keeps the
+            // vertical scale identical between resting and working).
+            let decoded = pngs.compactMap(Self.decode)
+            let anim = decoded.dropFirst().map { Self.fit($0, height: 17) }
+            let resting = Self.fit(Self.trimWidth(decoded[0]), height: 17)
+            return Sprite(colorFrames: Array(anim),
+                          templateFrames: anim.map { Self.adaptiveTemplate($0) },
+                          fps: fps,
+                          restingColor: resting,
+                          restingTemplate: Self.adaptiveTemplate(resting))
 
         case .tintedMark(let png):
             let mark = Self.fit(Self.trim(Self.decode(png) ?? NSImage()), height: 15)
@@ -73,6 +96,22 @@ final class IconRenderer {
         let rect = NSRect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)
         guard let cg = bmp.cgImage?.cropping(to: rect) else { return src }
         return NSImage(cgImage: cg, size: NSSize(width: rect.width / 2, height: rect.height / 2))
+    }
+
+    /// Crop transparent side margins only, keeping the full canvas height.
+    static func trimWidth(_ src: NSImage) -> NSImage {
+        guard let bmp = bitmap(src) else { return src }
+        let pw = bmp.pixelsWide, ph = bmp.pixelsHigh
+        var minX = pw, maxX = -1
+        for y in 0..<ph {
+            for x in 0..<pw where (bmp.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.02 {
+                minX = min(minX, x); maxX = max(maxX, x)
+            }
+        }
+        guard maxX >= minX else { return src }
+        let rect = NSRect(x: minX, y: 0, width: maxX - minX + 1, height: ph)
+        guard let cg = bmp.cgImage?.cropping(to: rect) else { return src }
+        return NSImage(cgImage: cg, size: NSSize(width: rect.width / 2, height: CGFloat(ph) / 2))
     }
 
     /// Scale to a menu-bar-friendly point height, preserving aspect.

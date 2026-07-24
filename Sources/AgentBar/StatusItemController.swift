@@ -129,13 +129,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Two or more agents live at once: their marks sit side by side, no words.
-    /// Each mark reflects its own agent's most urgent session — working agents
-    /// animate, a waiting one carries the amber/blue dot, the rest sit still.
+    /// Exactly one working agent animates — Claude wins (it has a real walk cycle),
+    /// otherwise the most urgent working one. Everyone else shows the plain resting
+    /// mark; a waiting session still carries its amber/blue dot.
     private func renderMulti(_ row: [(agent: Agent, state: Session.State)],
                              button: NSStatusBarButton) {
         stopHop(); stopWords()
         defer { previousTopState = topSession?.state }
-        let parts = row.map { (sprite: IconRenderer.shared.sprite(for: $0.agent), state: $0.state) }
+        let workingIDs = row.filter { $0.state.isWorking }.map(\.agent.id)
+        let animatorID = workingIDs.contains("claude") ? "claude" : workingIDs.first
+        let parts = row.map { (id: $0.agent.id,
+                               sprite: IconRenderer.shared.sprite(for: $0.agent),
+                               state: $0.state) }
         let sys = systemColor
         let build: (Int) -> NSImage = { idx in
             IconRenderer.compose(parts.map { p in
@@ -145,7 +150,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                     return IconRenderer.withPermissionDot(resting)
                 case .question:
                     return IconRenderer.withPermissionDot(resting, color: IconRenderer.questionDot)
-                case let s where s.isWorking:
+                case let s where s.isWorking && p.id == animatorID:
                     let frames = sys ? p.sprite.templateFrames : p.sprite.colorFrames
                     return frames.isEmpty ? resting : frames[idx % frames.count]
                 default:
@@ -156,7 +161,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         stopAnimation()
         button.title = ""
         button.image = build(0)
-        guard row.contains(where: { $0.state.isWorking }) else { return }
+        guard animatorID != nil else { return }
         frameIndex = 0
         animationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self, let button = self.statusItem.button else { return }
