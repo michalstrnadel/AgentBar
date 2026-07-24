@@ -182,6 +182,10 @@ events, support is one small hook script away.
 
 ## Remote Allow/Deny
 
+<p align="center">
+  <img src="docs/assets/approval-menu.png" width="480" alt="AgentBar menu with a pending Claude Code permission request: yellow needs-approval row, the requested command, and an inline Allow / Deny / Terminal button strip">
+</p>
+
 When a Claude Code session asks for permission, the request appears right under the
 yellow "needs approval" row: what's requested (e.g. `Bash: git push origin main`; full
 input in the tooltip) plus an inline button strip — **✓ Allow**, **✓ Always** (only
