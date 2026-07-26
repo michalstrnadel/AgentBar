@@ -12,7 +12,18 @@ All notable changes to AgentBar are documented here. This project follows
   be regenerated after any sprite change.
 - Integration test for the Antigravity liveness watcher
   (`Scripts/test/antigravity-watcher-test.sh`): synthetic turn transcript walks
-  thinking → permission → done against the running app.
+  thinking → permission → done against the running app, now for both the
+  desktop and the CLI brain root.
+
+### Fixed
+- Antigravity CLI (`agy`) sessions never appeared in the menu. The liveness
+  watcher only scanned the desktop app's `~/.gemini/antigravity/brain`, while
+  the CLI keeps its own tree under `~/.gemini/antigravity-cli/brain` — and the
+  CLI loads `hooks.json` but never runs the handlers, so there was no second
+  source of state either. Both roots are scanned now. CLI rows resolve their
+  project from the CLI's `history.jsonl`, and their terminal and pid from the
+  live `agy` process, so a row click focuses the hosting terminal instead of
+  the desktop app and the row disappears when `agy` exits.
 
 ## 1.9.0 - 2026-07-24
 
