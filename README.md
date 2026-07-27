@@ -227,6 +227,11 @@ writes `requests.d/`, the app answers into `answers.d/`.
   `xattr -dr com.apple.quarantine /Applications/AgentBar.app` and open it again.
   The install script and the Homebrew cask do this for you; the dialog mainly
   appears after downloading the zip manually from Releases.
+- **`brew outdated` reports an old AgentBar version** — the in-app updater swaps
+  `/Applications/AgentBar.app` without telling Homebrew, so brew's install record
+  lags behind after an in-app update. Run `brew upgrade --cask agentbar` to
+  re-sync; both update paths install the exact same release bundle, so nothing
+  is lost either way.
 
 ## License
 

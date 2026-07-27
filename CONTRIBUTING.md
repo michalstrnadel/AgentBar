@@ -46,5 +46,7 @@ needed. See `docs/specs/` for the design documents.
 2. Tag `vX.Y.Z`, create a GitHub release with the changelog section as notes.
 3. Attach the prebuilt app: `./Scripts/build.sh && ditto -c -k --keepParent
    build/AgentBar.app AgentBar.app.zip && gh release upload vX.Y.Z AgentBar.app.zip`.
-4. Update `Casks/agentbar.rb` in `michalstrnadel/homebrew-tap` (version + sha256
-   of the zip).
+4. Update `Casks/agentbar.rb` in `michalstrnadel/homebrew-tap`: bump `version`,
+   set `sha256` to the output of `shasum -a 256 AgentBar.app.zip`, push, then
+   verify with `brew audit --cask michalstrnadel/tap/agentbar` (and
+   `brew style` on the tap checkout).

@@ -14,6 +14,12 @@ All notable changes to AgentBar are documented here. This project follows
   (`Scripts/test/antigravity-watcher-test.sh`): synthetic turn transcript walks
   thinking → permission → done against the running app, now for both the
   desktop and the CLI brain root.
+- README troubleshooting entry for the Homebrew version drift: updating through
+  the in-app updater leaves brew's install record on the old version until
+  `brew upgrade --cask agentbar` re-syncs it. The tap's own README now documents
+  install, upgrade, the quarantine postflight, and how the cask tracks releases;
+  the CONTRIBUTING release checklist spells out the cask bump (sha256 +
+  `brew audit`).
 
 ### Fixed
 - Antigravity CLI (`agy`) sessions never appeared in the menu. The liveness
