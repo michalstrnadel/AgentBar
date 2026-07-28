@@ -13,8 +13,8 @@
 </p>
 
 AgentBar is a lightweight, native macOS menu bar app that shows the live state of your
-AI coding sessions — Claude Code, Codex, Cursor CLI, Gemini CLI, plus GitHub Copilot
-and Google Antigravity in the same bar. Each agent gets its own mark built from its
+AI coding sessions — Claude Code and Claude Cowork, Codex, Cursor CLI, Gemini CLI,
+plus GitHub Copilot and Google Antigravity in the same bar. Each agent gets its own mark built from its
 real identity — Clawd the crab for Claude, the OpenAI knot with a braille dot-matrix
 for Codex, the official pixel-art head for Copilot, the pixel rainbow arch for
 Antigravity — and the bar always surfaces the session that needs you most.
@@ -168,6 +168,7 @@ rm -rf ~/.agentbar
 | Agent | Live status | Open | Mascot | Notes |
 |---|---|---|---|---|
 | Claude Code (CLI + desktop) | full | yes | Clawd the crab | hooks: prompt, tool, permission, stop, lifecycle |
+| Claude Cowork (desktop) | working / approval / question / done | yes | Clawd the crab | watched, not hooked: Cowork gives each session a throwaway config dir, so there is nothing to install into. `CoworkWatcher` reads the audit log the app writes per session; approvals are answered in the app |
 | Codex CLI | turn-complete | yes | knot + braille dot-matrix | via Codex `notify` (auto-installed); no per-tool granularity upstream |
 | Cursor CLI | working / done | yes | pointer | hooks in `~/.cursor/hooks.json` (auto-wired if Cursor is installed) |
 | Gemini CLI | working / done | yes | spark | hooks in `~/.gemini/settings.json` (auto-wired if Gemini is installed) |

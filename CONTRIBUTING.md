@@ -24,6 +24,7 @@ open build/AgentBar.app
 ./Scripts/test/permission-hook-test.sh    # hook protocol tests
 ./Scripts/test/cli-test.sh                # cross-platform CLI tests
 ./Scripts/test/antigravity-watcher-test.sh # live-app integration test (needs the app running)
+./Scripts/test/cowork-watcher-test.sh     # live-app integration test (needs AgentBar + Claude.app running)
 ```
 
 `swift build` works for quick compile checks and SourceKit-LSP; the shippable app

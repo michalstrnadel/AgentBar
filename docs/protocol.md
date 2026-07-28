@@ -11,7 +11,7 @@ locks. All timestamps (`ts`) are Unix seconds.
 
 ```
 ~/.agentbar/
-  state.d/     one JSON per live session        (writer: hooks; reader: frontends)
+  state.d/     one JSON per live session        (writer: hooks, or a frontend watcher; reader: frontends)
   requests.d/  one JSON per pending approval    (writer: permission hook)
   answers.d/   one JSON per user decision       (writer: frontends; reader: the hook)
   watcher.json frontend presence heartbeat      (writer: CLI watch/waybar)
@@ -34,6 +34,7 @@ max 64 chars (fallback `"unknown"`). The file name is the session's identity;
   "cwd": "/path/to/project",
   "sessionId": "abc-123",
   "entrypoint": "cli",         // "cli" | "claude-desktop" | "" — which surface hosts it
+                               // "claude-desktop" also covers Cowork: the row opens the app, not a terminal
   "term_program": "WarpTerminal", // $TERM_PROGRAM of the hosting terminal ("" ok)
   "pid": 12345,                // the agent process (hook's ppid) — liveness handle
   "started": true,             // false = session opened but no real activity yet
@@ -114,3 +115,10 @@ A new frontend only needs: read `state.d` (apply the pruning rules), optionally
 read `requests.d` and write `answers.d`, and maintain `watcher.json` if it wants
 hooks to block for it. A new agent only needs a bridge script that maps its hook
 events onto the `state.d` schema above (see `Scripts/hooks/*/` for examples).
+
+An agent with no usable hook mechanism can still be covered by a **watcher** in
+the frontend that upserts `state.d` files itself — same schema, same pruning
+rules. AgentBar does this for Antigravity (sparse hooks) and for Claude Cowork,
+which hands every session a throwaway config directory so there is nothing to
+install into. A watcher MUST leave newer hook writes alone and SHOULD stamp a
+`pid` that dies with the session, so the normal pruning rules clean up after it.

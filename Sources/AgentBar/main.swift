@@ -6,11 +6,13 @@ import Cocoa
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let controller = StatusItemController()
     private let antigravityWatcher = AntigravityWatcher()
+    private let coworkWatcher = CoworkWatcher()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller.start()
         HookInstaller.installIfNeeded()
         antigravityWatcher.start()
+        coworkWatcher.start()
     }
 }
 

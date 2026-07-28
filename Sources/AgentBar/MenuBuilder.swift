@@ -444,7 +444,11 @@ enum MenuBuilder {
         let menu = NSMenu()
         menu.delegate = controller
         let agent = Agent.byID(s.agentID)
-        let note = NSMenuItem(title: "Can't show the request for \(agent.name)",
+        // Cowork puts the tool name in the label even though it writes no request
+        // file — say what is being asked instead of only that we can't show it.
+        let note = NSMenuItem(title: s.label.isEmpty
+                              ? "Can't show the request for \(agent.name)"
+                              : "Waiting on: \(s.label)",
                               action: nil, keyEquivalent: "")
         note.isEnabled = false
         menu.addItem(note)
@@ -459,7 +463,9 @@ enum MenuBuilder {
             item.representedObject = s
             menu.addItem(item)
         }
-        let open = NSMenuItem(title: "Open in terminal",
+        // App-hosted sessions (Cowork) answer the prompt in the app, not a terminal.
+        let hostedInApp = s.entrypoint == "claude-desktop" || s.entrypoint == "antigravity-app"
+        let open = NSMenuItem(title: hostedInApp ? "Answer in \(agent.name)" : "Open in terminal",
                               action: #selector(StatusItemController.sessionRowClicked(_:)),
                               keyEquivalent: "")
         open.target = controller

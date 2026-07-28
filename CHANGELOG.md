@@ -10,10 +10,20 @@ All notable changes to AgentBar are documented here. This project follows
 - The README demo GIF generator is checked in as `Scripts/demo/demo-gif.swift`
   (#10); it reads mascot frames from the shipped sprite sources, so the GIF can
   be regenerated after any sprite change.
+- **Claude Cowork sessions now show up.** Cowork (the agent mode in the Claude
+  desktop app) is watched directly instead of through hooks: `CoworkWatcher`
+  reads the audit log the app writes for every session and reports working,
+  "needs approval" (with the tool being asked about), AskUserQuestion and done.
+  Rows are anchored to the Claude app's pid, so quitting Claude clears them, and
+  a click focuses the app where the prompt lives.
 - Integration test for the Antigravity liveness watcher
   (`Scripts/test/antigravity-watcher-test.sh`): synthetic turn transcript walks
   thinking → permission → done against the running app, now for both the
   desktop and the CLI brain root.
+- Integration test for the Cowork watcher
+  (`Scripts/test/cowork-watcher-test.sh`): a staged session walks thinking →
+  permission → thinking → question → done against the running app, including a
+  multi-megabyte audit line.
 - README troubleshooting entry for the Homebrew version drift: updating through
   the in-app updater leaves brew's install record on the old version until
   `brew upgrade --cask agentbar` re-syncs it. The tap's own README now documents
@@ -22,6 +32,10 @@ All notable changes to AgentBar are documented here. This project follows
   `brew audit`).
 
 ### Fixed
+- An approval row for an agent that writes no request file used to say "Can't
+  show the request" and offer "Open in terminal" even when the session lives in
+  an app. It now names the tool being asked about and offers "Answer in
+  Claude" / "Answer in Antigravity" for app-hosted sessions.
 - Antigravity CLI (`agy`) sessions never appeared in the menu. The liveness
   watcher only scanned the desktop app's `~/.gemini/antigravity/brain`, while
   the CLI keeps its own tree under `~/.gemini/antigravity-cli/brain` — and the
