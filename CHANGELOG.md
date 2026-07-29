@@ -3,6 +3,33 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.10.2 - 2026-07-29
+
+### Fixed
+- **The island opens on arrival, not on presence.** Opening now requires the
+  pointer to actually *travel* into the notch zone — a pointer that was already
+  parked there (reading a tab title, left behind by a Space switch) opens
+  nothing. Push up → 0.3 s dwell → open; leave → 0.35 s grace → close. The pill
+  itself is a hover target again too, which is what makes the floating pill on
+  notch-less displays openable at all.
+- **The pill tucks fully inside the physical island.** Drawn a hair narrower
+  than the notch (its width − 10 pt), so its corners no longer poke out past
+  the notch's curved bottom edge. Every size still comes from the screen's own
+  reported geometry at runtime — each MacBook's notch, any scaling mode, gets
+  its own numbers, and displays without a notch keep the centred floating pill.
+- **Rows never wrap.** A long task name used to wrap to a second line inside
+  the fixed row height, shoving the mascot half out of view and tearing the
+  panel apart. Every row label is a single truncating line now.
+
+### Changed
+- **Builds sign with a stable identity, so macOS finally remembers.** TCC keys
+  permission grants to the code-signing identity, and an ad-hoc signature is a
+  brand-new identity every build — that is why the "Documents access" dialog
+  kept coming back. `build.sh` now signs with a local `AgentBar Local Signing`
+  certificate when one exists (ad-hoc fallback without it), release builds
+  share that certificate, and grants survive rebuilds and cask upgrades alike
+  (#9). CONTRIBUTING shows the one-time cert setup.
+
 ## 1.10.1 - 2026-07-29
 
 ### Added
