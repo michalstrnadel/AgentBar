@@ -6,6 +6,12 @@ All notable changes to AgentBar are documented here. This project follows
 ## Unreleased
 
 ### Fixed
+- **The menu bar mark keeps its place across island↔bar switches.** macOS
+  deletes a status item's remembered position the moment the item is hidden
+  (verified on macOS 26), so every return to the menu bar re-inserted the mark
+  at the far left — which is the *hidden* section under menu bar managers like
+  Ice. AgentBar now stashes the slot before hiding and restores it before
+  showing, so the mark comes back exactly where you left it.
 - **Only one AgentBar runs at a time.** A dev build launched next to the
   /Applications install used to fight it over the same island — two panels in
   the same spot, and whichever happened to be stacked on top won, so fixes

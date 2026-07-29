@@ -60,8 +60,25 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func requestsChanged() { refreshOpenMenu() }
 
     /// In Island mode the mark is hidden — the panel is the whole surface.
+    ///
+    /// Hiding an NSStatusItem DELETES its remembered slot ("NSStatusItem
+    /// Preferred Position", distance from the bar's right edge) — verified
+    /// empirically on macOS 26. A re-shown item therefore lands at the far
+    /// left of the item area, which is exactly the hidden section of menu bar
+    /// managers like Ice. So: stash the slot before hiding, write it back
+    /// before showing, and the mark returns where the user left it.
     func applyPresentation() {
-        statusItem.isVisible = Presentation.current.showsStatusItem
+        let show = Presentation.current.showsStatusItem
+        let d = UserDefaults.standard
+        // AppKit auto-generates "Item-0" for an app's first status item.
+        let positionKey = "NSStatusItem Preferred Position \(statusItem.autosaveName ?? "Item-0")"
+        if !show, statusItem.isVisible, let slot = d.object(forKey: positionKey) {
+            d.set(slot, forKey: "stashedStatusItemPosition")
+        }
+        if show, !statusItem.isVisible, let slot = d.object(forKey: "stashedStatusItemPosition") {
+            d.set(slot, forKey: positionKey)
+        }
+        statusItem.isVisible = show
     }
 
     // MARK: - Global Allow/Deny shortcut (opt-in)
