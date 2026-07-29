@@ -75,6 +75,20 @@ enum IslandGeometry {
                       width: width, height: height)
     }
 
+    /// Where a pointer means "open the island": the menu-bar strip over the notch
+    /// (or the same band on a notchless display). The pill itself is deliberately
+    /// NOT a trigger — it floats exactly where maximized windows keep their tab
+    /// strips, so a pill-hover trigger flaps whenever the pointer works there.
+    /// The bar strip is the one place at the top no app content ever occupies,
+    /// and the screen edge makes it the easiest possible target to hit.
+    static func hoverZone(on screen: NSScreen) -> NSRect {
+        let bar = barHeight(on: screen)
+        let width = notch(on: screen)?.width ?? 220
+        let centerX = notch(on: screen)?.midX ?? screen.frame.midX
+        return NSRect(x: centerX - width / 2, y: screen.frame.maxY - bar,
+                      width: width, height: bar)
+    }
+
     // No fullscreen check lives here any more. The original one — "visibleFrame
     // reaches the top of the screen" — never fired at all on a notched Mac, and when
     // it was replaced with a working one the island promptly vanished from the

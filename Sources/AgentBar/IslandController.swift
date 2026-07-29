@@ -31,6 +31,10 @@ final class IslandController: NSObject {
     private var collapseWork: DispatchWorkItem?
     private var expandWork: DispatchWorkItem?
     private var flashWork: DispatchWorkItem?
+    /// The pointer poll that owns hover truth. Tracking-area events can't: while
+    /// collapsed the panel is click-through (no events at all), and a Space switch
+    /// slides the panel under a pointer without ever crossing an edge.
+    private var pointerTimer: Timer?
     /// A just-given answer, echoed in the pill for a beat — "✓ Allowed" — before
     /// the island goes back to reporting.
     private var flash: (text: String, tint: NSColor)?
@@ -53,7 +57,16 @@ final class IslandController: NSObject {
         super.init()
         panel.contentView = content
         content.autoresizingMask = [.width, .height]
-        content.onHover = { [weak self] inside in self?.hover(inside) }
+        content.onHover = { [weak self] inside in
+            guard let self else { return }
+            // Leaving the panel upward into the notch strip is still "on the
+            // island" — the poll owns that zone; only real departures count.
+            if !inside, let screen = IslandGeometry.screen,
+               NSMouseInRect(NSEvent.mouseLocation, IslandGeometry.hoverZone(on: screen), false) {
+                return
+            }
+            self.hover(inside)
+        }
         // The panel is always dark, whatever the system is set to. Without this the
         // reused approval strip and mini-diff render for a light background and go
         // nearly invisible on it.
@@ -61,15 +74,17 @@ final class IslandController: NSObject {
     }
 
     func start() {
-        // Going in or out of fullscreen, and switching desktop, change nothing about
-        // the sessions — so without these the panel would sit hidden (or floating over
-        // someone's fullscreen video) until an agent happened to do something.
+        // Switching desktop or plugging a display changes where the panel belongs,
+        // and nothing session-side would trigger a re-layout.
         NSWorkspace.shared.notificationCenter.addObserver(
             self, selector: #selector(surroundingsChanged),
             name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
         NotificationCenter.default.addObserver(
             self, selector: #selector(surroundingsChanged),
             name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        pointerTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) {
+            [weak self] _ in self?.checkPointer()
+        }
         mascot.sink("island") { [weak self] image, word in
             guard let self else { return }
             let textChanged = word != self.word
@@ -107,6 +122,8 @@ final class IslandController: NSObject {
     func stop() {
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         NotificationCenter.default.removeObserver(self)
+        pointerTimer?.invalidate()
+        pointerTimer = nil
         mascot.sink("island", nil)
         expandWork?.cancel()
         collapseWork?.cancel()
@@ -118,28 +135,24 @@ final class IslandController: NSObject {
     /// The Space or the displays changed. Rebuild now for the common case, and once
     /// more after the transition settles — the notification lands while the incoming
     /// windows are still animating into place, so an immediate look can still see
-    /// the old shape.
+    /// the old shape. (The pointer poll corrects any stale hover on its own tick.)
     @objc private func surroundingsChanged() {
-        resyncHover()
         rebuild()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
-            self?.resyncHover()
-            self?.rebuild()
-        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in self?.rebuild() }
     }
 
-    /// A Space switch slides the panel under a pointer that never crossed its edge,
-    /// so the tracking area's enter/exit state can be stale — most visibly a panel
-    /// arriving on the new Space fully open with the pointer nowhere near it. Ask
-    /// the geometry instead of trusting the last event.
-    private func resyncHover() {
-        let inside = panel.isVisible && NSMouseInRect(NSEvent.mouseLocation, panel.frame, false)
-        hovered = inside
-        if !inside {
-            expandWork?.cancel()
-            collapseWork?.cancel()
-            wantsExpanded = false
-        }
+    /// The single source of hover truth, read from geometry eight times a second:
+    /// opening means the pointer is up in the notch strip — where no app content
+    /// ever lives, so working a browser's tab bar under the pill can't open it —
+    /// and staying open means it is anywhere on the expanded panel.
+    private func checkPointer() {
+        guard Presentation.current.showsIsland, panel.isVisible, flash == nil,
+              let screen = IslandGeometry.screen else { return }
+        let mouse = NSEvent.mouseLocation
+        let inZone = NSMouseInRect(mouse, IslandGeometry.hoverZone(on: screen), false)
+        let inPanel = mode == .expanded && NSMouseInRect(mouse, panel.frame, false)
+        let inside = inZone || inPanel
+        if inside != hovered { hover(inside) }
     }
 
     func apply(sessions: [Session], requests: [ApprovalRequest]) {
@@ -173,6 +186,10 @@ final class IslandController: NSObject {
         // (`islandExpandDebug` holds it open, for screenshots and layout work.)
         let held = UserDefaults.standard.bool(forKey: "islandExpandDebug")
         mode = (wantsExpanded || held) ? .expanded : .collapsed
+        // The collapsed pill is click-through: it floats over whatever the frontmost
+        // window keeps at its top edge (tab strips, toolbars), and a pill that eats
+        // those clicks is worse than no pill. Only the open panel takes the mouse.
+        panel.ignoresMouseEvents = mode == .collapsed && !held
         layout(animated: animated)
     }
 

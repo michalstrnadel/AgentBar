@@ -13,15 +13,17 @@ All notable changes to AgentBar are documented here. This project follows
   frames from the shipped sprite sources like the menu-bar one.
 
 ### Fixed
-- The island snapped open and shut in a rhythm while an agent was busy. Every
-  state-file tick recomputed the panel's shape from the *instantaneous* hover
-  state, bypassing both the open dwell and the close grace — a pointer grazing
-  an edge was enough. The dwell and grace timers now own that decision; ticks
-  only refresh the content.
-- Switching Spaces could land the panel on the new desktop fully open with the
-  pointer nowhere near it: the Space slides the panel under the pointer without
-  any enter/exit event, so the hover state went stale. It's now re-read from
-  the actual pointer position when the Space or displays change.
+- **The island opens from the notch now, and the pill is click-through.** The
+  pill floats exactly where a maximized window keeps its tab strip, so opening
+  on pill-hover flapped the panel open and shut the whole time the pointer
+  worked a browser's tabs — and the pill ate clicks meant for them. Opening now
+  means pushing the pointer up into the notch strip itself (the menu-bar band,
+  where no app content ever lives; the screen edge makes it the easiest target
+  there is), and the collapsed pill passes clicks straight through to whatever
+  is under it. Hover truth comes from a lightweight pointer poll, which also
+  cures two staleness bugs: state-file ticks bypassing the open-dwell and
+  close-grace timers, and a Space switch landing the panel on the new desktop
+  fully open because no enter/exit event ever fired.
 
 ## 1.10.0 - 2026-07-29
 

@@ -204,11 +204,13 @@ the notch:
   what it's doing, plus a count once two or more sessions are live. Nothing running,
   and it shrinks to the mark alone. It never grows on its own: even a pending
   approval stays a pill that says *approve?*.
-- **Point at it and it opens** — whatever needs you leads as a boxed hero row:
-  what you asked for ("You: fix the auth bug in middleware"), a coloured status
-  line, and chips naming the agent, model, the terminal (or app) it lives in and
-  how long it's been at it. The other sessions follow as quiet one-liners named
-  by their task. Click a row to jump to that session.
+- **Push the pointer up to the notch and it opens** — whatever needs you leads as
+  a boxed hero row: what you asked for ("You: fix the auth bug in middleware"), a
+  coloured status line, and chips naming the agent, model, the terminal (or app)
+  it lives in and how long it's been at it. The other sessions follow as quiet
+  one-liners named by their task. Click a row to jump to that session. The
+  collapsed pill itself is click-through and never opens by accident: tab strips
+  and toolbars living at the top of a maximized window stay fully usable under it.
 - **Answer right there** — a waiting approval is a proper *Permission Request*
   card: the tool and its target, the mini-diff with **+3 −1** counts, **Allow** /
   **Deny** in front and *Always allow* / *Answer in terminal* quiet beside them.
