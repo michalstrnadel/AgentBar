@@ -1,9 +1,9 @@
 import Cocoa
 
-/// The island surface: a panel that stays out of the way until an agent is doing
-/// something, drops out of the notch while it works, and opens into the full
-/// session list — with the pending approval answerable in place — when the user
-/// looks at it or an agent needs them.
+/// The island surface: a small pill under the notch that says what the agents are
+/// doing, and opens into the full session list — with the pending approval
+/// answerable in place — when the user puts the pointer on it. It only ever grows
+/// on purpose; nothing unfolds over the screen on its own.
 final class IslandController: NSObject {
     /// The pill is always on screen — it is the app's presence, the way the menu bar
     /// mark is. With nothing running it is just the mark; work adds a line of text.
@@ -47,6 +47,15 @@ final class IslandController: NSObject {
     }
 
     func start() {
+        // Going in or out of fullscreen, and switching desktop, change nothing about
+        // the sessions — so without these the panel would sit hidden (or floating over
+        // someone's fullscreen video) until an agent happened to do something.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(surroundingsChanged),
+            name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(surroundingsChanged),
+            name: NSApplication.didChangeScreenParametersNotification, object: nil)
         mascot.sink("island") { [weak self] image, word in
             guard let self else { return }
             let textChanged = word != self.word
@@ -76,8 +85,19 @@ final class IslandController: NSObject {
     }
 
     func stop() {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        NotificationCenter.default.removeObserver(self)
         mascot.sink("island", nil)
         panel.orderOut(nil)
+    }
+
+    /// The Space or the displays changed. Rebuild now for the common case, and once
+    /// more after the transition settles — the notification lands while the incoming
+    /// fullscreen window is still animating into place, so an immediate look can
+    /// still see the old shape.
+    @objc private func surroundingsChanged() {
+        rebuild()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in self?.rebuild() }
     }
 
     func apply(sessions: [Session], requests: [ApprovalRequest]) {
