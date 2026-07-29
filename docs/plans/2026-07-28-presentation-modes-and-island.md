@@ -32,6 +32,12 @@ Two more things settled during the build:
   as the draft assumed. Overlaying the bar meant fighting the notch for space and
   covering the user's own menu bar and clock, for no gain. Nothing has to dodge
   anything now.
+- **No fullscreen exception.** The draft said hide the island while a window is
+  fullscreen. Built, and immediately wrong in use: a fullscreen terminal is
+  where the agents run, so hiding there removes the island from the only screen
+  that matters. It stays visible everywhere. (The geometry test the draft
+  implied — `visibleFrame` reaching the top of the screen — never fired at all
+  on a notched Mac, where `visibleFrame` reads identically in both states.)
 - **The panel is forced to dark appearance** (`NSAppearance(named: .darkAqua)`).
   The reused `ApprovalContextView` / mini-diff render for a light background
   otherwise and go nearly invisible on near-black.

@@ -45,12 +45,9 @@ All notable changes to AgentBar are documented here. This project follows
   `brew audit`).
 
 ### Fixed
-- The island stayed on screen over fullscreen windows. It was meant to step aside,
-  but the check asked whether `visibleFrame` reached the top of the screen — which
-  on a notched Mac reads the same fullscreen or not, so it never once fired.
-  Fullscreen is now recognised from the window shapes themselves; a merely
-  maximised window still keeps the island, and it comes back the moment you leave
-  fullscreen.
+- The island is visible over fullscreen apps. It was originally meant to step
+  aside there; that was the wrong call — a fullscreen terminal or editor is where
+  the agents actually run, so it is the last place the island should vanish from.
 - An approval row for an agent that writes no request file used to say "Can't
   show the request" and offer "Open in terminal" even when the session lives in
   an app. It now names the tool being asked about and offers "Answer in
