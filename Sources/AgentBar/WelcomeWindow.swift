@@ -17,6 +17,7 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var preview: PresentationPreview!
     private var radios: [NSButton] = []
+    private var colorRadios: [NSButton] = []
     private var modeCaption: NSTextField!
     private var wiredLabel: NSTextField!
     private var showBox: NSButton!
@@ -32,8 +33,12 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         mascot.sink("welcome") { [weak self] image, word in
             self?.preview.set(image: image, word: word)
         }
+        updatePreviewMascot()
+    }
+
+    private func updatePreviewMascot() {
         mascot.update(sessions: [Session(preview: .thinking, project: "AgentBar", label: "Thinking…")],
-                      systemColor: UserDefaults.standard.bool(forKey: "systemColor"))
+                      systemColor: IconColor.system)
     }
 
     // MARK: - Build
@@ -52,7 +57,7 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         w.delegate = self
         w.center()
 
-        let stack = NSStackView(views: [header(), previewBox(), picker(), footer()])
+        let stack = NSStackView(views: [header(), previewBox(), picker(), colorPicker(), footer()])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 16
@@ -136,6 +141,23 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         return col
     }
 
+    /// Colored marks or monochrome templates — the same choice both menus offer,
+    /// here next to the preview that shows what it means.
+    private func colorPicker() -> NSView {
+        let label = NSTextField(labelWithString: "Mark color:")
+        label.font = .systemFont(ofSize: NSFont.systemFontSize)
+        let row = NSStackView(views: [label])
+        row.orientation = .horizontal
+        row.spacing = 18
+        for (i, title) in ["Color", "System"].enumerated() {
+            let b = NSButton(radioButtonWithTitle: title, target: self, action: #selector(pickColor(_:)))
+            b.tag = i
+            colorRadios.append(b)
+            row.addArrangedSubview(b)
+        }
+        return row
+    }
+
     private func footer() -> NSView {
         wiredLabel = NSTextField(wrappingLabelWithString: " ")
         wiredLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
@@ -174,6 +196,9 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         for (i, b) in radios.enumerated() {
             b.state = Presentation.allCases[i] == mode ? .on : .off
         }
+        for (i, b) in colorRadios.enumerated() {
+            b.state = (i == 1) == IconColor.system ? .on : .off
+        }
         preview.mode = mode
         modeCaption.stringValue = mode.caption
         showBox.state = Self.showOnLaunch ? .on : .off
@@ -194,6 +219,12 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         let mode = Presentation.allCases[sender.tag]
         Presentation.current = mode
         reload()
+    }
+
+    @objc private func pickColor(_ sender: NSButton) {
+        IconColor.system = sender.tag == 1
+        reload()
+        updatePreviewMascot()
     }
 
     @objc private func toggleShowOnLaunch() {

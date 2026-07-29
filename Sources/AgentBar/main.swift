@@ -26,11 +26,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.onChange = { [weak self] sessions in
             guard let self else { return }
             self.sessions = sessions
-            self.mascot.update(sessions: sessions, systemColor: self.controller.systemColor)
+            self.mascot.update(sessions: sessions, systemColor: IconColor.system)
             self.controller.apply(sessions)
             if self.islandRunning {
                 self.island.apply(sessions: sessions, requests: self.requestStore.requests)
             }
+        }
+        IconColor.onChange = { [weak self] system in
+            guard let self else { return }
+            self.mascot.update(sessions: self.sessions, systemColor: system)
         }
         requestStore.onChange = { [weak self] in
             guard let self else { return }
@@ -66,6 +70,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             island.stop()
         }
+    }
+}
+
+// Two copies running at once — a dev build next to the /Applications install —
+// fight over the same island: each draws its own panel in the same spot and
+// whichever window is stacked on top wins, so fixes appear and disappear at
+// random. The copy the user just launched is the one they mean; every other
+// running AgentBar is told to quit.
+if let bundleID = Bundle.main.bundleIdentifier {
+    let me = ProcessInfo.processInfo.processIdentifier
+    for other in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        where other.processIdentifier != me {
+        other.terminate()
     }
 }
 

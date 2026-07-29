@@ -432,6 +432,19 @@ final class IslandController: NSObject {
     @objc private func showMenu(_ sender: NSButton) {
         let menu = NSMenu()
         menu.addItem(withTitle: "Appearance…", action: #selector(openWelcome), keyEquivalent: "")
+        // In Island-only mode this menu is the only menu — the colour choice the
+        // status item dropdown offers has to be reachable here too.
+        let colorParent = NSMenuItem(title: "Color", action: nil, keyEquivalent: "")
+        let colorSub = NSMenu()
+        for (title, system) in [("Color", false), ("System", true)] {
+            let item = NSMenuItem(title: title, action: #selector(chooseColor(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = system
+            item.state = IconColor.system == system ? .on : .off
+            colorSub.addItem(item)
+        }
+        colorParent.submenu = colorSub
+        menu.addItem(colorParent)
         menu.addItem(withTitle: "Global Allow / Deny shortcut…", action: #selector(openSettings),
                      keyEquivalent: "")
         menu.addItem(.separator())
@@ -443,6 +456,10 @@ final class IslandController: NSObject {
             item.target = self
         }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    @objc private func chooseColor(_ sender: NSMenuItem) {
+        IconColor.system = (sender.representedObject as? Bool) ?? false
     }
 
     @objc private func openWelcome() { WelcomeWindow.shared.show() }

@@ -22,13 +22,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// System mode renders monochrome templates that follow the menu bar; Color mode
-    /// uses each agent's brand artwork. Persisted across launches.
+    /// uses each agent's brand artwork. Shared with the island's menu and the
+    /// Appearance window through `IconColor`, whose onChange repaints every surface.
     var systemColor: Bool {
-        get { UserDefaults.standard.bool(forKey: "systemColor") }
-        set {
-            UserDefaults.standard.set(newValue, forKey: "systemColor")
-            mascot.update(sessions: sessions, systemColor: newValue)
-        }
+        get { IconColor.system }
+        set { IconColor.system = newValue }
     }
 
     func start() {

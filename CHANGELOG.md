@@ -5,6 +5,18 @@ All notable changes to AgentBar are documented here. This project follows
 
 ## Unreleased
 
+### Fixed
+- **Only one AgentBar runs at a time.** A dev build launched next to the
+  /Applications install used to fight it over the same island — two panels in
+  the same spot, and whichever happened to be stacked on top won, so fixes
+  appeared and disappeared at random. A newly launched copy now asks any other
+  running AgentBar to quit and takes over.
+- **The Color choice is reachable without the menu bar.** System/Color used to
+  live only in the status item dropdown, so Island-only mode had no way to
+  switch it. It now sits in the island's ⋯ menu and in the Appearance window
+  (with the live preview showing what each mode looks like), and changing it
+  anywhere repaints every surface immediately.
+
 ### Changed
 - Every island row carries its agent's mark now, not just the hero — the mark
   says *who*, the coloured dot keeps saying *what state*, and all row text sits
