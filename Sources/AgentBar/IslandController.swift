@@ -266,8 +266,7 @@ final class IslandController: NSObject {
             // The list leads with whatever needs the user, so the first row is the
             // hero — boxed, with the mark; the rest stay one quiet line each.
             let style: IslandRowView.Style = i == 0 ? .hero : .compact
-            let mark = style == .hero
-                ? IconRenderer.shared.sprite(for: Agent.byID(s.agentID)).restingColor : nil
+            let mark = IconRenderer.shared.sprite(for: Agent.byID(s.agentID)).restingColor
             let row = IslandRowView(session: s, mark: mark, style: style) { [weak self] session in
                 self?.click(session)
             }

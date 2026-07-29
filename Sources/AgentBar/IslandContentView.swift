@@ -140,7 +140,7 @@ final class IslandRowView: NSView {
 
         switch style {
         case .hero:    buildHero(mark: mark, chips: chips)
-        case .compact: buildCompact(chips: chips)
+        case .compact: buildCompact(mark: mark, chips: chips)
         }
     }
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -194,8 +194,13 @@ final class IslandRowView: NSView {
         ])
     }
 
-    /// Dot, name, chips — one quiet line.
-    private func buildCompact(chips: NSStackView) {
+    /// Mark, dot, name, chips — one quiet line. Same mark as the hero, so every
+    /// row says who it belongs to; the dot keeps carrying the state colour.
+    private func buildCompact(mark: NSImage?, chips: NSStackView) {
+        markView.image = mark.map { $0.isTemplate ? IconRenderer.tint($0, with: .white) : $0 }
+        markView.imageScaling = .scaleNone
+        markView.translatesAutoresizingMaskIntoConstraints = false
+
         let title = NSTextField(labelWithAttributedString: Self.compactTitle(session))
         title.lineBreakMode = .byTruncatingTail
         // A wrapped task name would overflow the fixed row height and tear the
@@ -205,10 +210,15 @@ final class IslandRowView: NSView {
         title.translatesAutoresizingMaskIntoConstraints = false
         chips.translatesAutoresizingMaskIntoConstraints = false
 
+        addSubview(markView)
         addSubview(title)
         addSubview(chips)
         NSLayoutConstraint.activate([
-            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            // Leading 10 + box 20 + gap 10 lands the text at the hero column's x.
+            markView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            markView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            markView.widthAnchor.constraint(equalToConstant: Self.markBox),
+            title.leadingAnchor.constraint(equalTo: markView.trailingAnchor, constant: 10),
             title.centerYAnchor.constraint(equalTo: centerYAnchor),
             chips.leadingAnchor.constraint(greaterThanOrEqualTo: title.trailingAnchor, constant: 8),
             chips.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),

@@ -3,6 +3,13 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+- Every island row carries its agent's mark now, not just the hero — the mark
+  says *who*, the coloured dot keeps saying *what state*, and all row text sits
+  on the hero's column.
+
 ## 1.10.2 - 2026-07-29
 
 ### Fixed
