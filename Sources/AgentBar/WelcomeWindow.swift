@@ -275,34 +275,34 @@ final class PresentationPreview: NSView {
         }
     }
 
-    /// The panel dropping out of the notch, centred at the top.
+    /// The collapsed pill, centred under the notch — the resting state, which is
+    /// what the island actually looks like most of the time. Same proportions the
+    /// real one uses: clear of the menu bar, rounded all round, mark then text.
     private func drawIsland(in r: NSRect, barHeight: CGFloat) {
         let text = NSAttributedString(string: word.isEmpty ? "AgentBar" : "\(word)…", attributes: [
-            .font: NSFont.menuFont(ofSize: 12),
-            .foregroundColor: NSColor.white,
+            .font: NSFont.monospacedSystemFont(ofSize: 10.5, weight: .medium),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.9),
         ])
+        let hPad: CGFloat = 12
         let markW = mark?.size.width ?? 0
-        let w = max(150, markW + text.size().width + 44)
-        let h: CGFloat = 34
-        let panel = NSRect(x: r.midX - w / 2, y: r.maxY - h, width: w, height: h)
-        // Square at the top so it reads as hanging off the screen edge, round below.
-        let path = NSBezierPath(roundedRect: panel.insetBy(dx: 0, dy: -12), xRadius: 14, yRadius: 14)
-        NSColor.black.withAlphaComponent(0.92).setFill()
+        let w = markW + 8 + text.size().width + hPad * 2
+        let h: CGFloat = 26
+        let panel = NSRect(x: (r.midX - w / 2).rounded(),
+                           y: r.maxY - barHeight - IslandGeometry.topGap - h,
+                           width: w.rounded(), height: h)
+        NSColor.black.withAlphaComponent(0.94).setFill()
+        let path = NSBezierPath(roundedRect: panel, xRadius: 12, yRadius: 12)
         path.fill()
+        NSColor.white.withAlphaComponent(0.10).setStroke()
+        path.lineWidth = 1
+        path.stroke()
 
-        var x = panel.minX + 14
+        var x = panel.minX + hPad
         if let mark {
-            draw(mark, at: NSPoint(x: x, y: panel.midY - mark.size.height / 2 - 2), tint: .white)
+            draw(mark, at: NSPoint(x: x, y: panel.midY - mark.size.height / 2), tint: .white)
             x += markW + 8
         }
-        text.draw(at: NSPoint(x: x, y: panel.midY - text.size().height / 2 - 2))
-
-        // The live dot the real panel carries.
-        let dot: CGFloat = 6
-        NSColor(srgbRed: 0.40, green: 0.83, blue: 0.45, alpha: 1).setFill()
-        NSBezierPath(ovalIn: NSRect(x: panel.maxX - 14 - dot, y: panel.midY - dot / 2 - 2,
-                                    width: dot, height: dot)).fill()
-        _ = barHeight
+        text.draw(at: NSPoint(x: x, y: panel.midY - text.size().height / 2))
     }
 
     /// Template marks carry no colour of their own — paint them for the surface.

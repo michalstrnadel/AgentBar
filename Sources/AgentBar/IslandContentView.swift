@@ -1,9 +1,9 @@
 import Cocoa
 
-/// The island's dark panel: draws the rounded shape hanging off the top of the
-/// screen and stacks whatever the current state needs inside it. Square at the top
-/// (it is flush with the screen edge), rounded below, so it reads as growing out of
-/// the notch rather than floating over it.
+/// The island's dark panel: a rounded slab floating just under the menu bar,
+/// stacking whatever the current state needs inside it. Rounded on all four
+/// corners — it sits clear of the screen edge, so nothing has to dodge the notch
+/// and the user's own menu bar stays usable.
 final class IslandContentView: NSView {
     static let corner: CGFloat = 14
     static let hPad: CGFloat = 14
