@@ -44,6 +44,7 @@ welcome window:
 ```bash
 defaults write com.michalstrnadel.agentbar presentationMode -string island  # or menuBar / both
 defaults delete com.michalstrnadel.agentbar showWelcomeOnLaunch             # first-run window back
+defaults write com.michalstrnadel.agentbar islandExpandDebug -bool true     # hold the island open (layout work)
 ```
 
 The whole app ↔ hook protocol is files in `~/.agentbar/` (`state.d/`, `requests.d/`,

@@ -21,7 +21,10 @@ final class IslandContentView: NSView {
         // edge), rounded below. Filling in `draw(_:)` under a layer-backed tree came
         // out washed out — the shape belongs to the layer.
         wantsLayer = true
-        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.94).cgColor
+        // Solid, like the hardware it pretends to extend. Translucency here read as
+        // the window behind showing *through the notch*, which is exactly the
+        // illusion this panel must never break.
+        layer?.backgroundColor = NSColor.black.cgColor
         layer?.cornerRadius = Self.corner
         layer?.shadowColor = NSColor.black.cgColor
         layer?.shadowOpacity = 0.35
@@ -71,6 +74,16 @@ final class IslandContentView: NSView {
         stack.layoutSubtreeIfNeeded()
     }
 
+    /// Fade freshly set rows in, so a shape change arrives with its content
+    /// instead of popping it fully formed.
+    func fadeRowsIn(duration: TimeInterval) {
+        stack.alphaValue = 0
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = duration
+            stack.animator().alphaValue = 1
+        }
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let tracking { removeTrackingArea(tracking) }
@@ -86,15 +99,20 @@ final class IslandContentView: NSView {
 
     /// Layer colours are resolved once, so a light/dark switch has to re-stamp them.
     override func updateLayer() {
-        layer?.backgroundColor = NSColor.black.withAlphaComponent(0.94).cgColor
+        layer?.backgroundColor = NSColor.black.cgColor
     }
     override var wantsUpdateLayer: Bool { true }
 }
 
-/// One session inside the island: the animated mark, what it is working on, and
-/// chips naming the agent and where it lives. Clicking jumps to the session.
+/// One session inside the island. The first row is the hero — the session the
+/// panel is about right now: boxed, with the mark, a bold name and a status line
+/// that says in colour what it wants. The rest are quiet one-liners, so several
+/// sessions still fit under the notch. Clicking either jumps to the session.
 final class IslandRowView: NSView {
+    enum Style { case hero, compact }
+
     private let session: Session
+    private let style: Style
     private let onClick: (Session) -> Void
     private let markView = NSImageView()
     private var tracking: NSTrackingArea?
@@ -102,19 +120,12 @@ final class IslandRowView: NSView {
 
     static let markBox: CGFloat = 20
 
-    init(session: Session, mark: NSImage?, onClick: @escaping (Session) -> Void) {
+    init(session: Session, mark: NSImage?, style: Style, onClick: @escaping (Session) -> Void) {
         self.session = session
+        self.style = style
         self.onClick = onClick
         super.init(frame: .zero)
         wantsLayer = true
-
-        markView.image = mark.map { $0.isTemplate ? IconRenderer.tint($0, with: .white) : $0 }
-        markView.imageScaling = .scaleNone
-        markView.translatesAutoresizingMaskIntoConstraints = false
-
-        let title = NSTextField(labelWithAttributedString: Self.titleText(session))
-        title.lineBreakMode = .byTruncatingTail
-        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let chips = NSStackView(views: Self.chips(session))
         chips.orientation = .horizontal
@@ -122,60 +133,106 @@ final class IslandRowView: NSView {
         chips.setContentHuggingPriority(.required, for: .horizontal)
         chips.setContentCompressionResistancePriority(.required, for: .horizontal)
 
+        switch style {
+        case .hero:    buildHero(mark: mark, chips: chips)
+        case .compact: buildCompact(chips: chips)
+        }
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Mark, bold name, coloured status line, chips top-right — in its own box so
+    /// the eye lands here first.
+    private func buildHero(mark: NSImage?, chips: NSStackView) {
+        markView.image = mark.map { $0.isTemplate ? IconRenderer.tint($0, with: .white) : $0 }
+        markView.imageScaling = .scaleNone
+        markView.translatesAutoresizingMaskIntoConstraints = false
+
+        let title = NSTextField(labelWithAttributedString: Self.heroTitle(session))
+        title.lineBreakMode = .byTruncatingTail
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let top = NSStackView(views: [title, spacer, chips])
         top.orientation = .horizontal
         top.spacing = 8
 
-        var column: [NSView] = [top]
-        if let sub = Self.subtitleText(session) {
-            let subtitle = NSTextField(labelWithAttributedString: sub)
-            subtitle.lineBreakMode = .byTruncatingTail
-            column.append(subtitle)
-        }
-        let text = NSStackView(views: column)
+        let status = NSTextField(labelWithAttributedString: Self.heroStatus(session))
+        status.lineBreakMode = .byTruncatingTail
+
+        let text = NSStackView(views: [top, status])
         text.orientation = .vertical
         text.alignment = .leading
-        text.spacing = 2
+        text.spacing = 3
         text.translatesAutoresizingMaskIntoConstraints = false
 
         addSubview(markView)
         addSubview(text)
         NSLayoutConstraint.activate([
-            markView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
-            markView.topAnchor.constraint(equalTo: topAnchor, constant: 3),
+            markView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            markView.topAnchor.constraint(equalTo: topAnchor, constant: 12),
             markView.widthAnchor.constraint(equalToConstant: Self.markBox),
-            text.leadingAnchor.constraint(equalTo: markView.trailingAnchor, constant: 9),
-            text.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
-            text.topAnchor.constraint(equalTo: topAnchor, constant: 2),
-            text.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -2),
+            text.leadingAnchor.constraint(equalTo: markView.trailingAnchor, constant: 10),
+            text.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            text.topAnchor.constraint(equalTo: topAnchor, constant: 9),
+            text.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -9),
         ])
     }
-    required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Dot, name, chips — one quiet line.
+    private func buildCompact(chips: NSStackView) {
+        let title = NSTextField(labelWithAttributedString: Self.compactTitle(session))
+        title.lineBreakMode = .byTruncatingTail
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        title.translatesAutoresizingMaskIntoConstraints = false
+        chips.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(title)
+        addSubview(chips)
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            title.centerYAnchor.constraint(equalTo: centerYAnchor),
+            chips.leadingAnchor.constraint(greaterThanOrEqualTo: title.trailingAnchor, constant: 8),
+            chips.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            chips.centerYAnchor.constraint(equalTo: centerYAnchor),
+            heightAnchor.constraint(equalToConstant: 27),
+        ])
+    }
 
     // MARK: - Text
 
-    /// "project · branch", with the state's dot colour leading it.
-    private static func titleText(_ s: Session) -> NSAttributedString {
-        let out = NSMutableAttributedString()
-        out.append(NSAttributedString(string: "● ", attributes: [
-            .foregroundColor: dotColor(s),
-            .font: NSFont.systemFont(ofSize: 9),
-        ]))
+    private static func name(_ s: Session) -> String {
         var name = s.project.isEmpty ? "session" : s.project
         if let branch = s.gitBranch { name += " · \(branch)" }
-        out.append(NSAttributedString(string: name, attributes: [
-            .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+        return name
+    }
+
+    private static func heroTitle(_ s: Session) -> NSAttributedString {
+        NSAttributedString(string: name(s), attributes: [
+            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
             .foregroundColor: NSColor.white,
+        ])
+    }
+
+    private static func compactTitle(_ s: Session) -> NSAttributedString {
+        let out = NSMutableAttributedString(string: "● ", attributes: [
+            .foregroundColor: dotColor(s),
+            .font: NSFont.systemFont(ofSize: 8),
+        ])
+        out.append(NSAttributedString(string: name(s), attributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.92),
         ]))
         return out
     }
 
-    private static func subtitleText(_ s: Session) -> NSAttributedString? {
-        if s.state == .permission {
+    /// The hero's second line: what this session wants from the user, in its colour.
+    private static func heroStatus(_ s: Session) -> NSAttributedString {
+        let working = NSColor(srgbRed: 0.45, green: 0.72, blue: 1, alpha: 1)
+        switch s.state {
+        case .permission:
             let out = NSMutableAttributedString(string: "needs approval", attributes: [
-                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
                 .foregroundColor: IconRenderer.amberDot,
             ])
             if !s.label.isEmpty {
@@ -185,24 +242,39 @@ final class IslandRowView: NSView {
                 ]))
             }
             return out
+        case .question:
+            return NSAttributedString(string: "Claude asks", attributes: [
+                .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
+                .foregroundColor: IconRenderer.questionDot,
+            ])
+        case .idle, .done:
+            return NSAttributedString(string: "Done — click to jump", attributes: [
+                .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
+                .foregroundColor: NSColor(srgbRed: 0.40, green: 0.83, blue: 0.45, alpha: 1),
+            ])
+        case .thinking, .tool:
+            guard !s.label.isEmpty else {
+                return NSAttributedString(string: "Working…", attributes: [
+                    .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
+                    .foregroundColor: working,
+                ])
+            }
+            // "Bash  git push …" — the tool name carries the colour, the rest is quiet.
+            let parts = s.label.split(separator: ":", maxSplits: 1).map {
+                $0.trimmingCharacters(in: .whitespaces)
+            }
+            let out = NSMutableAttributedString(string: parts[0], attributes: [
+                .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
+                .foregroundColor: working,
+            ])
+            if parts.count > 1 {
+                out.append(NSAttributedString(string: "  \(parts[1])", attributes: [
+                    .font: NSFont.systemFont(ofSize: 11),
+                    .foregroundColor: NSColor.white.withAlphaComponent(0.55),
+                ]))
+            }
+            return out
         }
-        guard !s.label.isEmpty else { return nil }
-        // "Bash  git push …" — the tool name carries the colour, the rest is quiet.
-        let parts = s.label.split(separator: ":", maxSplits: 1).map {
-            $0.trimmingCharacters(in: .whitespaces)
-        }
-        let out = NSMutableAttributedString(string: parts[0], attributes: [
-            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-            .foregroundColor: s.state == .question ? IconRenderer.questionDot
-                                                   : NSColor(srgbRed: 0.45, green: 0.72, blue: 1, alpha: 1),
-        ])
-        if parts.count > 1 {
-            out.append(NSAttributedString(string: "  \(parts[1])", attributes: [
-                .font: NSFont.systemFont(ofSize: 11),
-                .foregroundColor: NSColor.white.withAlphaComponent(0.55),
-            ]))
-        }
-        return out
     }
 
     private static func dotColor(_ s: Session) -> NSColor {
@@ -263,9 +335,15 @@ final class IslandRowView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard hovered else { return }
-        NSColor.white.withAlphaComponent(0.07).setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 7, yRadius: 7).fill()
+        switch style {
+        case .hero:
+            NSColor.white.withAlphaComponent(hovered ? 0.085 : 0.055).setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: 10, yRadius: 10).fill()
+        case .compact:
+            guard hovered else { return }
+            NSColor.white.withAlphaComponent(0.07).setFill()
+            NSBezierPath(roundedRect: bounds, xRadius: 7, yRadius: 7).fill()
+        }
     }
 }
 
@@ -283,7 +361,8 @@ final class IslandApprovalView: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
-        var rows: [NSView] = []
+        var rows: [NSView] = [Self.header()]
+        if let tool = Self.toolLine(request) { rows.append(tool) }
         if let context = request.context {
             let box = NSView()
             box.wantsLayer = true
@@ -300,6 +379,7 @@ final class IslandApprovalView: NSView {
                 ctx.heightAnchor.constraint(equalToConstant: ctx.frame.height),
             ])
             rows.append(box)
+            if let summary = Self.diffSummary(context) { rows.append(summary) }
         }
 
         let shortcuts = UserDefaults.standard.bool(forKey: "globalApprovalShortcut")
@@ -347,6 +427,62 @@ final class IslandApprovalView: NSView {
     @objc private func alwaysClicked() { onChoose("always") }
     @objc private func deferClicked() { onChoose("defer") }
 
+    /// "● Permission Request" — names what this card is, the way the reference does.
+    private static func header() -> NSView {
+        let out = NSMutableAttributedString(string: "● ", attributes: [
+            .font: NSFont.systemFont(ofSize: 9),
+            .foregroundColor: IconRenderer.amberDot,
+        ])
+        out.append(NSAttributedString(string: "Permission Request", attributes: [
+            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.55),
+        ]))
+        return NSTextField(labelWithAttributedString: out)
+    }
+
+    /// "⚠︎ Edit  src/auth/middleware.ts" — the tool in warning orange, its target
+    /// quiet beside it. Bash skips the target: the command box below carries it
+    /// whole, and saying it twice helps nobody.
+    private static func toolLine(_ r: ApprovalRequest) -> NSView? {
+        guard !r.toolName.isEmpty else { return nil }
+        var rest = r.display
+        if rest.hasPrefix(r.toolName) { rest.removeFirst(r.toolName.count) }
+        while rest.first == ":" || rest.first == " " { rest.removeFirst() }
+        if case .bash = r.context { rest = "" }
+        let out = NSMutableAttributedString(string: "⚠︎ \(r.toolName)", attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .semibold),
+            .foregroundColor: NSColor.systemOrange,
+        ])
+        if !rest.isEmpty {
+            out.append(NSAttributedString(string: "  \(rest)", attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+                .foregroundColor: NSColor.white.withAlphaComponent(0.92),
+            ]))
+        }
+        let l = NSTextField(labelWithAttributedString: out)
+        l.lineBreakMode = .byTruncatingTail
+        return l
+    }
+
+    /// "+3 −1" under a diff — the size of the change at one glance. The mini-diff
+    /// itself already ends with "+N more edits" when truncated, so only the line
+    /// counts live here.
+    private static func diffSummary(_ context: ApprovalRequest.Context) -> NSView? {
+        guard case .diff(let old, let new, _) = context else { return nil }
+        func count(_ s: String) -> Int {
+            s.isEmpty ? 0 : s.split(separator: "\n", omittingEmptySubsequences: false).count
+        }
+        let out = NSMutableAttributedString(string: "+\(count(new))", attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold),
+            .foregroundColor: NSColor.systemGreen,
+        ])
+        out.append(NSAttributedString(string: "  −\(count(old))", attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold),
+            .foregroundColor: NSColor.systemRed,
+        ]))
+        return NSTextField(labelWithAttributedString: out)
+    }
+
     private static func button(_ title: String, hint: String?, prominent: Bool,
                                target: Any, action: Selector) -> NSButton {
         let b = IslandButton(title: "", target: target, action: action)
@@ -380,6 +516,58 @@ final class IslandApprovalView: NSView {
         ])
         return b
     }
+}
+
+/// A question the agent is waiting on, shown under its session. The options live
+/// in the agent's own UI — the hook that could carry them here deliberately does
+/// not block on questions yet — so the card names the question and hands over in
+/// one click instead of pretending to be answerable.
+final class IslandQuestionView: NSView {
+    private let onDefer: () -> Void
+
+    init(question: String, deferTitle: String, width: CGFloat, onDefer: @escaping () -> Void) {
+        self.onDefer = onDefer
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+
+        let head = NSMutableAttributedString(string: "💬 ", attributes: [
+            .font: NSFont.systemFont(ofSize: 10),
+        ])
+        head.append(NSAttributedString(string: "Claude asks", attributes: [
+            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+            .foregroundColor: IconRenderer.questionDot,
+        ]))
+        let header = NSTextField(labelWithAttributedString: head)
+
+        let q = NSTextField(wrappingLabelWithString: question)
+        q.font = .systemFont(ofSize: 13, weight: .medium)
+        q.textColor = .white
+        q.preferredMaxLayoutWidth = width
+
+        let go = IslandButton(title: "", target: self, action: #selector(deferClicked))
+        go.isBordered = false
+        go.attributedTitle = NSAttributedString(string: deferTitle, attributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.5),
+        ])
+
+        let stack = NSStackView(views: [header, q, go])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 6
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            widthAnchor.constraint(equalToConstant: width),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    @objc private func deferClicked() { onDefer() }
 }
 
 /// A button inside the island. The panel is deliberately non-activating and never
@@ -444,19 +632,26 @@ final class IslandPillView: NSView {
     /// Just the next animation frame — no layout, no resize.
     func update(mark: NSImage?) {
         markView.image = mark.map { $0.isTemplate ? IconRenderer.tint($0, with: .white) : $0 }
+        markView.isHidden = markView.image == nil
     }
 
-    func configure(mark: NSImage?, text: String, count: Int, height h: CGFloat) {
+    func configure(mark: NSImage?, text: String, count: Int, height h: CGFloat,
+                   tint: NSColor? = nil) {
         update(mark: mark)
         label.stringValue = text
         label.isHidden = text.isEmpty
+        // A confirmation flash — "✓ Allowed" — speaks in its own colour and drops
+        // the mono working voice for a moment.
+        label.textColor = tint ?? NSColor.white.withAlphaComponent(0.9)
+        label.font = tint == nil ? .monospacedSystemFont(ofSize: 11.5, weight: .medium)
+                                 : .systemFont(ofSize: 12.5, weight: .semibold)
         badge.count = count
         height.constant = h
     }
 
     /// Width the pill wants, so the panel can size itself to the content.
     var contentWidth: CGFloat {
-        var w = markView.image?.size.width ?? 0
+        var w = markView.isHidden ? 0 : (markView.image?.size.width ?? 0)
         if !label.isHidden { w += label.attributedStringValue.size().width + 8 }
         if !badge.isHidden { w += badge.intrinsicContentSize.width + 8 }
         return w

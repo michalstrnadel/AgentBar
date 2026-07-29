@@ -23,6 +23,13 @@ final class IslandController: NSObject {
     private var hovered = false
     private var tracking: NSTrackingArea?
     private var collapseWork: DispatchWorkItem?
+    private var flashWork: DispatchWorkItem?
+    /// A just-given answer, echoed in the pill for a beat — "✓ Allowed" — before
+    /// the island goes back to reporting.
+    private var flash: (text: String, tint: NSColor)?
+    /// What the last layout pass drew, so a mode change can animate differently
+    /// from a same-shape refresh.
+    private var lastLaidMode: Mode?
 
     private static let expandedWidth: CGFloat = 460
     /// Deliberately small. The collapsed island is a glance, not a panel — anything
@@ -65,7 +72,9 @@ final class IslandController: NSObject {
             // A sprite frame is not a layout change. Re-running the whole pass here
             // rebuilt the row and resized the panel ~12×/s, which is what made the
             // mascot look frozen; only the width can actually need revisiting.
-            if textChanged { self.layout() } else { self.pill.update(mark: image) }
+            // While a flash is up the pill isn't the mascot's — leave it alone.
+            if textChanged { self.layout(animated: true) }
+            else if self.flash == nil { self.pill.update(mark: image) }
         }
         rebuild()
     }
@@ -80,6 +89,7 @@ final class IslandController: NSObject {
     /// Kept short on purpose: the pill has to stay narrower than the notch to read as
     /// part of it, and "needs approval" was already wider than that.
     private var pillText: String {
+        if let flash { return flash.text }
         switch visibleSessions.first?.state {
         case .permission: return "approve?"
         case .question:   return "answer?"
@@ -106,17 +116,22 @@ final class IslandController: NSObject {
     func apply(sessions: [Session], requests: [ApprovalRequest]) {
         self.sessions = sessions
         self.requests = requests
-        rebuild()
+        rebuild(animated: true)
     }
 
     // MARK: - State
 
-    /// Exactly what the menu lists. A finished session is still a session — it stays
-    /// until its process dies or the store prunes it, so the panel and the dropdown
-    /// never disagree about what is running.
-    private var visibleSessions: [Session] { sessions }
+    /// The same set the menu lists — a finished session stays until its process
+    /// dies or the store prunes it — but ordered for a panel: whatever needs the
+    /// user first, then the working, then the finished. Stable within each group,
+    /// so rows don't trade places on every poll.
+    private var visibleSessions: [Session] {
+        sessions.enumerated().sorted { a, b in
+            a.1.priority != b.1.priority ? a.1.priority > b.1.priority : a.0 < b.0
+        }.map(\.1)
+    }
 
-    private func rebuild() {
+    private func rebuild(animated: Bool = false) {
         // No fullscreen exception. Hiding there was in the plan and it was wrong:
         // a fullscreen terminal is where the agents actually run, so that is the one
         // place the island must not disappear from.
@@ -126,21 +141,24 @@ final class IslandController: NSObject {
         // Only the pointer opens the panel. Even a pending approval stays a pill —
         // an island that unfolds over the screen on its own is in the way, which is
         // the opposite of the point. The pill says what is waiting; hovering acts.
-        mode = hovered ? .expanded : .collapsed
-        layout()
+        // (`islandExpandDebug` holds it open, for screenshots and layout work.)
+        let held = UserDefaults.standard.bool(forKey: "islandExpandDebug")
+        mode = (hovered || held) ? .expanded : .collapsed
+        layout(animated: animated)
     }
 
     // MARK: - Layout
 
-    private func layout() {
+    private func layout(animated: Bool = false) {
         guard let screen = IslandGeometry.screen else { return }
         content.flushTop = IslandGeometry.notch(on: screen) != nil
+        let target: NSRect
         switch mode {
         case .collapsed:
-            content.alphaValue = 1
             content.topInset = 0
-            pill.configure(mark: mark, text: pillText, count: visibleSessions.count,
-                           height: Self.pillHeight)
+            pill.configure(mark: flash == nil ? mark : nil, text: pillText,
+                           count: flash == nil ? visibleSessions.count : 0,
+                           height: Self.pillHeight, tint: flash?.tint)
             content.setRows([pill])
             // Idle it shrinks to just the mark; text and count widen it as they appear
             // — but never past the notch it is meant to look like part of. Several
@@ -148,16 +166,30 @@ final class IslandController: NSObject {
             // not a formality.
             let ceiling = IslandGeometry.notch(on: screen)?.width ?? 420
             let w = min(ceiling, max(Self.idleWidth, pill.contentWidth + IslandContentView.hPad * 2))
-            panel.setFrame(IslandGeometry.frame(width: w, height: Self.pillHeight, on: screen),
-                           display: true)
+            target = IslandGeometry.frame(width: w, height: Self.pillHeight, on: screen)
         case .expanded:
-            content.alphaValue = 1
             content.topInset = 10
             content.setRows(rows())
-            panel.setFrame(IslandGeometry.frame(width: Self.expandedWidth,
-                                                height: content.contentHeight, on: screen),
-                           display: true)
+            target = IslandGeometry.frame(width: Self.expandedWidth,
+                                          height: content.contentHeight, on: screen)
         }
+        let modeChanged = mode != lastLaidMode
+        lastLaidMode = mode
+        if animated, panel.isVisible {
+            // Slow enough to read as one shape growing out of the notch, quick
+            // enough not to gate the click that follows. Same-shape refreshes only
+            // morph the width, and take less.
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = modeChanged ? 0.38 : 0.22
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1.0, 0.36, 1.0)
+                ctx.allowsImplicitAnimation = true
+                self.panel.animator().setFrame(target, display: true)
+            }
+            if modeChanged { content.fadeRowsIn(duration: 0.34) }
+        } else {
+            panel.setFrame(target, display: true)
+        }
+        content.alphaValue = 1
         panel.orderFront(nil)
         content.needsDisplay = true
     }
@@ -165,16 +197,21 @@ final class IslandController: NSObject {
     private func rows() -> [NSView] {
         var out: [NSView] = []
         let visible = visibleSessions
-        for s in visible.prefix(Self.maxRows) {
-            let mark = IconRenderer.shared.sprite(for: Agent.byID(s.agentID)).restingColor
-            let row = IslandRowView(session: s, mark: mark) { [weak self] session in
+        let rowW = Self.expandedWidth - IslandContentView.hPad * 2
+        for (i, s) in visible.prefix(Self.maxRows).enumerated() {
+            // The list leads with whatever needs the user, so the first row is the
+            // hero — boxed, with the mark; the rest stay one quiet line each.
+            let style: IslandRowView.Style = i == 0 ? .hero : .compact
+            let mark = style == .hero
+                ? IconRenderer.shared.sprite(for: Agent.byID(s.agentID)).restingColor : nil
+            let row = IslandRowView(session: s, mark: mark, style: style) { [weak self] session in
                 self?.click(session)
             }
             row.translatesAutoresizingMaskIntoConstraints = false
-            row.widthAnchor.constraint(equalToConstant:
-                Self.expandedWidth - IslandContentView.hPad * 2).isActive = true
+            row.widthAnchor.constraint(equalToConstant: rowW).isActive = true
             out.append(row)
             out.append(contentsOf: approvalViews(for: s))
+            if let q = questionView(for: s) { out.append(q) }
         }
         if visible.count > Self.maxRows {
             out.append(more(visible.count - Self.maxRows))
@@ -184,29 +221,79 @@ final class IslandController: NSObject {
         return out
     }
 
-    /// The pending request's own detail and buttons, reusing exactly what the menu
-    /// shows — same mini-diff, same Allow / Always / Deny / defer.
+    /// Cards sit under their session, indented just enough to read as belonging
+    /// to it rather than to the panel.
+    private static let cardIndent: CGFloat = 12
+
+    private func card(_ view: NSView) -> NSView {
+        let wrapper = NSStackView(views: [view])
+        wrapper.orientation = .horizontal
+        wrapper.edgeInsets = NSEdgeInsets(top: 0, left: Self.cardIndent, bottom: 0, right: 0)
+        return wrapper
+    }
+
+    private func deferTitle(for s: Session) -> String {
+        s.entrypoint == "claude-desktop" ? "Answer in Claude" : "Answer in terminal"
+    }
+
+    /// The pending request's own detail and buttons — same mini-diff the menu
+    /// shows, Deny and Allow in front, the answer echoed in the pill on the way out.
     private func approvalViews(for s: Session) -> [NSView] {
         guard s.state == .permission else { return [] }
         let mine = requests.filter { $0.sessionId == s.id }
-        guard !mine.isEmpty else { return [] }
-        let indent = IslandRowView.markBox + 13
         var out: [NSView] = []
         for r in mine {
-            let card = IslandApprovalView(
+            out.append(card(IslandApprovalView(
                 request: r,
-                deferTitle: s.entrypoint == "claude-desktop" ? "Answer in Claude" : "Answer in terminal",
-                width: Self.expandedWidth - IslandContentView.hPad * 2 - indent
-            ) { behavior in
+                deferTitle: deferTitle(for: s),
+                width: Self.expandedWidth - IslandContentView.hPad * 2 - Self.cardIndent
+            ) { [weak self] behavior in
                 AgentActions.answer(ApprovalAction(request: r, behavior: behavior, session: s))
-            }
-            // Line the card up under the row's text, past the mascot column.
-            let wrapper = NSStackView(views: [card])
-            wrapper.orientation = .horizontal
-            wrapper.edgeInsets = NSEdgeInsets(top: 0, left: indent, bottom: 0, right: 0)
-            out.append(wrapper)
+                self?.flashAnswer(behavior)
+            }))
         }
         return out
+    }
+
+    /// The question card under a session that asked one. The hooks don't carry the
+    /// options yet, so it shows the question and hands over in one click.
+    private func questionView(for s: Session) -> NSView? {
+        guard s.state == .question else { return nil }
+        var q = s.label
+        if q.hasPrefix("❓") { q.removeFirst(); q = q.trimmingCharacters(in: .whitespaces) }
+        if q.isEmpty { q = "Claude has a question" }
+        return card(IslandQuestionView(
+            question: q,
+            deferTitle: deferTitle(for: s),
+            width: Self.expandedWidth - IslandContentView.hPad * 2 - Self.cardIndent
+        ) { [weak self] in
+            guard let self else { return }
+            AgentActions.focus(s, requests: self.requests)
+        })
+    }
+
+    /// Echo the choice in the pill — "✓ Allowed" — for a beat, then go back to
+    /// reporting. Defer skips the flash: the hand-off itself is the feedback.
+    private func flashAnswer(_ behavior: String) {
+        hovered = false
+        collapseWork?.cancel()
+        let green = NSColor(srgbRed: 0.35, green: 0.85, blue: 0.45, alpha: 1)
+        switch behavior {
+        case "allow":  flash = ("✓ Allowed", green)
+        case "always": flash = ("✓ Always allowed", green)
+        case "deny":   flash = ("✕ Denied", NSColor(srgbRed: 1, green: 0.45, blue: 0.42, alpha: 1))
+        default:       flash = nil
+        }
+        rebuild(animated: true)
+        guard flash != nil else { return }
+        flashWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.flash = nil
+            self.rebuild(animated: true)
+        }
+        flashWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6, execute: work)
     }
 
     private func more(_ n: Int) -> NSView {
@@ -246,13 +333,13 @@ final class IslandController: NSObject {
 
     private func hover(_ inside: Bool) {
         hovered = inside
-        if inside { return rebuild() }
+        collapseWork?.cancel()
+        if inside { return rebuild(animated: true) }
         // A moment's grace on the way out, so crossing a gap between subviews — or
         // the panel shrinking out from under the pointer — doesn't snap it shut.
-        collapseWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self, !self.hovered else { return }
-            self.rebuild()
+            self.rebuild(animated: true)
         }
         collapseWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
