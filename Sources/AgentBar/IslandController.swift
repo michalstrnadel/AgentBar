@@ -114,8 +114,10 @@ final class IslandController: NSObject {
     private var visibleSessions: [Session] { sessions }
 
     private func rebuild() {
-        guard Presentation.current.showsIsland, let screen = IslandGeometry.screen,
-              !IslandGeometry.isFullscreen(on: screen)
+        // No fullscreen exception. Hiding there was in the plan and it was wrong:
+        // a fullscreen terminal is where the agents actually run, so that is the one
+        // place the island must not disappear from.
+        guard Presentation.current.showsIsland, IslandGeometry.screen != nil
         else { panel.orderOut(nil); return }
 
         // Only the pointer opens the panel. Even a pending approval stays a pill —

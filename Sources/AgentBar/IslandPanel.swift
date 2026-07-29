@@ -12,12 +12,10 @@ final class IslandPanel: NSPanel {
         backgroundColor = .clear
         hasShadow = false            // the content draws its own rounded shape
         level = .statusBar           // above ordinary windows, like the menu bar itself
-        // Deliberately *without* .fullScreenAuxiliary — the island is nobody's
-        // fullscreen accessory. It is not enough on its own (a .canJoinAllSpaces
-        // window at this level still gets shown over a fullscreen Space), so
-        // `IslandGeometry.isFullscreen` does the actual work; this just stops us
-        // asking for something we don't want.
-        collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        // .fullScreenAuxiliary matters as much as .canJoinAllSpaces: without it the
+        // panel is missing exactly where people spend their day — a fullscreen editor
+        // or terminal — and an island you can't see is not an island.
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         hidesOnDeactivate = false
         isMovableByWindowBackground = false
         ignoresMouseEvents = false
@@ -72,39 +70,9 @@ enum IslandGeometry {
                       width: width, height: height)
     }
 
-    /// True while something is running fullscreen on this screen — someone's video
-    /// or editor is not a place to float a status panel over, so the island steps
-    /// out until they come back.
-    ///
-    /// Measured from the windows themselves rather than from screen geometry.
-    /// `visibleFrame` cannot answer this: on a notched Mac it reads identically in
-    /// both states (the menu bar strip is excluded either way), which is why the
-    /// obvious `visibleFrame.maxY >= frame.maxY` test silently never fired. A
-    /// fullscreen window is instead recognisable by shape — full width, reaching the
-    /// very bottom of the screen, and tall enough to have swallowed the menu bar
-    /// strip. A merely zoomed window stops above the Dock and so never matches.
-    ///
-    /// Only layer and bounds are read, never window titles, so this needs no Screen
-    /// Recording permission.
-    static func isFullscreen(on screen: NSScreen) -> Bool {
-        let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
-                                              kCGNullWindowID) as? [[String: Any]] ?? []
-        // CGWindow bounds are top-left origin on the primary display; NSScreen is
-        // bottom-left. Flip through the primary screen's height before comparing.
-        let flip = NSScreen.screens.first?.frame.maxY ?? screen.frame.maxY
-        let target = screen.frame
-        let bar = barHeight(on: screen)
-        for win in info {
-            guard (win[kCGWindowLayer as String] as? Int) == 0,
-                  let b = win[kCGWindowBounds as String] as? [String: CGFloat],
-                  let x = b["X"], let y = b["Y"], let w = b["Width"], let h = b["Height"]
-            else { continue }
-            let frame = NSRect(x: x, y: flip - (y + h), width: w, height: h)
-            if frame.width >= target.width - 1, abs(frame.minX - target.minX) <= 1,
-               frame.minY <= target.minY + 1, frame.height >= target.height - bar - 1 {
-                return true
-            }
-        }
-        return false
-    }
+    // No fullscreen check lives here any more. The original one — "visibleFrame
+    // reaches the top of the screen" — never fired at all on a notched Mac, and when
+    // it was replaced with a working one the island promptly vanished from the
+    // fullscreen terminal the agents were running in. Being visible everywhere beats
+    // being polite about it; the pill is 30pt tall and only opens when pointed at.
 }
