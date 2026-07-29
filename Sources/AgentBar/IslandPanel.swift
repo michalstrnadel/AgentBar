@@ -10,7 +10,9 @@ final class IslandPanel: NSPanel {
                    backing: .buffered, defer: false)
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = false            // the content draws its own rounded shape
+        // The window carries the drop shadow: the content layer clips to its
+        // rounded shape (for the expand reveal), and a masked layer can't cast one.
+        hasShadow = true
         level = .statusBar           // above ordinary windows, like the menu bar itself
         // .fullScreenAuxiliary matters as much as .canJoinAllSpaces: without it the
         // panel is missing exactly where people spend their day — a fullscreen editor

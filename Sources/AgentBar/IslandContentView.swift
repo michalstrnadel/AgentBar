@@ -26,10 +26,11 @@ final class IslandContentView: NSView {
         // illusion this panel must never break.
         layer?.backgroundColor = NSColor.black.cgColor
         layer?.cornerRadius = Self.corner
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.35
-        layer?.shadowRadius = 10
-        layer?.shadowOffset = CGSize(width: 0, height: -2)
+        // Clip to the rounded shape: while the panel animates, rows laid out at
+        // their final width must be *revealed* by the growing shape, not hang out
+        // of it. The drop shadow therefore lives on the window (IslandPanel), where
+        // masking can't eat it.
+        layer?.masksToBounds = true
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -37,8 +38,10 @@ final class IslandContentView: NSView {
         addSubview(stack)
         stackTop = stack.topAnchor.constraint(equalTo: topAnchor, constant: 0)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.hPad),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.hPad),
+            // Centred, not leading-pinned: during the expand animation both edges
+            // then grow away from the notch symmetrically — the island inflates
+            // from the top centre instead of sliding off to the left.
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
             stackTop,
         ])
     }

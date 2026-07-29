@@ -69,8 +69,13 @@ process.stdin.on("end", () => {
     ts,
   };
   // The latest prompt names the task the session is on; older fields ride along.
-  if (event === "prompt" && typeof p.prompt === "string" && p.prompt.trim())
-    out.prompt = oneLine(p.prompt);
+  // Not everything arriving as a "prompt" is the user's task: the harness injects
+  // system turns (task notifications, local-command wrappers — they start with
+  // "<"), and slash commands are commands, not tasks. Those must never rename
+  // the row, so the previous task survives them.
+  const cand = event === "prompt" && typeof p.prompt === "string" ? p.prompt.trim() : "";
+  if (cand && !cand.startsWith("<") && !cand.startsWith("/"))
+    out.prompt = oneLine(cand);
   else if (prev.prompt) out.prompt = prev.prompt;
   const model = typeof p.model === "string" ? p.model : (p.model && p.model.display_name) || "";
   if (model) out.model = String(model);

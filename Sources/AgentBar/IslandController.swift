@@ -23,6 +23,7 @@ final class IslandController: NSObject {
     private var hovered = false
     private var tracking: NSTrackingArea?
     private var collapseWork: DispatchWorkItem?
+    private var expandWork: DispatchWorkItem?
     private var flashWork: DispatchWorkItem?
     /// A just-given answer, echoed in the pill for a beat — "✓ Allowed" — before
     /// the island goes back to reporting.
@@ -176,18 +177,23 @@ final class IslandController: NSObject {
         let modeChanged = mode != lastLaidMode
         lastLaidMode = mode
         if animated, panel.isVisible {
-            // Slow enough to read as one shape growing out of the notch, quick
+            // Slow enough to read as one shape inflating out of the notch, quick
             // enough not to gate the click that follows. Same-shape refreshes only
             // morph the width, and take less.
-            NSAnimationContext.runAnimationGroup { ctx in
+            NSAnimationContext.runAnimationGroup({ ctx in
                 ctx.duration = modeChanged ? 0.38 : 0.22
                 ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1.0, 0.36, 1.0)
                 ctx.allowsImplicitAnimation = true
                 self.panel.animator().setFrame(target, display: true)
-            }
+            }, completionHandler: { [weak self] in
+                // The window shadow is shaped from the rendered content; after an
+                // animated resize it has to be recut or it keeps the old outline.
+                self?.panel.invalidateShadow()
+            })
             if modeChanged { content.fadeRowsIn(duration: 0.34) }
         } else {
             panel.setFrame(target, display: true)
+            panel.invalidateShadow()
         }
         content.alphaValue = 1
         panel.orderFront(nil)
@@ -334,7 +340,21 @@ final class IslandController: NSObject {
     private func hover(_ inside: Bool) {
         hovered = inside
         collapseWork?.cancel()
-        if inside { return rebuild(animated: true) }
+        expandWork?.cancel()
+        if inside {
+            // Hover intent, not hover: the pill sits where window title bars get
+            // clicked and where a Cmd-Tab flick crosses, and a panel that unfolds
+            // for every drive-by looks like a bug. A short dwell filters those out
+            // without being felt by anyone who actually aims at it.
+            if mode == .expanded { return }
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, self.hovered else { return }
+                self.rebuild(animated: true)
+            }
+            expandWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: work)
+            return
+        }
         // A moment's grace on the way out, so crossing a gap between subviews — or
         // the panel shrinking out from under the pointer — doesn't snap it shut.
         let work = DispatchWorkItem { [weak self] in

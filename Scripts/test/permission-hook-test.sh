@@ -164,7 +164,14 @@ check "update: started_at preserved" 'grep -q "\"started_at\":1111" "$STATE"'
 check "update: prompt survives tool events" 'grep -q "\"prompt\":\"fix the auth bug\"" "$STATE"'
 check "update: model survives tool events"  'grep -q "\"model\":\"claude-opus-5\"" "$STATE"'
 
-# 15. lifecycle start seeds started_at (fake `open` first in PATH so the test
+# 15. system-injected turns and slash commands must not rename the task —
+# the harness feeds them through the same prompt event as real input
+printf '{"session_id":"testsess","prompt":"<task-notification>noise</task-notification>"}' | "$NODE" "$UPDATE" prompt
+check "update: injected turn keeps task"  'grep -q "\"prompt\":\"fix the auth bug\"" "$STATE"'
+printf '{"session_id":"testsess","prompt":"/compact"}' | "$NODE" "$UPDATE" prompt
+check "update: slash command keeps task"  'grep -q "\"prompt\":\"fix the auth bug\"" "$STATE"'
+
+# 16. lifecycle start seeds started_at (fake `open` first in PATH so the test
 # can't launch a real AgentBar out of nowhere)
 fresh_home
 FAKEBIN="$HOME/fakebin"; mkdir -p "$FAKEBIN"; printf '#!/bin/sh\nexit 0\n' > "$FAKEBIN/open"; chmod +x "$FAKEBIN/open"

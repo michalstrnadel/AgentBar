@@ -15,8 +15,9 @@ All notable changes to AgentBar are documented here. This project follows
   On the island this turns into what the reference panels show: the hero row
   gains a "You: fix the auth bug in middleware" line, compact rows are named by
   their task instead of just the repo (repo stays in the tooltip), and the chips
-  gain the model and a quiet elapsed "28m". Hooks are snapshotted per session —
-  the new fields appear for sessions started after updating.
+  gain the model and a quiet elapsed "28m". System-injected turns and slash
+  commands never become the task name — only real prompts do. Running sessions
+  pick the fields up on their next event.
 - **AgentBar can live as a Dynamic Island.** A small pill under the notch showing
   the working agent's mark and what it is doing, with a count once two or more
   sessions are live. Point at it and it opens into the full session list, with any
@@ -34,8 +35,11 @@ All notable changes to AgentBar are documented here. This project follows
   +N −N counts, Deny / Allow in front. An AskUserQuestion gets a *Claude asks*
   card naming the question. Answering flashes the choice back in the pill —
   "✓ Allowed" — as the panel folds away, and every open, close and resize is one
-  slow spring instead of a snap. The panel is solid black: translucency read as
-  the window behind showing through the notch.
+  slow spring instead of a snap: the shape inflates from the notch's centre and
+  reveals the rows as it grows, with the drop shadow recut by the window. Opening
+  takes a short hover dwell, so a cursor merely crossing the pill — a Cmd-Tab
+  flick, a click on a window title bar — doesn't unfold it. The panel is solid
+  black: translucency read as the window behind showing through the notch.
 - **A welcome window on first launch**, with the surface picker — Menu bar,
   Dynamic Island, or Both — over a live preview drawn by the real mascot renderer,
   and a line naming the agents whose hooks were just wired. Reachable afterwards as
