@@ -13,10 +13,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private lazy var controller = StatusItemController(store: store, requestStore: requestStore,
                                                        mascot: mascot)
+    private lazy var island = IslandController(mascot: mascot)
     private let antigravityWatcher = AntigravityWatcher()
     private let coworkWatcher = CoworkWatcher()
 
     private var sessions: [Session] = []
+    private var islandRunning = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AgentActions.currentSessions = { [weak self] in self?.sessions ?? [] }
@@ -26,8 +28,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.sessions = sessions
             self.mascot.update(sessions: sessions, systemColor: self.controller.systemColor)
             self.controller.apply(sessions)
+            if self.islandRunning {
+                self.island.apply(sessions: sessions, requests: self.requestStore.requests)
+            }
         }
-        requestStore.onChange = { [weak self] in self?.controller.requestsChanged() }
+        requestStore.onChange = { [weak self] in
+            guard let self else { return }
+            self.controller.requestsChanged()
+            if self.islandRunning {
+                self.island.apply(sessions: self.sessions, requests: self.requestStore.requests)
+            }
+        }
 
         controller.start()
         store.start()
@@ -46,6 +57,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applyPresentation() {
         controller.applyPresentation()
+        let wanted = Presentation.current.showsIsland
+        guard wanted != islandRunning else { return }
+        islandRunning = wanted
+        if wanted {
+            island.start()
+            island.apply(sessions: sessions, requests: requestStore.requests)
+        } else {
+            island.stop()
+        }
     }
 }
 

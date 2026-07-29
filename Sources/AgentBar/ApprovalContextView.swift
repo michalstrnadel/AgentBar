@@ -9,12 +9,15 @@ final class ApprovalContextView: NSView {
     private struct Line { let text: String; let kind: Kind }
 
     private let lines: [Line]
-    private let leading: CGFloat = 22   // align under the "what" row's text
+    /// Indent that lines the text up with the row above it — 22 under a menu item,
+    /// wider on the island where the row starts past the mascot.
+    private let leading: CGFloat
     private let lineH: CGFloat = 15
     private static let mono = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
 
-    init(context: ApprovalRequest.Context) {
+    init(context: ApprovalRequest.Context, leading: CGFloat = 22) {
         self.lines = Self.lines(for: context)
+        self.leading = leading
         super.init(frame: NSRect(x: 0, y: 0, width: 300,
                                  height: CGFloat(max(1, lines.count)) * 15 + 8))
         autoresizingMask = [.width]

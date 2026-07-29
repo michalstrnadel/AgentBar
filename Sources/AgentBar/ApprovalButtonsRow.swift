@@ -5,8 +5,11 @@ import Cocoa
 final class ApprovalButtonsRow: NSView {
     private let onChoose: (String) -> Void
 
-    /// Fully custom strip: (title, behavior, tooltip) per button.
+    /// Fully custom strip: (title, behavior, tooltip) per button. `leading` lines
+    /// the strip up with the text of the row above it — 21 under a menu item's icon
+    /// column, wider on the island where rows start past the mascot.
     init(buttons: [(title: String, behavior: String, toolTip: String?)],
+         leading: CGFloat = 21,
          onChoose: @escaping (String) -> Void) {
         self.onChoose = onChoose
         super.init(frame: NSRect(x: 0, y: 0, width: 280, height: 30))
@@ -18,8 +21,7 @@ final class ApprovalButtonsRow: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         NSLayoutConstraint.activate([
-            // 21pt leading lines the strip up with menu item text (icon column).
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 21),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: leading),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
@@ -32,6 +34,7 @@ final class ApprovalButtonsRow: NSView {
 
     /// The native-request strip (Claude): Allow / Always / Deny / defer.
     convenience init(hasRule: Bool, ruleToolTip: String?, deferTitle: String,
+                     leading: CGFloat = 21,
                      onChoose: @escaping (String) -> Void) {
         var specs: [(title: String, behavior: String, toolTip: String?)] = [
             ("✓ Allow", "allow", nil)
@@ -40,7 +43,7 @@ final class ApprovalButtonsRow: NSView {
         specs.append(("✕ Deny", "deny", nil))
         // "⌨ Terminal" for CLI sessions, "⧉ Claude app" for desktop ones.
         specs.append((deferTitle, "defer", "Answer in \(deferTitle.dropFirst(2)) instead"))
-        self.init(buttons: specs, onChoose: onChoose)
+        self.init(buttons: specs, leading: leading, onChoose: onChoose)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
