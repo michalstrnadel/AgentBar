@@ -3,7 +3,7 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 1.10.0 - 2026-07-29
 
 ### Added
 - **The protocol now carries the task, its age, and the model.** Three new
