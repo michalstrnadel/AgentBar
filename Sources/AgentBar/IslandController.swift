@@ -24,8 +24,6 @@ final class IslandController: NSObject {
     private var tracking: NSTrackingArea?
     private var collapseWork: DispatchWorkItem?
 
-    /// How long a finished session keeps the island out before it retracts.
-    private static let lingerAfterDone: TimeInterval = 6
     private static let expandedWidth: CGFloat = 460
     /// Deliberately small. The collapsed island is a glance, not a panel — anything
     /// taller starts covering the screen for no gain.
@@ -90,43 +88,21 @@ final class IslandController: NSObject {
 
     // MARK: - State
 
-    /// Sessions worth showing: anything not already finished, plus finished ones
-    /// still inside their linger window so a "done" doesn't vanish mid-glance.
-    private var visibleSessions: [Session] {
-        let now = Date().timeIntervalSince1970
-        return sessions.filter {
-            $0.state != .idle && ($0.state != .done || now - $0.ts < Self.lingerAfterDone)
-        }
-    }
-
-    private var needsAttention: Bool {
-        visibleSessions.contains { $0.state == .permission || $0.state == .question }
-    }
+    /// Exactly what the menu lists. A finished session is still a session — it stays
+    /// until its process dies or the store prunes it, so the panel and the dropdown
+    /// never disagree about what is running.
+    private var visibleSessions: [Session] { sessions }
 
     private func rebuild() {
         guard Presentation.current.showsIsland, let screen = IslandGeometry.screen,
               !IslandGeometry.isFullscreen(on: screen)
         else { panel.orderOut(nil); return }
 
-        let visible = visibleSessions
         // Only the pointer opens the panel. Even a pending approval stays a pill —
         // an island that unfolds over the screen on its own is in the way, which is
         // the opposite of the point. The pill says what is waiting; hovering acts.
         mode = hovered ? .expanded : .collapsed
         layout()
-        // A done-only island has to retract by itself: no further state change is
-        // coming to trigger another pass.
-        scheduleRetractIfNeeded(visible)
-    }
-
-    private func scheduleRetractIfNeeded(_ visible: [Session]) {
-        collapseWork?.cancel()
-        guard !visible.isEmpty, visible.allSatisfy({ $0.state == .done }) else { return }
-        let newest = visible.map(\.ts).max() ?? 0
-        let due = Self.lingerAfterDone - (Date().timeIntervalSince1970 - newest)
-        let work = DispatchWorkItem { [weak self] in self?.rebuild() }
-        collapseWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + max(0.5, due), execute: work)
     }
 
     // MARK: - Layout
