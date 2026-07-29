@@ -35,6 +35,12 @@ final class IslandController: NSObject {
     /// collapsed the panel is click-through (no events at all), and a Space switch
     /// slides the panel under a pointer without ever crossing an edge.
     private var pointerTimer: Timer?
+    /// Last moment the pointer was seen away from the island. Opening requires a
+    /// fresh *arrival* — a pointer parked at the top of the screen to be out of
+    /// the way must not open anything, no matter how long it sits there. Starts
+    /// in the distant past so a pointer already lying there when the app launches
+    /// counts as parked, not as arriving.
+    private var lastAway = Date.distantPast
     /// A just-given answer, echoed in the pill for a beat — "✓ Allowed" — before
     /// the island goes back to reporting.
     private var flash: (text: String, tint: NSColor)?
@@ -139,18 +145,24 @@ final class IslandController: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in self?.rebuild() }
     }
 
-    /// The single source of hover truth, read from geometry eight times a second:
-    /// opening means the pointer is up in the notch strip — where no app content
-    /// ever lives, so working a browser's tab bar under the pill can't open it —
-    /// and staying open means it is anywhere on the expanded panel.
+    /// The single source of hover truth, read from geometry eight times a second.
+    /// The island is the pill and the notch strip above it; being anywhere on the
+    /// open panel keeps it open. Two guards carry the whole interaction: opening
+    /// needs a fresh arrival (a pointer parked at the top since forever doesn't
+    /// mean "open"), and the dwell in hover() filters drive-bys. The pill's fixed
+    /// width matters here too — edges that never move can't sweep across a
+    /// stationary pointer and fake an arrival.
     private func checkPointer() {
         guard Presentation.current.showsIsland, panel.isVisible, flash == nil,
               let screen = IslandGeometry.screen else { return }
         let mouse = NSEvent.mouseLocation
-        let inZone = NSMouseInRect(mouse, IslandGeometry.hoverZone(on: screen), false)
-        let inPanel = mode == .expanded && NSMouseInRect(mouse, panel.frame, false)
-        let inside = inZone || inPanel
-        if inside != hovered { hover(inside) }
+        let inside = NSMouseInRect(mouse, IslandGeometry.hoverZone(on: screen), false)
+            || NSMouseInRect(mouse, panel.frame, false)
+        if !inside { lastAway = Date() }
+        if inside != hovered {
+            if inside, mode == .collapsed, Date().timeIntervalSince(lastAway) > 1.0 { return }
+            hover(inside)
+        }
     }
 
     func apply(sessions: [Session], requests: [ApprovalRequest]) {
@@ -398,7 +410,7 @@ final class IslandController: NSObject {
                 self.rebuild(animated: true)
             }
             expandWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.30, execute: work)
             return
         }
         // A moment's grace on the way out, so crossing a gap between subviews — or
