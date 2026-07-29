@@ -6,6 +6,19 @@ All notable changes to AgentBar are documented here. This project follows
 ## Unreleased
 
 ### Added
+- **AgentBar can live as a Dynamic Island.** A small pill under the notch showing
+  the working agent's mark and what it is doing, with a count once two or more
+  sessions are live. Point at it and it opens into the full session list, with any
+  waiting approval answerable in place — same mini-diff as the menu, Allow and Deny
+  in front. It never opens on its own, follows the screen your pointer is on,
+  falls back to a floating bar on displays without a notch, steps aside for
+  fullscreen windows, and never takes focus from your editor. In Island-only mode
+  the panel's `⋯` button carries Appearance, the Allow/Deny shortcut, updates and
+  Quit, so the app is always reachable.
+- **A welcome window on first launch**, with the surface picker — Menu bar,
+  Dynamic Island, or Both — over a live preview drawn by the real mascot renderer,
+  and a line naming the agents whose hooks were just wired. Reachable afterwards as
+  **Appearance…**; switching modes takes effect immediately, no relaunch.
 - Real screenshot of the remote approval menu in the README (#6).
 - The README demo GIF generator is checked in as `Scripts/demo/demo-gif.swift`
   (#10); it reads mascot frames from the shipped sprite sources, so the GIF can
@@ -32,6 +45,12 @@ All notable changes to AgentBar are documented here. This project follows
   `brew audit`).
 
 ### Fixed
+- The island stayed on screen over fullscreen windows. It was meant to step aside,
+  but the check asked whether `visibleFrame` reached the top of the screen — which
+  on a notched Mac reads the same fullscreen or not, so it never once fired.
+  Fullscreen is now recognised from the window shapes themselves; a merely
+  maximised window still keeps the island, and it comes back the moment you leave
+  fullscreen.
 - An approval row for an agent that writes no request file used to say "Can't
   show the request" and offer "Open in terminal" even when the session lives in
   an app. It now names the tool being asked about and offers "Answer in

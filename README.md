@@ -12,12 +12,14 @@
   <img src="docs/assets/demo-claude-codex.gif" width="640" alt="AgentBar demo: Claude session works, needs approval, one-click Allow, then a Codex session takes over the bar">
 </p>
 
-AgentBar is a lightweight, native macOS menu bar app that shows the live state of your
+AgentBar is a lightweight, native macOS app that shows the live state of your
 AI coding sessions — Claude Code and Claude Cowork, Codex, Cursor CLI, Gemini CLI,
-plus GitHub Copilot and Google Antigravity in the same bar. Each agent gets its own mark built from its
+plus GitHub Copilot and Google Antigravity in one place. Each agent gets its own mark built from its
 real identity — Clawd the crab for Claude, the OpenAI knot with a braille dot-matrix
 for Codex, the official pixel-art head for Copilot, the pixel rainbow arch for
-Antigravity — and the bar always surfaces the session that needs you most.
+Antigravity — and it always surfaces the session that needs you most.
+Live in the **menu bar**, as a **Dynamic Island** pill under the notch, or both —
+you pick on first launch.
 On Linux, the same protocol drives the [`agentbar` CLI](#linux-cli).
 On Windows, [AgentBar for Windows](https://github.com/michalstrnadel/AgentBar-Windows) is a
 native system-tray counterpart that shares the same `~/.agentbar` hook protocol.
@@ -29,9 +31,10 @@ curl -fsSL https://raw.githubusercontent.com/michalstrnadel/AgentBar/main/Script
 ```
 
 1. The app lands in `/Applications`, launches, and installs its Claude Code hooks.
+   A welcome window asks where it should live — menu bar, Dynamic Island, or both.
 2. Open a **new** Claude Code session (hooks load at session start) and give it any task.
-3. Watch the menu bar: the mascot animates while the agent works, and the moment it
-   asks for permission you get a yellow **needs approval** row — click **✓ Allow**,
+3. Watch it: the mascot animates while the agent works, and the moment it
+   asks for permission you get a **needs approval** row — click **✓ Allow**,
    **✓ Always**, or **✕ Deny** right there. No terminal switch needed.
 
 That's the whole loop. More install options below; troubleshooting at the bottom.
@@ -53,6 +56,10 @@ don't use. Hooks are snapshotted per session — start a new agent session after
 
 ## Features
 
+- **Two surfaces, your pick** — the classic **menu bar** item, a **Dynamic Island**
+  pill under the notch, or **both**. Pick it in the welcome window on first launch,
+  change it any time from **Appearance…**; no relaunch. See
+  [Dynamic Island](#dynamic-island).
 - **Live status per agent** — an animated mascot works the bar while an agent works:
   Clawd the crab (Claude), the knot + a braille dot-matrix that literally spells
   *codex* (Codex), the pixel mascot head + dots spelling *copilot* (Copilot), and the
@@ -68,7 +75,8 @@ don't use. Hooks are snapshotted per session — start a new agent session after
   Updates…** in the menu; one click installs the new version and relaunches.
 - **Linux too** — the [`agentbar` CLI](#linux-cli) is a full peer of the menu bar app:
   live status, pending approvals, `a`/`d` remote Allow/Deny, waybar module.
-- **Nothing else** — no dock icon, no windows, no countdown timers, no sounds. One process, tiny footprint.
+- **Nothing else** — no dock icon, no countdown timers, no sounds, nothing that
+  unfolds over your screen on its own. One process, tiny footprint.
 
 ## Requirements
 
@@ -180,6 +188,28 @@ Hook readiness: Claude Code, Codex (`notify`), Cursor (`hooks.json`), Gemini
 launch re-checks, nothing is duplicated) for the tools you have. Copilot ships with its mascot, menu entry, and
 the keystroke-approval backend already in place — the moment it exposes session
 events, support is one small hook script away.
+
+## Dynamic Island
+
+Instead of (or alongside) the menu bar item, AgentBar can live as a pill just under
+the notch:
+
+- **At rest it's tiny** — the mark of whichever agent is working, plus one line of
+  what it's doing, plus a count once two or more sessions are live. Nothing running,
+  and it shrinks to the mark alone. It never grows on its own: even a pending
+  approval stays a pill that says *needs approval*.
+- **Point at it and it opens** — every session with its project, branch, what it's
+  running, and chips naming the agent and the terminal (or app) it lives in. Click a
+  row to jump to that session.
+- **Answer right there** — a waiting approval shows the same mini-diff the menu
+  shows, with **Allow** / **Deny** in front and *Always allow* / *Answer in
+  terminal* kept quiet beside them.
+- **No notch, or an external display?** Same panel, centred at the top of whichever
+  screen your pointer is on. It steps aside for fullscreen windows, and it never
+  takes focus — you can keep typing in your editor with the panel open.
+
+In Island-only mode the menu bar item is hidden, so the panel's **⋯** button carries
+Appearance, the global Allow/Deny shortcut, Check for Updates and Quit.
 
 ## Remote Allow/Deny
 

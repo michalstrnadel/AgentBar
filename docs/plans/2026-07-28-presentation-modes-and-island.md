@@ -1,6 +1,60 @@
 # Plan — presentation modes: menu bar, notch island, and a first-run chooser
 
-Status: **draft for review** (written 2026-07-28, not started)
+Status: **delivered 2026-07-29** — Phases 0–2 shipped, Phase 3 (content parity)
+and Phase 4 (polish) deliberately not started. See *As built* for where the
+shipped app differs from this draft; everything below the fold is the original
+2026-07-28 draft, kept because its survey of the codebase is what the work was
+costed from.
+
+## As built (2026-07-29)
+
+Four decisions were taken before coding, and one was reversed while using it:
+
+1. **Three modes** — `Menu bar` (default), `Dynamic Island`, `Both`.
+   `Presentation.swift`, `UserDefaults` key `presentationMode`, live `onChange`
+   so switching needs no relaunch.
+2. **The island is always on screen.** The draft proposed hidden-at-rest,
+   appearing on activity. That was built and then thrown out: an app that only
+   appears when it has news gives you nothing to look at when you want to check,
+   and a panel that unfolds by itself is in the way. The pill is now the app's
+   presence, the way the menu bar mark is — mark only when idle, mark + text
+   while something works, a count badge from two sessions up. **Only the pointer
+   opens it**; even a pending approval stays a pill that names the wait.
+3. **No protocol change.** The island renders only what `state.d` already
+   carries, so the Linux CLI, the Windows port and every hook are untouched.
+4. **Caffeine-shaped welcome window** — icon, one paragraph, the mode picker
+   with a live preview, the "hooks wired up for…" line, a show-on-launch tick.
+
+Two more things settled during the build:
+
+- **The panel floats *below* the menu bar** (`IslandGeometry.topGap`), centred on
+  the notch, rounded on all four corners — rather than hanging out of the notch
+  as the draft assumed. Overlaying the bar meant fighting the notch for space and
+  covering the user's own menu bar and clock, for no gain. Nothing has to dodge
+  anything now.
+- **The panel is forced to dark appearance** (`NSAppearance(named: .darkAqua)`).
+  The reused `ApprovalContextView` / mini-diff render for a light background
+  otherwise and go nearly invisible on near-black.
+
+Costs that turned out lower than the draft feared: `ApprovalButtonsRow` was not
+needed at all — the island's approval card (`IslandApprovalView`) is purpose-built
+to put Deny/Allow forward and keep "Always allow" / "Answer in terminal" quiet —
+and `ApprovalContextView` needed only a `leading:` parameter. Pixel-art
+interpolation turned out to be a non-issue: both island surfaces draw with
+`imageScaling = .scaleNone` from the same `IconRenderer` cache baked at 17pt, so
+no sprite is ever resized and `fit`'s `.high` interpolation never runs on them.
+
+Shipped files: `Presentation.swift`, `MascotDriver.swift`, `AgentActions.swift`,
+`WelcomeWindow.swift`, `IslandPanel.swift`, `IslandContentView.swift`,
+`IslandController.swift`. `StatusItemController.swift` shrank to the status item
+and the menu; `HookInstaller` reports which agents it wired.
+
+Not done, and not regretted: elapsed time, the task name and the model chip that
+comparable panels show. All three need new `state.d` fields written by every
+hook, which is a protocol change reaching the CLI and the Windows port — Phase 3
+below, on its own, once there is a real island to miss them in.
+
+---
 
 ## The ask
 
@@ -211,16 +265,20 @@ window is a second window. The rule was already amended once (when
 `SettingsWindow` landed) — amend it again in the same commit as Phase 1, and keep
 the part that still matters: no dock icon, no heavy dependencies.
 
-## Open questions for the morning
+## Open questions for the morning — answered 2026-07-29
 
-1. Modes: `Menu bar` / `Island` / `Both` — is `Both` worth offering, or does it
-   just look indecisive?
-2. Resting island: always-visible pill, or hidden until something happens?
-3. Is the welcome window worth it on its own, or should it only appear when
-   there's something to *say* (first launch, hooks newly wired)?
-4. Does the island need to work on external displays from day one, or is
-   built-in-notch-only an acceptable first cut?
-5. Where does this sit against the open GitHub issues (#1, #3, #8, #9)?
+1. Modes — **all three ship.** `Both` costs nothing once Phase 0 exists and is
+   the honest answer for "I want to glance at the island but I know the menu."
+2. Resting island — **always-visible pill.** Hidden-at-rest was built first and
+   rejected in use; see *As built*.
+3. Welcome window — **worth it on its own.** It is where the mode is picked, and
+   the "hooks wired up for…" line turns an invisible side effect into
+   reassurance. Ticked on by default, one click to never see it again.
+4. External displays — **day one.** `IslandGeometry` follows the screen the
+   pointer is on and falls back to a floating bar centred at the top when there
+   is no notch; that is a handful of lines, not a phase.
+5. GitHub issues — untouched by this work; none of #1, #3, #8, #9 are
+   presentation bugs.
 
 ## Positioning note
 

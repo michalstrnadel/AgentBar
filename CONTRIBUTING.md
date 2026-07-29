@@ -6,9 +6,12 @@ Thanks for your interest! AgentBar is intentionally small — please keep it tha
 
 1. **One file, one responsibility.** Keep the unit layout from
    `docs/specs/2026-07-23-agentbar-design.md`; don't grow a god-object controller.
-2. **Menu bar only.** No dock icon, no heavy dependencies. The sole window is
-   the small Settings panel (`SettingsWindow.swift`); everything else stays in
-   the menu.
+2. **Stay out of the way.** No dock icon, no heavy dependencies, nothing that
+   unfolds over the screen on its own. Two surfaces only — the menu bar item
+   (`StatusItemController`) and the island (`IslandController`) — both fed from
+   the same stores through `MascotDriver` / `AgentActions`; never render one from
+   the other's code. Windows are the exception, not the pattern: only
+   `WelcomeWindow` and `SettingsWindow`, both small, both opened by the user.
 3. **Hooks must never block the host agent** — async, atomic writes, exit fast.
    Sole exception: `permission.js` (see the comment at its top).
 4. **Adding an agent** = one entry in `Agents.swift`, a sprite in
@@ -29,6 +32,19 @@ open build/AgentBar.app
 
 `swift build` works for quick compile checks and SourceKit-LSP; the shippable app
 (bundle, Info.plist, hooks) comes from `./Scripts/build.sh`.
+
+**Quit any installed copy before testing a dev build.** Two AgentBars running at
+once both watch *and write* `~/.agentbar/state.d/`, so they overwrite each other's
+rows — the two live-app suites go red in ways that look like watcher bugs and
+aren't. `pkill -f AgentBar` first, then launch the one you mean to test.
+
+Which surface you get is a `UserDefaults` key, so you can flip it without the
+welcome window:
+
+```bash
+defaults write com.michalstrnadel.agentbar presentationMode -string island  # or menuBar / both
+defaults delete com.michalstrnadel.agentbar showWelcomeOnLaunch             # first-run window back
+```
 
 The whole app ↔ hook protocol is files in `~/.agentbar/` (`state.d/`, `requests.d/`,
 `answers.d/`) — you can drive any app feature by writing JSON files there, no agent
