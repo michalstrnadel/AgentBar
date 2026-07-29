@@ -12,6 +12,18 @@ enum HookInstaller {
     /// cost hundreds of ms on nvm/fnm setups — never pay that four times.
     private static let nodePath: String? = findNode()
 
+    /// Agent ids whose hooks this launch actually wired — the tools the user has,
+    /// minus any whose config we refused to touch. The welcome window reports it, so
+    /// an otherwise invisible side effect becomes something the user can check.
+    /// Written on the install queue, read on the main queue once it reports done.
+    private(set) static var wired: [String] = []
+    /// Called on the main queue when the install pass finishes.
+    static var onFinish: (() -> Void)?
+
+    private static func note(_ agentID: String) {
+        if !wired.contains(agentID) { wired.append(agentID) }
+    }
+
     static func installIfNeeded() {
         DispatchQueue.global(qos: .utility).async {
             guard let bundled = Bundle.main.resourceURL?.appendingPathComponent("hooks") else { return }
@@ -25,6 +37,7 @@ enum HookInstaller {
             } catch {
                 NSLog("AgentBar hook install failed: \(error)")
             }
+            DispatchQueue.main.async { onFinish?() }
         }
     }
 
@@ -152,6 +165,7 @@ enum HookInstaller {
 
         let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
         try writeIfChanged(data, to: settingsURL) // never leave settings.json half-written
+        note("claude")
     }
 
     // MARK: - Codex (~/.codex/config.toml, notify hook)
@@ -162,7 +176,7 @@ enum HookInstaller {
         guard FileManager.default.fileExists(atPath: codexDir.path) else { return } // not a Codex user
         let configURL = codexDir.appendingPathComponent("config.toml")
         var config = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
-        if config.contains("/.agentbar/hooks/codex/") { return } // already ours
+        if config.contains("/.agentbar/hooks/codex/") { note("codex"); return } // already ours
         if config.range(of: #"^\s*notify\s*="#, options: .regularExpression) != nil {
             NSLog("AgentBar: ~/.codex/config.toml already has a notify hook, not touching it")
             return
@@ -171,6 +185,7 @@ enum HookInstaller {
         if !config.isEmpty && !config.hasSuffix("\n") { config += "\n" }
         config += "notify = [\"\(node)\", \"\(script)\"]\n"
         try config.write(to: configURL, atomically: true, encoding: .utf8)
+        note("codex")
     }
 
     // MARK: - Cursor CLI (~/.cursor/hooks.json)
@@ -202,6 +217,7 @@ enum HookInstaller {
         root["hooks"] = hooks
         let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
         try writeIfChanged(data, to: cfgURL)
+        note("cursor")
     }
 
     /// Cursor runs the script directly via its shebang, and a GUI-launched Cursor
@@ -248,6 +264,7 @@ enum HookInstaller {
             root["agentbar"] = group
             let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
             try writeIfChanged(data, to: cfgURL)
+            note("antigravity")
         }
     }
 
@@ -282,5 +299,6 @@ enum HookInstaller {
         root["hooks"] = hooks
         let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
         try writeIfChanged(data, to: cfgURL)
+        note("gemini")
     }
 }

@@ -48,6 +48,23 @@ struct Session {
         ts          = o["ts"] as? TimeInterval ?? 0
     }
 
+    /// Synthetic row for the welcome window's live preview. Never written by a
+    /// hook and never reaches the stores — it exists so the preview animates the
+    /// real mascot through the real driver instead of faking a picture.
+    init(preview state: State, agentID: String = "claude", project: String, label: String) {
+        id = "preview"
+        self.agentID = agentID
+        self.state = state
+        self.label = label
+        self.project = project
+        cwd = ""
+        entrypoint = ""
+        termProgram = ""
+        pid = 0
+        started = true
+        ts = Date().timeIntervalSince1970
+    }
+
     /// Current git branch of the session's project, read straight from `.git/HEAD`
     /// (no `git` invocation; handles worktrees via the `gitdir:` indirection).
     var gitBranch: String? {

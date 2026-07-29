@@ -33,12 +33,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.start()
         requestStore.start()
 
+        HookInstaller.onFinish = { WelcomeWindow.shared.refreshWired() }
         HookInstaller.installIfNeeded()
         antigravityWatcher.start()
         coworkWatcher.start()
 
         Presentation.onChange = { [weak self] in self?.applyPresentation() }
         applyPresentation()
+
+        if WelcomeWindow.showOnLaunch { WelcomeWindow.shared.show() }
     }
 
     private func applyPresentation() {

@@ -186,6 +186,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         SettingsWindow.shared.show()
     }
 
+    @objc func openWelcome(_ sender: NSMenuItem) {
+        WelcomeWindow.shared.show()
+    }
+
     /// Called by the inline Allow/Always/Deny button strip on permission rows.
     func answer(_ a: ApprovalAction) {
         AgentActions.answer(a)

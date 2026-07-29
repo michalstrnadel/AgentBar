@@ -94,6 +94,16 @@ enum MenuBuilder {
         colorParent.submenu = colorSub
         menu.addItem(colorParent)
 
+        // Where AgentBar shows itself (menu bar / island / both), plus the first-run
+        // blurb — the same window, reachable again.
+        let appearance = NSMenuItem(title: "Appearance…",
+                                    action: #selector(StatusItemController.openWelcome(_:)),
+                                    keyEquivalent: "")
+        appearance.target = controller
+        appearance.image = NSImage(systemSymbolName: "macwindow.on.rectangle",
+                                   accessibilityDescription: nil)
+        menu.addItem(appearance)
+
         // Opt-in global Allow/Deny shortcut; the row opens Settings (enable + rebind).
         let shortcut = NSMenuItem(title: "Global Allow / Deny shortcut…",
                                   action: #selector(StatusItemController.openShortcutSettings(_:)),
