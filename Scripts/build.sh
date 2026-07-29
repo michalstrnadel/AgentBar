@@ -4,11 +4,14 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP="build/AgentBar.app"
-VERSION="1.10.0"
+VERSION="1.10.1"
 BUNDLE_ID="com.michalstrnadel.agentbar"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+# Dev builds are artifacts, not installed apps — without this, Spotlight indexes
+# build/AgentBar.app and Launchpad shows a second AgentBar next to /Applications.
+touch build/.metadata_never_index
 
 echo "Compiling universal binary (arm64 + x86_64)…"
 # swiftc emits one arch per -target: two compiles joined by lipo (works with plain CLT,

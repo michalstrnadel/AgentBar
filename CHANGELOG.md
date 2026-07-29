@@ -3,7 +3,7 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 1.10.1 - 2026-07-29
 
 ### Added
 - The README shows both surfaces now: a second demo GIF walks the Dynamic Island
@@ -13,6 +13,11 @@ All notable changes to AgentBar are documented here. This project follows
   frames from the shipped sprite sources like the menu-bar one.
 
 ### Fixed
+- **The pill has one width — the notch's own — and never resizes.** Sizing it
+  to its content made it reshape with every rotating verb and every
+  working↔done flip, an animated wobble in the corner of the eye that read as
+  the island opening and closing all day. Text now swaps in place inside the
+  fixed shape and truncates when long.
 - **The island opens from the notch now, and the pill is click-through.** The
   pill floats exactly where a maximized window keeps its tab strip, so opening
   on pill-hover flapped the panel open and shut the whole time the pointer
