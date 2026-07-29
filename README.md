@@ -10,6 +10,12 @@
 
 <p align="center">
   <img src="docs/assets/demo-claude-codex.gif" width="640" alt="AgentBar demo: Claude session works, needs approval, one-click Allow, then a Codex session takes over the bar">
+  <br><sub><b>Menu bar mode</b></sub>
+</p>
+
+<p align="center">
+  <img src="docs/assets/demo-island.gif" width="640" alt="AgentBar as a Dynamic Island: the pill under the notch says approve?, opens on hover into the session panel with the mini-diff, one click on Allow, and the pill flashes ✓ Allowed">
+  <br><sub><b>Dynamic Island mode</b> — pick either (or both) in the welcome window</sub>
 </p>
 
 AgentBar is a lightweight, native macOS app that shows the live state of your

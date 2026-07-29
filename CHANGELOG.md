@@ -3,6 +3,15 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+- The README shows both surfaces now: a second demo GIF walks the Dynamic Island
+  flow — the pill under the notch says *approve?*, the panel inflates out of the
+  notch with the mini-diff, one click on Allow, and the pill flashes ✓ Allowed.
+  Generator checked in as `Scripts/demo/demo-island-gif.swift`, reading mascot
+  frames from the shipped sprite sources like the menu-bar one.
+
 ## 1.10.0 - 2026-07-29
 
 ### Added
