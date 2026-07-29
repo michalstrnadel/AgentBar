@@ -19,8 +19,16 @@ const type = p.type || "";
 if (!type.includes("complete")) process.exit(0);
 
 const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";
+const oneLine = (s) => String(s).replace(/\s+/g, " ").trim().slice(0, 120);
 const id = "codex-" + safeId(p["thread-id"] || p["turn-id"] || String(process.ppid));
 const cwd = p.cwd || p["working-directory"] || process.cwd() || "";
+const file = path.join(stateDir, id + ".json");
+
+let prev = {};
+try { prev = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
+// The notify payload carries the turn's user messages; the last one names the task.
+const msgs = p["input_messages"] || p["input-messages"];
+const lastMsg = Array.isArray(msgs) && msgs.length ? oneLine(msgs[msgs.length - 1]) : "";
 
 const out = {
   agent: "codex",
@@ -32,12 +40,15 @@ const out = {
   term_program: process.env.TERM_PROGRAM || "",
   pid: process.ppid, // the codex process; the app prunes the session when it exits
   started: true,
+  // First notify is the end of the first turn — the closest to a start this
+  // adapter ever sees. Preserved from then on so elapsed doesn't reset per turn.
+  started_at: prev.started_at || Math.floor(Date.now() / 1000),
+  ...(lastMsg ? { prompt: lastMsg } : prev.prompt ? { prompt: prev.prompt } : {}),
   ts: Math.floor(Date.now() / 1000),
 };
 
 try {
   fs.mkdirSync(stateDir, { recursive: true });
-  const file = path.join(stateDir, id + ".json");
   const tmp = file + "." + process.pid + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(out));
   fs.renameSync(tmp, file);

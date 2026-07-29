@@ -196,6 +196,8 @@ final class AntigravityWatcher {
         o["state"] = state
         o["started"] = true
         if let label { o["label"] = label }
+        // Set once; elapsed in the frontends depends on it never moving.
+        if o["started_at"] == nil { o["started_at"] = Int(ts) }
         o["ts"] = Int(ts)
         o["sessionId"] = safe
         o["entrypoint"] = r.entrypoint

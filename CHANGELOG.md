@@ -6,6 +6,17 @@ All notable changes to AgentBar are documented here. This project follows
 ## Unreleased
 
 ### Added
+- **The protocol now carries the task, its age, and the model.** Three new
+  optional `state.d` fields — `started_at` (unix seconds, set once and preserved
+  on every merge), `prompt` (the latest user prompt, one line, ≤ 120 chars) and
+  `model` — written by the Claude, Codex, Cursor and Gemini hooks and both
+  watchers where each can know them. Optional means optional: old state files,
+  the Linux CLI, the Windows port and third-party writers stay valid unchanged.
+  On the island this turns into what the reference panels show: the hero row
+  gains a "You: fix the auth bug in middleware" line, compact rows are named by
+  their task instead of just the repo (repo stays in the tooltip), and the chips
+  gain the model and a quiet elapsed "28m". Hooks are snapshotted per session —
+  the new fields appear for sessions started after updating.
 - **AgentBar can live as a Dynamic Island.** A small pill under the notch showing
   the working agent's mark and what it is doing, with a count once two or more
   sessions are live. Point at it and it opens into the full session list, with any

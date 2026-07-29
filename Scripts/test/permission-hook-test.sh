@@ -147,6 +147,31 @@ check "question: exits immediately"  '[ $((end-start)) -le 2 ] && [ ! -s "$HOME/
 check "question: no request file"    '[ -z "$(ls "$HOME/.agentbar/requests.d/" 2>/dev/null)" ]'
 check "question: state + label"      'grep -q "\"state\":\"question\"" "$HOME/.agentbar/state.d/testsess.json" && grep -q "Which direction" "$HOME/.agentbar/state.d/testsess.json"'
 
+# 13. update.js prompt event: stamps started_at, one-lines the prompt, keeps model
+fresh_home
+STATE="$HOME/.agentbar/state.d/testsess.json"
+UPDATE="Scripts/hooks/claude/update.js"
+printf '{"session_id":"testsess","cwd":"/tmp/proj","prompt":"fix the   auth\\n bug","model":"claude-opus-5"}' | "$NODE" "$UPDATE" prompt
+check "update: started_at stamped"   'grep -q "\"started_at\":" "$STATE"'
+check "update: prompt one-lined"     'grep -q "\"prompt\":\"fix the auth bug\"" "$STATE"'
+check "update: model captured"       'grep -q "\"model\":\"claude-opus-5\"" "$STATE"'
+
+# 14. later events must PRESERVE started_at and carry prompt/model along —
+# elapsed time in the frontends depends on started_at never moving
+"$NODE" -e 'const fs=require("fs");const f=process.argv[1];const j=JSON.parse(fs.readFileSync(f));j.started_at=1111;fs.writeFileSync(f,JSON.stringify(j))' "$STATE"
+printf '{"session_id":"testsess","tool_name":"Bash"}' | "$NODE" "$UPDATE" pre
+check "update: started_at preserved" 'grep -q "\"started_at\":1111" "$STATE"'
+check "update: prompt survives tool events" 'grep -q "\"prompt\":\"fix the auth bug\"" "$STATE"'
+check "update: model survives tool events"  'grep -q "\"model\":\"claude-opus-5\"" "$STATE"'
+
+# 15. lifecycle start seeds started_at (fake `open` first in PATH so the test
+# can't launch a real AgentBar out of nowhere)
+fresh_home
+FAKEBIN="$HOME/fakebin"; mkdir -p "$FAKEBIN"; printf '#!/bin/sh\nexit 0\n' > "$FAKEBIN/open"; chmod +x "$FAKEBIN/open"
+printf '{"session_id":"lcsess","cwd":"/tmp/proj"}' | PATH="$FAKEBIN:$PATH" "$NODE" Scripts/hooks/claude/lifecycle.js start
+check "lifecycle: started_at seeded" 'grep -q "\"started_at\":" "$HOME/.agentbar/state.d/lcsess.json"'
+check "lifecycle: still started:false" 'grep -q "\"started\":false" "$HOME/.agentbar/state.d/lcsess.json"'
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

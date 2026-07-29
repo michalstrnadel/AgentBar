@@ -55,6 +55,8 @@ function run() {
   }
 
   let prev = {}; try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
+  const ts = Math.floor(Date.now() / 1000);
+  const oneLine = (s) => String(s).replace(/\s+/g, " ").trim().slice(0, 120);
   try {
     writeAtomic(statePath, {
       ...prev, agent: AGENT, state,
@@ -63,7 +65,9 @@ function run() {
       entrypoint: "cli", term_program: process.env.TERM_PROGRAM || "",
       // Cursor execs the script directly, so ppid is the agent process (liveness handle).
       pid: process.ppid, started: state !== "idle" ? true : (prev.started || false),
-      ts: Math.floor(Date.now() / 1000),
+      started_at: prev.started_at || ts, // set once; elapsed depends on it never moving
+      ...(typeof j.prompt === "string" && j.prompt.trim() ? { prompt: oneLine(j.prompt) } : {}),
+      ts,
     });
   } catch {}
   if (state === "idle" && process.platform === "darwin")

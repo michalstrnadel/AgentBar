@@ -126,6 +126,8 @@ final class IslandRowView: NSView {
         self.onClick = onClick
         super.init(frame: .zero)
         wantsLayer = true
+        // When the prompt takes the title, the repo identity survives here.
+        toolTip = Self.name(session)
 
         let chips = NSStackView(views: Self.chips(session))
         chips.orientation = .horizontal
@@ -160,7 +162,14 @@ final class IslandRowView: NSView {
         let status = NSTextField(labelWithAttributedString: Self.heroStatus(session))
         status.lineBreakMode = .byTruncatingTail
 
-        let text = NSStackView(views: [top, status])
+        var column: [NSView] = [top]
+        if !session.prompt.isEmpty {
+            let you = NSTextField(labelWithAttributedString: Self.youLine(session))
+            you.lineBreakMode = .byTruncatingTail
+            column.append(you)
+        }
+        column.append(status)
+        let text = NSStackView(views: column)
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 3
@@ -219,9 +228,24 @@ final class IslandRowView: NSView {
             .foregroundColor: dotColor(s),
             .font: NSFont.systemFont(ofSize: 8),
         ])
-        out.append(NSAttributedString(string: name(s), attributes: [
+        // The task, when the writer carries it — "optimize queries" places a row
+        // faster than a repo name does. The repo stays in the tooltip.
+        out.append(NSAttributedString(string: s.prompt.isEmpty ? name(s) : s.prompt, attributes: [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
             .foregroundColor: NSColor.white.withAlphaComponent(0.92),
+        ]))
+        return out
+    }
+
+    /// "You: fix the auth bug in middleware" — the instruction this session is on.
+    private static func youLine(_ s: Session) -> NSAttributedString {
+        let out = NSMutableAttributedString(string: "You: ", attributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.4),
+        ])
+        out.append(NSAttributedString(string: s.prompt, attributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.6),
         ]))
         return out
     }
@@ -286,17 +310,25 @@ final class IslandRowView: NSView {
         }
     }
 
-    /// Agent name, then where the session lives — the two facts that tell two
-    /// otherwise identical rows apart.
+    /// Agent name, model, where the session lives, and for how long — the facts
+    /// that tell two otherwise identical rows apart. Elapsed stays a plain quiet
+    /// number, not a chip, the way the reference panels keep it.
     private static func chips(_ s: Session) -> [NSView] {
         let agent = Agent.byID(s.agentID)
         var out = [chip(agent.name, tint: agent.brand)]
+        if let m = s.modelChip { out.append(chip(m, tint: NSColor.white.withAlphaComponent(0.85))) }
         if s.entrypoint == "claude-desktop" {
             out.append(chip("Desktop", tint: .white))
         } else if s.entrypoint == "antigravity-app" {
             out.append(chip(agent.name == "Antigravity" ? "App" : agent.name, tint: .white))
         } else if let term = TerminalApp.known.first(where: { $0.termProgram == s.termProgram }) {
             out.append(chip(term.name, tint: .white))
+        }
+        if let e = s.elapsed {
+            let l = NSTextField(labelWithString: e)
+            l.font = .monospacedSystemFont(ofSize: 9, weight: .medium)
+            l.textColor = NSColor.white.withAlphaComponent(0.45)
+            out.append(l)
         }
         return out
     }

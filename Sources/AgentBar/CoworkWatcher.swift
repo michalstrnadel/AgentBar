@@ -261,6 +261,8 @@ final class CoworkWatcher {
         o["pid"] = Int(pid)
         o["started"] = true
         o["sessionId"] = id
+        // Set once; elapsed in the frontends depends on it never moving.
+        if o["started_at"] == nil { o["started_at"] = Int(ts) }
         o["ts"] = Int(ts)
         guard let data = try? JSONSerialization.data(withJSONObject: o) else { return }
         try? FileManager.default.createDirectory(at: SessionStore.stateDir,

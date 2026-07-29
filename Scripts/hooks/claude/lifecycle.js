@@ -49,12 +49,20 @@ function run() {
     // started:false — a merely-opened conversation stays out of the dropdown until real
     // activity (update.js flips started on the first prompt/tool event).
     try {
+      const ts = Math.floor(Date.now() / 1000);
+      // Model is best-effort: taken when the payload carries one, omitted otherwise.
+      let model = "";
+      try {
+        const j = JSON.parse(input);
+        model = typeof j.model === "string" ? j.model : (j.model && j.model.display_name) || "";
+      } catch {}
       writeAtomic(statePath, {
         agent: "claude", state: "idle", label: "",
         project: cwd ? path.basename(cwd) : "", cwd, sessionId: id || "",
         entrypoint: process.env.CLAUDE_CODE_ENTRYPOINT || "",
         term_program: process.env.TERM_PROGRAM || "",
-        pid: process.ppid, started: false, ts: Math.floor(Date.now() / 1000),
+        pid: process.ppid, started: false, started_at: ts,
+        ...(model ? { model: String(model) } : {}), ts,
       });
     } catch {}
     if (process.platform === "darwin")

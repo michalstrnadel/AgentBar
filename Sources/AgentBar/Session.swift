@@ -20,6 +20,9 @@ struct Session {
     let pid: Int32           // the agent process; used for liveness pruning
     let started: Bool        // false until the session has real activity
     let ts: TimeInterval
+    let startedAt: TimeInterval // 0 = the writer doesn't carry the field
+    let prompt: String       // latest user prompt — names the task ("" ok)
+    let model: String        // model name when the agent reports one ("" ok)
 
     /// Sort/priority weight: what the menu bar should surface first.
     var priority: Int {
@@ -46,6 +49,32 @@ struct Session {
         pid         = Int32(o["pid"] as? Int ?? 0)
         started     = o["started"] as? Bool ?? true
         ts          = o["ts"] as? TimeInterval ?? 0
+        startedAt   = o["started_at"] as? TimeInterval ?? 0
+        prompt      = o["prompt"] as? String ?? ""
+        model       = o["model"] as? String ?? ""
+    }
+
+    /// "‹1m" / "28m" / "3h" / "2d" — how long the session has been going.
+    /// Nil until a writer carries `started_at`, so old files render unchanged.
+    var elapsed: String? {
+        guard startedAt > 0 else { return nil }
+        let s = Int(Date().timeIntervalSince1970 - startedAt)
+        guard s >= 0 else { return nil }
+        if s < 60 { return "<1m" }
+        if s < 3600 { return "\(s / 60)m" }
+        if s < 86400 { return "\(s / 3600)h" }
+        return "\(s / 86400)d"
+    }
+
+    /// The model, stripped of brand noise a chip has no room for:
+    /// "claude-opus-5" → "opus-5". Nil when unknown.
+    var modelChip: String? {
+        guard !model.isEmpty else { return nil }
+        var m = model.lowercased()
+        for prefix in ["claude-", "anthropic/", "openai/", "google/"] where m.hasPrefix(prefix) {
+            m.removeFirst(prefix.count)
+        }
+        return String(m.prefix(16))
     }
 
     /// Synthetic row for the welcome window's live preview. Never written by a
@@ -63,6 +92,9 @@ struct Session {
         pid = 0
         started = true
         ts = Date().timeIntervalSince1970
+        startedAt = 0
+        prompt = ""
+        model = ""
     }
 
     /// Current git branch of the session's project, read straight from `.git/HEAD`

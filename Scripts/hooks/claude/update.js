@@ -20,6 +20,8 @@ const TOOL_LABELS = {
 };
 
 const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";
+// One display line: the prompt names the task in a row, not a transcript.
+const oneLine = (s) => String(s).replace(/\s+/g, " ").trim().slice(0, 120);
 
 let raw = "";
 process.stdin.on("data", (d) => (raw += d));
@@ -61,8 +63,18 @@ process.stdin.on("end", () => {
     // the app probes it with kill(pid, 0) to prune dead sessions.
     pid: process.ppid,
     started: true,
+    // Set once and preserved from then on — elapsed time depends on it never moving.
+    // First-write fallback covers sessions that predate the field (or the hook).
+    started_at: prev.started_at || ts,
     ts,
   };
+  // The latest prompt names the task the session is on; older fields ride along.
+  if (event === "prompt" && typeof p.prompt === "string" && p.prompt.trim())
+    out.prompt = oneLine(p.prompt);
+  else if (prev.prompt) out.prompt = prev.prompt;
+  const model = typeof p.model === "string" ? p.model : (p.model && p.model.display_name) || "";
+  if (model) out.model = String(model);
+  else if (prev.model) out.model = prev.model;
   try {
     fs.mkdirSync(stateDir, { recursive: true });
     const tmp = statePath + "." + process.pid + ".tmp";

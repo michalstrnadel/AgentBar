@@ -38,7 +38,11 @@ max 64 chars (fallback `"unknown"`). The file name is the session's identity;
   "term_program": "WarpTerminal", // $TERM_PROGRAM of the hosting terminal ("" ok)
   "pid": 12345,                // the agent process (hook's ppid) — liveness handle
   "started": true,             // false = session opened but no real activity yet
-  "ts": 1784844796
+  "ts": 1784844796,
+
+  "started_at": 1784844700,    // OPTIONAL: unix seconds the session began
+  "prompt": "fix the auth bug",// OPTIONAL: latest user prompt, one line, <= 120 chars
+  "model": "claude-opus-5"     // OPTIONAL: model name, when the agent reports one
 }
 ```
 
@@ -48,6 +52,12 @@ Rules:
 - `state: "end"` is not written — the session's file is **deleted** instead.
 - `started` stays `false` on SessionStart; the first real event flips it. Frontends
   MUST hide sessions with `started: false`.
+- The three optional fields are additive: writers that don't know them simply omit
+  them, and frontends MUST render fine without them — old state files and
+  third-party writers stay valid. `started_at` is set once (session start, or first
+  write for sessions predating the field) and MUST be preserved on merge; elapsed
+  time is `now - started_at`, computed by the frontend. `prompt` is the *latest*
+  user prompt — it names the task a session is on, and a newer prompt replaces it.
 
 Frontend pruning (each refresh):
 - delete when `pid > 0` and the process no longer exists (`kill(pid, 0)` → ESRCH);
