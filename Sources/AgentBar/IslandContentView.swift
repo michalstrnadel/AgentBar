@@ -154,6 +154,7 @@ final class IslandRowView: NSView {
 
         let title = NSTextField(labelWithAttributedString: Self.heroTitle(session))
         title.lineBreakMode = .byTruncatingTail
+        title.maximumNumberOfLines = 1
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let spacer = NSView()
@@ -164,11 +165,13 @@ final class IslandRowView: NSView {
 
         let status = NSTextField(labelWithAttributedString: Self.heroStatus(session))
         status.lineBreakMode = .byTruncatingTail
+        status.maximumNumberOfLines = 1
 
         var column: [NSView] = [top]
         if !session.prompt.isEmpty {
             let you = NSTextField(labelWithAttributedString: Self.youLine(session))
             you.lineBreakMode = .byTruncatingTail
+            you.maximumNumberOfLines = 1
             column.append(you)
         }
         column.append(status)
@@ -195,6 +198,9 @@ final class IslandRowView: NSView {
     private func buildCompact(chips: NSStackView) {
         let title = NSTextField(labelWithAttributedString: Self.compactTitle(session))
         title.lineBreakMode = .byTruncatingTail
+        // A wrapped task name would overflow the fixed row height and tear the
+        // panel during resize animations — one line, truncated, no exceptions.
+        title.maximumNumberOfLines = 1
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         title.translatesAutoresizingMaskIntoConstraints = false
         chips.translatesAutoresizingMaskIntoConstraints = false

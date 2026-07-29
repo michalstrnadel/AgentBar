@@ -212,12 +212,14 @@ final class IslandController: NSObject {
         switch mode {
         case .collapsed:
             content.topInset = 0
-            // The pill is the notch's chin: exactly its width, always. Sizing it to
+            // The pill is the notch's chin: one fixed width, always. Sizing it to
             // the content made it resize with every rotating verb and every
             // working↔done flip — a constant wobble in the corner of the eye that
-            // read as the island opening and closing all day. The notch never
-            // moves; neither does the pill. Text truncates inside instead.
-            let w = IslandGeometry.notch(on: screen)?.width ?? 200
+            // read as the island opening and closing all day. Slightly narrower
+            // than the notch itself: the physical island's bottom corners curve
+            // inward, and a pill matching it to the point leaves little ears
+            // sticking past the curve on the real screen.
+            let w = IslandGeometry.notch(on: screen).map { $0.width - 10 } ?? 200
             pill.configure(mark: flash == nil ? mark : nil, text: pillText,
                            count: flash == nil ? visibleSessions.count : 0,
                            height: Self.pillHeight,
