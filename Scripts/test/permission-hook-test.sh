@@ -179,6 +179,19 @@ printf '{"session_id":"lcsess","cwd":"/tmp/proj"}' | PATH="$FAKEBIN:$PATH" "$NOD
 check "lifecycle: started_at seeded" 'grep -q "\"started_at\":" "$HOME/.agentbar/state.d/lcsess.json"'
 check "lifecycle: still started:false" 'grep -q "\"started\":false" "$HOME/.agentbar/state.d/lcsess.json"'
 
+# 17. the permission hook's own state write must carry the optional task fields
+# through — its {...prev} merge is exactly what the protocol relies on
+fresh_home
+mkdir -p "$HOME/.agentbar/state.d"
+printf '{"agent":"claude","state":"tool","label":"x","prompt":"fix the auth bug","started_at":2222,"model":"claude-opus-5","started":true,"ts":1}' > "$HOME/.agentbar/state.d/testsess.json"
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+check "permission: task fields survive" \
+  'grep -q "\"prompt\":\"fix the auth bug\"" "$HOME/.agentbar/state.d/testsess.json" && grep -q "\"started_at\":2222" "$HOME/.agentbar/state.d/testsess.json" && grep -q "\"model\":\"claude-opus-5\"" "$HOME/.agentbar/state.d/testsess.json"'
+printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
