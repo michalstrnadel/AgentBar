@@ -5,10 +5,9 @@ import Cocoa
 /// session list — with the pending approval answerable in place — when the user
 /// looks at it or an agent needs them.
 final class IslandController: NSObject {
+    /// The pill is always on screen — it is the app's presence, the way the menu bar
+    /// mark is. With nothing running it is just the mark; work adds a line of text.
     private enum Mode {
-        /// On screen but invisible: a hover target over the notch, so the island is
-        /// reachable even when there is nothing to report.
-        case resting
         case collapsed
         case expanded
     }
@@ -20,7 +19,7 @@ final class IslandController: NSObject {
 
     private var sessions: [Session] = []
     private var requests: [ApprovalRequest] = []
-    private var mode: Mode = .resting
+    private var mode: Mode = .collapsed
     private var hovered = false
     private var tracking: NSTrackingArea?
     private var collapseWork: DispatchWorkItem?
@@ -31,6 +30,8 @@ final class IslandController: NSObject {
     /// Deliberately small. The collapsed island is a glance, not a panel — anything
     /// taller starts covering the screen for no gain.
     private static let pillHeight: CGFloat = 30
+    /// Nothing running: mark only, no wider than it needs to be.
+    private static let idleWidth: CGFloat = 58
     private static let rowSpacing: CGFloat = 8
     /// Beyond this the panel would run down the screen; the rest are summarised.
     private static let maxRows = 6
@@ -111,11 +112,7 @@ final class IslandController: NSObject {
         // Only the pointer opens the panel. Even a pending approval stays a pill —
         // an island that unfolds over the screen on its own is in the way, which is
         // the opposite of the point. The pill says what is waiting; hovering acts.
-        if hovered {
-            mode = .expanded
-        } else {
-            mode = visible.isEmpty ? .resting : .collapsed
-        }
+        mode = hovered ? .expanded : .collapsed
         layout()
         // A done-only island has to retract by itself: no further state change is
         // coming to trigger another pass.
@@ -137,20 +134,14 @@ final class IslandController: NSObject {
     private func layout() {
         guard let screen = IslandGeometry.screen else { return }
         switch mode {
-        case .resting:
-            // An invisible strip under the notch, still hoverable.
-            let notchW = IslandGeometry.notch(on: screen)?.width ?? 180
-            content.setRows([])
-            content.alphaValue = 0
-            panel.setFrame(IslandGeometry.frame(width: notchW, height: Self.pillHeight, on: screen),
-                           display: true)
         case .collapsed:
             content.alphaValue = 1
             content.topInset = 0
             pill.configure(mark: mark, text: pillText, count: visibleSessions.count,
                            height: Self.pillHeight)
             content.setRows([pill])
-            let w = min(420, max(150, pill.contentWidth + IslandContentView.hPad * 2))
+            // Idle it shrinks to just the mark; text and count widen it as they appear.
+            let w = min(420, max(Self.idleWidth, pill.contentWidth + IslandContentView.hPad * 2))
             panel.setFrame(IslandGeometry.frame(width: w, height: Self.pillHeight, on: screen),
                            display: true)
         case .expanded:
