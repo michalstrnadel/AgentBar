@@ -38,6 +38,27 @@ once both watch *and write* `~/.agentbar/state.d/`, so they overwrite each other
 rows — the two live-app suites go red in ways that look like watcher bugs and
 aren't. `pkill -f AgentBar` first, then launch the one you mean to test.
 
+**macOS re-asks for folder permissions on every rebuild** unless you sign with a
+stable identity: TCC keys its grants to the signing certificate, and the ad-hoc
+fallback (`-s -`) is a brand-new identity each build. Create a local cert once
+and `build.sh` picks it up by name automatically:
+
+```bash
+openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
+  -keyout k.pem -out c.pem -subj "/CN=AgentBar Local Signing" \
+  -addext "keyUsage=critical,digitalSignature" \
+  -addext "extendedKeyUsage=critical,codeSigning" \
+  -addext "basicConstraints=critical,CA:FALSE"
+openssl pkcs12 -export -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1 \
+  -out i.p12 -inkey k.pem -in c.pem -passout pass:x        # transient p12, deleted below
+security import i.p12 -k ~/Library/Keychains/login.keychain-db -P x -T /usr/bin/codesign
+security add-trusted-cert -r trustRoot -p codeSign \
+  -k ~/Library/Keychains/login.keychain-db c.pem           # may ask for your login password once
+rm k.pem c.pem i.p12
+```
+
+A differently named cert works via `AGENTBAR_SIGN_ID="My Cert" ./Scripts/build.sh`.
+
 Which surface you get is a `UserDefaults` key, so you can flip it without the
 welcome window:
 

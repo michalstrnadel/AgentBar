@@ -46,5 +46,15 @@ PLIST
 cp -R Scripts/hooks "$APP/Contents/Resources/hooks"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
-codesign --force --deep -s - "$APP" 2>/dev/null || true
+# TCC keys permission grants to the signing identity, and an ad-hoc signature is
+# a brand-new identity every build — macOS would re-ask for Documents access on
+# each rebuild. Prefer the stable local cert (CONTRIBUTING shows how to make one).
+SIGN_ID="${AGENTBAR_SIGN_ID:-AgentBar Local Signing}"
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"$SIGN_ID\""; then
+  codesign --force --deep -s "$SIGN_ID" "$APP"
+  echo "Signed with \"$SIGN_ID\""
+else
+  codesign --force --deep -s - "$APP" 2>/dev/null || true
+  echo "Signed ad-hoc — macOS will re-ask for folder permissions on every rebuild"
+fi
 echo "Built $APP"
