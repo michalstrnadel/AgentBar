@@ -56,8 +56,11 @@ enum IslandGeometry {
         return inset > 0 ? inset : NSStatusBar.system.thickness
     }
 
-    /// Gap between the menu bar and the panel floating under it.
-    static let topGap: CGFloat = 3
+    /// Gap between the menu bar and the panel hanging under it. Zero on purpose: the
+    /// collapsed pill is narrower than the notch, so flush against the notch's bottom
+    /// edge the two black shapes read as one — the panel looks like part of the
+    /// machine rather than something parked underneath it.
+    static let topGap: CGFloat = 0
 
     /// A panel of this size, floating just below the menu bar and centred on the
     /// notch (or on the screen when there isn't one). Clear of the bar rather than

@@ -23,8 +23,6 @@ final class IslandContentView: NSView {
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.withAlphaComponent(0.94).cgColor
         layer?.cornerRadius = Self.corner
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
         layer?.shadowColor = NSColor.black.cgColor
         layer?.shadowOpacity = 0.35
         layer?.shadowRadius = 10
@@ -47,6 +45,20 @@ final class IslandContentView: NSView {
     /// left clear so the notch (and the clock either side of it) isn't fought over.
     var topInset: CGFloat = 0 {
         didSet { stackTop.constant = topInset }
+    }
+
+    /// Hanging off the notch rather than floating on a plain screen edge. The top
+    /// corners go square so the two black shapes meet without a seam; a display with
+    /// no notch keeps the pill fully rounded, because there is nothing there for it
+    /// to be continuous with.
+    var flushTop = false {
+        didSet {
+            guard flushTop != oldValue else { return }
+            layer?.maskedCorners = flushTop
+                ? [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+                : [.layerMinXMinYCorner, .layerMaxXMinYCorner,
+                   .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        }
     }
 
     /// Height the panel needs for the current rows. Measured from the stack rather
@@ -75,7 +87,6 @@ final class IslandContentView: NSView {
     /// Layer colours are resolved once, so a light/dark switch has to re-stamp them.
     override func updateLayer() {
         layer?.backgroundColor = NSColor.black.withAlphaComponent(0.94).cgColor
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
     }
     override var wantsUpdateLayer: Bool { true }
 }

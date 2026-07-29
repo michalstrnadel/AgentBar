@@ -76,10 +76,13 @@ final class IslandController: NSObject {
     /// What the pill says. The panel no longer opens by itself, so the pill is the
     /// only thing a waiting session gets to say — it has to name the wait, not just
     /// animate. Otherwise it's Claude's rotating verb, as in the menu bar.
+    ///
+    /// Kept short on purpose: the pill has to stay narrower than the notch to read as
+    /// part of it, and "needs approval" was already wider than that.
     private var pillText: String {
         switch visibleSessions.first?.state {
-        case .permission: return "needs approval"
-        case .question:   return "wants an answer"
+        case .permission: return "approve?"
+        case .question:   return "answer?"
         default:          return word.isEmpty ? "" : "\(word)…"
         }
     }
@@ -131,6 +134,7 @@ final class IslandController: NSObject {
 
     private func layout() {
         guard let screen = IslandGeometry.screen else { return }
+        content.flushTop = IslandGeometry.notch(on: screen) != nil
         switch mode {
         case .collapsed:
             content.alphaValue = 1
@@ -138,8 +142,12 @@ final class IslandController: NSObject {
             pill.configure(mark: mark, text: pillText, count: visibleSessions.count,
                            height: Self.pillHeight)
             content.setRows([pill])
-            // Idle it shrinks to just the mark; text and count widen it as they appear.
-            let w = min(420, max(Self.idleWidth, pill.contentWidth + IslandContentView.hPad * 2))
+            // Idle it shrinks to just the mark; text and count widen it as they appear
+            // — but never past the notch it is meant to look like part of. Several
+            // agents at once make the mark itself wide, so this is a real ceiling,
+            // not a formality.
+            let ceiling = IslandGeometry.notch(on: screen)?.width ?? 420
+            let w = min(ceiling, max(Self.idleWidth, pill.contentWidth + IslandContentView.hPad * 2))
             panel.setFrame(IslandGeometry.frame(width: w, height: Self.pillHeight, on: screen),
                            display: true)
         case .expanded:
