@@ -15,6 +15,16 @@ All notable changes to AgentBar are documented here. This project follows
   fullscreen windows, and never takes focus from your editor. In Island-only mode
   the panel's `⋯` button carries Appearance, the Allow/Deny shortcut, updates and
   Quit, so the app is always reachable.
+- **The island panel reads like a proper agent panel now.** Whatever needs you
+  leads as a boxed hero row — mark, bold project name, a coloured status line
+  ("needs approval", "Claude asks", "Done — click to jump") — with the other
+  sessions as quiet one-liners below, attention-first. A waiting approval is a
+  full *Permission Request* card: tool and target line, the mini-diff with
+  +N −N counts, Deny / Allow in front. An AskUserQuestion gets a *Claude asks*
+  card naming the question. Answering flashes the choice back in the pill —
+  "✓ Allowed" — as the panel folds away, and every open, close and resize is one
+  slow spring instead of a snap. The panel is solid black: translucency read as
+  the window behind showing through the notch.
 - **A welcome window on first launch**, with the surface picker — Menu bar,
   Dynamic Island, or Both — over a live preview drawn by the real mascot renderer,
   and a line naming the agents whose hooks were just wired. Reachable afterwards as
@@ -28,7 +38,11 @@ All notable changes to AgentBar are documented here. This project follows
   reads the audit log the app writes for every session and reports working,
   "needs approval" (with the tool being asked about), AskUserQuestion and done.
   Rows are anchored to the Claude app's pid, so quitting Claude clears them, and
-  a click focuses the app where the prompt lives.
+  a click focuses the app where the prompt lives. **Caveat, found after the fact:
+  newer desktop builds run Cowork inside a VM whose session files never touch the
+  host, and those sessions cannot be shown** — this covers the older host-side
+  "local mode" only. Documented in the README; nothing to fix on AgentBar's side
+  until the app exposes session state to the host again.
 - Integration test for the Antigravity liveness watcher
   (`Scripts/test/antigravity-watcher-test.sh`): synthetic turn transcript walks
   thinking → permission → done against the running app, now for both the

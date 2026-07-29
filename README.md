@@ -176,7 +176,7 @@ rm -rf ~/.agentbar
 | Agent | Live status | Open | Mascot | Notes |
 |---|---|---|---|---|
 | Claude Code (CLI + desktop) | full | yes | Clawd the crab | hooks: prompt, tool, permission, stop, lifecycle |
-| Claude Cowork (desktop) | working / approval / question / done | yes | Clawd the crab | watched, not hooked: Cowork gives each session a throwaway config dir, so there is nothing to install into. `CoworkWatcher` reads the audit log the app writes per session; approvals are answered in the app |
+| Claude Cowork (desktop) | working / approval / question / done — **older local mode only** | yes | Clawd the crab | watched, not hooked: Cowork gives each session a throwaway config dir, so there is nothing to install into. `CoworkWatcher` reads the audit log the app writes per session. **Newer desktop builds run Cowork inside a VM that writes no session files on the host — those sessions can't be shown until the app exposes something host-side** |
 | Codex CLI | turn-complete | yes | knot + braille dot-matrix | via Codex `notify` (auto-installed); no per-tool granularity upstream |
 | Cursor CLI | working / done | yes | pointer | hooks in `~/.cursor/hooks.json` (auto-wired if Cursor is installed) |
 | Gemini CLI | working / done | yes | spark | hooks in `~/.gemini/settings.json` (auto-wired if Gemini is installed) |
@@ -197,13 +197,17 @@ the notch:
 - **At rest it's tiny** — the mark of whichever agent is working, plus one line of
   what it's doing, plus a count once two or more sessions are live. Nothing running,
   and it shrinks to the mark alone. It never grows on its own: even a pending
-  approval stays a pill that says *needs approval*.
-- **Point at it and it opens** — every session with its project, branch, what it's
-  running, and chips naming the agent and the terminal (or app) it lives in. Click a
-  row to jump to that session.
-- **Answer right there** — a waiting approval shows the same mini-diff the menu
-  shows, with **Allow** / **Deny** in front and *Always allow* / *Answer in
-  terminal* kept quiet beside them.
+  approval stays a pill that says *approve?*.
+- **Point at it and it opens** — whatever needs you leads as a boxed hero row with
+  a coloured status line; the other sessions follow as quiet one-liners, each with
+  chips naming the agent and the terminal (or app) it lives in. Click a row to
+  jump to that session.
+- **Answer right there** — a waiting approval is a proper *Permission Request*
+  card: the tool and its target, the mini-diff with **+3 −1** counts, **Allow** /
+  **Deny** in front and *Always allow* / *Answer in terminal* quiet beside them.
+  Your answer flashes back in the pill — **✓ Allowed** — as the panel folds away.
+  An **AskUserQuestion** shows as a *Claude asks* card naming the question (the
+  options stay in the agent's own UI for now).
 - **No notch, or an external display?** Same panel, centred at the top of whichever
   screen your pointer is on. It steps aside for fullscreen windows, and it never
   takes focus — you can keep typing in your editor with the panel open.
@@ -245,6 +249,10 @@ writes `requests.d/`, the app answers into `answers.d/`.
 - **No sessions appear** — hooks load when a session starts: open a *new* agent
   session after installing. If you use a custom `CLAUDE_CONFIG_DIR`, see
   [issue #4](https://github.com/michalstrnadel/AgentBar/issues/4).
+- **Cowork sessions don't appear** — newer Claude desktop builds run Cowork inside
+  an isolated VM: the session's audit log lives on the VM's disk image, so nothing
+  exists on the host for AgentBar to read. Upstream limitation; sessions from the
+  older host-side "local mode" still show.
 - **Still nothing** — the installer needs `node`; if none is found the Claude hooks
   are skipped (logged to Console.app). Install Node.js and relaunch AgentBar.
 - **Codex rows never show** — if `~/.codex/config.toml` already had a `notify`
