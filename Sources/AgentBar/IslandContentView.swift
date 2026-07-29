@@ -633,14 +633,16 @@ final class ChipBox: NSView {
     }
 }
 
-/// The collapsed pill: mark, one line of text, and how many sessions are live.
-/// It floats clear of the menu bar, so it never has to dodge the notch and the
-/// user's own menu bar stays usable.
+/// The collapsed pill: mark, one line of text, and how many sessions are live —
+/// at a FIXED width, the notch's own. A pill that resized with every rotating
+/// verb wobbled in the corner of the eye all day long; the notch never moves,
+/// so neither does its chin. Text swaps in place and truncates when it must.
 final class IslandPillView: NSView {
     private let markView = NSImageView()
     private let label = NSTextField(labelWithString: "")
     private let badge = BadgeView()
     private var height: NSLayoutConstraint!
+    private var width: NSLayoutConstraint!
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -648,6 +650,7 @@ final class IslandPillView: NSView {
         label.font = .monospacedSystemFont(ofSize: 11.5, weight: .medium)
         label.textColor = NSColor.white.withAlphaComponent(0.9)
         label.lineBreakMode = .byTruncatingTail
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let stack = NSStackView(views: [markView, label, badge])
         stack.orientation = .horizontal
@@ -655,11 +658,14 @@ final class IslandPillView: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         height = heightAnchor.constraint(equalToConstant: 30)
+        width = widthAnchor.constraint(equalToConstant: 150)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            // Centred as a group inside the fixed pill, so an idle mark sits in
+            // the middle rather than hugging a corner of all that black.
+            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 4),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
-            height,
+            height, width,
         ])
     }
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -671,7 +677,7 @@ final class IslandPillView: NSView {
     }
 
     func configure(mark: NSImage?, text: String, count: Int, height h: CGFloat,
-                   tint: NSColor? = nil) {
+                   width w: CGFloat, tint: NSColor? = nil) {
         update(mark: mark)
         label.stringValue = text
         label.isHidden = text.isEmpty
@@ -682,14 +688,7 @@ final class IslandPillView: NSView {
                                  : .systemFont(ofSize: 12.5, weight: .semibold)
         badge.count = count
         height.constant = h
-    }
-
-    /// Width the pill wants, so the panel can size itself to the content.
-    var contentWidth: CGFloat {
-        var w = markView.isHidden ? 0 : (markView.image?.size.width ?? 0)
-        if !label.isHidden { w += label.attributedStringValue.size().width + 8 }
-        if !badge.isHidden { w += badge.intrinsicContentSize.width + 8 }
-        return w
+        width.constant = w
     }
 }
 

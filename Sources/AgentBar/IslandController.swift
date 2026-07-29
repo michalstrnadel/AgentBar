@@ -46,8 +46,6 @@ final class IslandController: NSObject {
     /// Deliberately small. The collapsed island is a glance, not a panel — anything
     /// taller starts covering the screen for no gain.
     private static let pillHeight: CGFloat = 30
-    /// Nothing running: mark only, no wider than it needs to be.
-    private static let idleWidth: CGFloat = 58
     private static let rowSpacing: CGFloat = 8
     /// Beyond this the panel would run down the screen; the rest are summarised.
     private static let maxRows = 6
@@ -202,16 +200,17 @@ final class IslandController: NSObject {
         switch mode {
         case .collapsed:
             content.topInset = 0
+            // The pill is the notch's chin: exactly its width, always. Sizing it to
+            // the content made it resize with every rotating verb and every
+            // working↔done flip — a constant wobble in the corner of the eye that
+            // read as the island opening and closing all day. The notch never
+            // moves; neither does the pill. Text truncates inside instead.
+            let w = IslandGeometry.notch(on: screen)?.width ?? 200
             pill.configure(mark: flash == nil ? mark : nil, text: pillText,
                            count: flash == nil ? visibleSessions.count : 0,
-                           height: Self.pillHeight, tint: flash?.tint)
+                           height: Self.pillHeight,
+                           width: w - IslandContentView.hPad * 2, tint: flash?.tint)
             content.setRows([pill])
-            // Idle it shrinks to just the mark; text and count widen it as they appear
-            // — but never past the notch it is meant to look like part of. Several
-            // agents at once make the mark itself wide, so this is a real ceiling,
-            // not a formality.
-            let ceiling = IslandGeometry.notch(on: screen)?.width ?? 420
-            let w = min(ceiling, max(Self.idleWidth, pill.contentWidth + IslandContentView.hPad * 2))
             target = IslandGeometry.frame(width: w, height: Self.pillHeight, on: screen)
         case .expanded:
             content.topInset = 10
