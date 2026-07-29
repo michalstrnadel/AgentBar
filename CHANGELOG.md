@@ -12,6 +12,17 @@ All notable changes to AgentBar are documented here. This project follows
   Generator checked in as `Scripts/demo/demo-island-gif.swift`, reading mascot
   frames from the shipped sprite sources like the menu-bar one.
 
+### Fixed
+- The island snapped open and shut in a rhythm while an agent was busy. Every
+  state-file tick recomputed the panel's shape from the *instantaneous* hover
+  state, bypassing both the open dwell and the close grace — a pointer grazing
+  an edge was enough. The dwell and grace timers now own that decision; ticks
+  only refresh the content.
+- Switching Spaces could land the panel on the new desktop fully open with the
+  pointer nowhere near it: the Space slides the panel under the pointer without
+  any enter/exit event, so the hover state went stale. It's now re-read from
+  the actual pointer position when the Space or displays change.
+
 ## 1.10.0 - 2026-07-29
 
 ### Added

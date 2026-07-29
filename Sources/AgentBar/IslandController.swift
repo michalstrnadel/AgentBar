@@ -21,6 +21,12 @@ final class IslandController: NSObject {
     private var requests: [ApprovalRequest] = []
     private var mode: Mode = .collapsed
     private var hovered = false
+    /// The debounced intent behind `mode`. Only the dwell and grace timers (and an
+    /// answer) may flip this — `rebuild` runs on every store tick, roughly once a
+    /// second while an agent works, and deciding the shape from the instantaneous
+    /// hover state there bypassed both timers: a pointer grazing an edge snapped
+    /// the panel open and shut in rhythm with the ticks.
+    private var wantsExpanded = false
     private var tracking: NSTrackingArea?
     private var collapseWork: DispatchWorkItem?
     private var expandWork: DispatchWorkItem?
@@ -102,16 +108,38 @@ final class IslandController: NSObject {
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         NotificationCenter.default.removeObserver(self)
         mascot.sink("island", nil)
+        expandWork?.cancel()
+        collapseWork?.cancel()
+        wantsExpanded = false
+        hovered = false
         panel.orderOut(nil)
     }
 
     /// The Space or the displays changed. Rebuild now for the common case, and once
     /// more after the transition settles — the notification lands while the incoming
-    /// fullscreen window is still animating into place, so an immediate look can
-    /// still see the old shape.
+    /// windows are still animating into place, so an immediate look can still see
+    /// the old shape.
     @objc private func surroundingsChanged() {
+        resyncHover()
         rebuild()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in self?.rebuild() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [weak self] in
+            self?.resyncHover()
+            self?.rebuild()
+        }
+    }
+
+    /// A Space switch slides the panel under a pointer that never crossed its edge,
+    /// so the tracking area's enter/exit state can be stale — most visibly a panel
+    /// arriving on the new Space fully open with the pointer nowhere near it. Ask
+    /// the geometry instead of trusting the last event.
+    private func resyncHover() {
+        let inside = panel.isVisible && NSMouseInRect(NSEvent.mouseLocation, panel.frame, false)
+        hovered = inside
+        if !inside {
+            expandWork?.cancel()
+            collapseWork?.cancel()
+            wantsExpanded = false
+        }
     }
 
     func apply(sessions: [Session], requests: [ApprovalRequest]) {
@@ -144,7 +172,7 @@ final class IslandController: NSObject {
         // the opposite of the point. The pill says what is waiting; hovering acts.
         // (`islandExpandDebug` holds it open, for screenshots and layout work.)
         let held = UserDefaults.standard.bool(forKey: "islandExpandDebug")
-        mode = (hovered || held) ? .expanded : .collapsed
+        mode = (wantsExpanded || held) ? .expanded : .collapsed
         layout(animated: animated)
     }
 
@@ -281,8 +309,9 @@ final class IslandController: NSObject {
     /// Echo the choice in the pill — "✓ Allowed" — for a beat, then go back to
     /// reporting. Defer skips the flash: the hand-off itself is the feedback.
     private func flashAnswer(_ behavior: String) {
-        hovered = false
+        wantsExpanded = false
         collapseWork?.cancel()
+        expandWork?.cancel()
         let green = NSColor(srgbRed: 0.35, green: 0.85, blue: 0.45, alpha: 1)
         switch behavior {
         case "allow":  flash = ("✓ Allowed", green)
@@ -346,9 +375,10 @@ final class IslandController: NSObject {
             // clicked and where a Cmd-Tab flick crosses, and a panel that unfolds
             // for every drive-by looks like a bug. A short dwell filters those out
             // without being felt by anyone who actually aims at it.
-            if mode == .expanded { return }
+            guard !wantsExpanded else { return }
             let work = DispatchWorkItem { [weak self] in
                 guard let self, self.hovered else { return }
+                self.wantsExpanded = true
                 self.rebuild(animated: true)
             }
             expandWork = work
@@ -359,6 +389,7 @@ final class IslandController: NSObject {
         // the panel shrinking out from under the pointer — doesn't snap it shut.
         let work = DispatchWorkItem { [weak self] in
             guard let self, !self.hovered else { return }
+            self.wantsExpanded = false
             self.rebuild(animated: true)
         }
         collapseWork = work
