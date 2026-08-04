@@ -23,6 +23,16 @@ const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 6
 // One display line: the prompt names the task in a row, not a transcript.
 const oneLine = (s) => String(s).replace(/\s+/g, " ").trim().slice(0, 120);
 
+// One diagnostic per process, never more: this hook fires on every event, so an
+// unconditional log would flood the host agent's stderr. Self-swallowing and
+// stderr-only — it can neither throw nor delay the exit.
+let warned = false;
+const warn = (what, err) => {
+  if (warned) return;
+  warned = true;
+  try { console.error("[agentbar] " + what + " failed: " + ((err && err.message) || err)); } catch {}
+};
+
 let raw = "";
 process.stdin.on("data", (d) => (raw += d));
 process.stdin.on("end", () => {
@@ -85,5 +95,5 @@ process.stdin.on("end", () => {
     const tmp = statePath + "." + process.pid + ".tmp";
     fs.writeFileSync(tmp, JSON.stringify(out));
     fs.renameSync(tmp, statePath);
-  } catch {}
+  } catch (e) { warn("state write " + statePath, e); }
 });

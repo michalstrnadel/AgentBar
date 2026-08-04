@@ -30,6 +30,16 @@ const writeAtomic = (file, obj) => {
   fs.renameSync(tmp, file);
 };
 
+// One diagnostic per process, never more: these hooks fire on every event, so an
+// unconditional log would flood the host agent's stderr. Self-swallowing and
+// stderr-only — it can neither throw nor delay the exit.
+let warned = false;
+const warn = (what, err) => {
+  if (warned) return;
+  warned = true;
+  try { console.error("[agentbar] " + what + " failed: " + ((err && err.message) || err)); } catch {}
+};
+
 let input = "", done = false;
 process.stdin.on("data", (d) => (input += d));
 process.stdin.on("end", run);
@@ -38,14 +48,25 @@ setTimeout(run, 1000); // never hang the host session
 
 function run() {
   if (done) return; done = true;
-  fs.mkdirSync(stateDir, { recursive: true });
+  // An unwritable state.d must not throw the hook out with a stack trace: report it
+  // once and carry on, so the SessionEnd cleanup below still runs.
+  try { fs.mkdirSync(stateDir, { recursive: true }); } catch (e) { warn("mkdir " + stateDir, e); }
   let id = "", cwd = "";
   try { const j = JSON.parse(input); id = j.session_id; cwd = j.cwd || ""; } catch {}
   const statePath = path.join(stateDir, safeId(id) + ".json");
 
   if (event === "start") {
     // App not running -> leftover files are stale (prior crash); start honest.
-    if (!running()) { try { for (const f of fs.readdirSync(stateDir)) fs.rmSync(path.join(stateDir, f), { force: true }); } catch {} }
+    if (!running()) {
+      try {
+        const stale = fs.readdirSync(stateDir);
+        for (const f of stale) fs.rmSync(path.join(stateDir, f), { force: true });
+        // Leave a trail: "my sessions vanished" must be explainable after the fact.
+        if (stale.length)
+          console.error("[agentbar] AgentBar not running: cleared " + stale.length +
+                        " stale state file(s) from " + stateDir);
+      } catch (e) { warn("stale state cleanup", e); }
+    }
     // started:false — a merely-opened conversation stays out of the dropdown until real
     // activity (update.js flips started on the first prompt/tool event).
     try {
@@ -64,12 +85,12 @@ function run() {
         pid: process.ppid, started: false, started_at: ts,
         ...(model ? { model: String(model) } : {}), ts,
       });
-    } catch {}
+    } catch (e) { warn("state write " + statePath, e); }
     if (process.platform === "darwin")
       cp.spawn("open", ["-g", "-b", BUNDLE_ID], { stdio: "ignore", detached: true }).unref();
   } else if (event === "end") {
     // Removing the file drops the session; also what recovers a frozen icon after force-quit.
-    try { fs.rmSync(statePath, { force: true }); } catch {}
+    try { fs.rmSync(statePath, { force: true }); } catch (e) { warn("state remove " + statePath, e); }
   }
   process.exit(0);
 }

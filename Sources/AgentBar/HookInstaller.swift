@@ -27,17 +27,32 @@ enum HookInstaller {
     static func installIfNeeded() {
         DispatchQueue.global(qos: .utility).async {
             guard let bundled = Bundle.main.resourceURL?.appendingPathComponent("hooks") else { return }
-            do {
-                try copyScripts(from: bundled)
-                for dir in claudeConfigDirs() { try installClaude(configDir: dir) }
-                try installCodex()
-                try installCursor()
-                try installGemini()
-                try installAntigravity()
-            } catch {
-                NSLog("AgentBar hook install failed: \(error)")
+            // Without the scripts on disk there is nothing worth wiring to.
+            guard step("copy scripts", { try copyScripts(from: bundled) }) else {
+                DispatchQueue.main.async { onFinish?() }
+                return
             }
+            for dir in claudeConfigDirs() {
+                _ = step("claude (\(dir.path))") { try installClaude(configDir: dir) }
+            }
+            _ = step("codex", installCodex)
+            _ = step("cursor", installCursor)
+            _ = step("gemini", installGemini)
+            _ = step("antigravity", installAntigravity)
             DispatchQueue.main.async { onFinish?() }
+        }
+    }
+
+    /// Each integration is independent: one agent's config blowing up must not cost the
+    /// user every integration that comes after it in the pass. Returns whether it ran.
+    @discardableResult
+    private static func step(_ name: String, _ body: () throws -> Void) -> Bool {
+        do {
+            try body()
+            return true
+        } catch {
+            NSLog("AgentBar hook install step '\(name)' failed: \(error)")
+            return false
         }
     }
 
@@ -76,8 +91,17 @@ enum HookInstaller {
     /// Present-but-unparseable (JSONC comments, trailing comma, torn write) → nil:
     /// the caller must SKIP, never overwrite — rewriting from `[:]` would silently
     /// destroy the user's config.
+    /// An unreadable file counts as present-but-unparseable, not as missing: a
+    /// permission glitch or a torn read must never look like a fresh install.
     private static func readConfig(at url: URL) -> [String: Any]? {
-        guard let data = try? Data(contentsOf: url) else { return [:] }
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
+            NSLog("AgentBar: \(url.path) exists but could not be read (\(error)) — leaving it untouched")
+            return nil
+        }
         guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             NSLog("AgentBar: \(url.path) exists but is not parseable JSON — leaving it untouched")
             return nil
@@ -108,7 +132,12 @@ enum HookInstaller {
         p.arguments = ["-lc", "command -v node"]
         let pipe = Pipe()
         p.standardOutput = pipe
-        try? p.run()
+        do {
+            try p.run()
+        } catch {
+            NSLog("AgentBar: could not probe the login shell for node (\(error))")
+            return nil
+        }
         p.waitUntilExit()
         let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -171,7 +200,7 @@ enum HookInstaller {
     // MARK: - Codex (~/.codex/config.toml, notify hook)
 
     private static func installCodex() throws {
-        guard let node = nodePath else { return }
+        guard let node = nodePath else { NSLog("AgentBar: node not found, Codex hooks skipped"); return }
         let codexDir = home.appendingPathComponent(".codex")
         guard FileManager.default.fileExists(atPath: codexDir.path) else { return } // not a Codex user
         let configURL = codexDir.appendingPathComponent("config.toml")
@@ -224,8 +253,11 @@ enum HookInstaller {
     /// inherits the launchd PATH — often without /opt/homebrew/bin — so
     /// `#!/usr/bin/env node` would silently never fire. Pin the resolved node path.
     private static func pinNodeShebang(of scriptURL: URL) throws {
-        guard let node = nodePath,
-              var text = try? String(contentsOf: scriptURL, encoding: .utf8),
+        guard let node = nodePath else {
+            NSLog("AgentBar: node not found, \(scriptURL.lastPathComponent) left on its bundled shebang")
+            return
+        }
+        guard var text = try? String(contentsOf: scriptURL, encoding: .utf8),
               text.hasPrefix("#!") else { return }
         let rest = text.drop(while: { $0 != "\n" })
         text = "#!\(node)\(rest)"
@@ -271,7 +303,7 @@ enum HookInstaller {
     // MARK: - Gemini CLI (~/.gemini/settings.json)
 
     private static func installGemini() throws {
-        guard let node = nodePath else { return }
+        guard let node = nodePath else { NSLog("AgentBar: node not found, Gemini hooks skipped"); return }
         let geminiDir = home.appendingPathComponent(".gemini")
         guard FileManager.default.fileExists(atPath: geminiDir.path) else { return } // not a Gemini user
         let cfgURL = geminiDir.appendingPathComponent("settings.json")

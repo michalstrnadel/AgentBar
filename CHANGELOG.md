@@ -5,7 +5,65 @@ All notable changes to AgentBar are documented here. This project follows
 
 ## Unreleased
 
+## 1.11.0 - 2026-08-04
+
+### Added
+- `agentbar watch` gained the two behaviours it was missing: `A` for *always*
+  and `f` for *defer*, alongside the existing allow/deny. Session lines now show
+  elapsed time.
+
 ### Fixed
+- **An approval that fails to reach disk no longer looks like it worked.**
+  Writing your Allow/Deny answer was fire-and-forget: if the write failed —
+  unwritable `~/.agentbar/answers.d`, full disk — the row cleared as if the
+  click had landed, while the hook went on polling for the full ten-minute
+  timeout before falling back to the terminal prompt. The write now reports
+  success, the island only flashes "✓ Allowed" once the answer is actually on
+  disk, a dropped answer beeps and leaves the request pending and answerable,
+  and *Approve in terminal* only jumps you to the prompt once the hook can
+  really see the hand-off.
+- **Keystroke approvals can no longer land in the wrong app.** The Codex /
+  Copilot / Antigravity keystroke path used to bring the target forward, wait a
+  fixed 0.7 s, and then type regardless of what was actually frontmost — so a
+  slow cold start, or an app that never launched, sent Return into whatever you
+  happened to be looking at. It now polls for activation up to 2 s, verifies the
+  intended app owns the keyboard before *every* key, and abandons the attempt
+  rather than typing blind. Modifier flags are cleared on each event, so a held
+  Cmd can't turn Return into Cmd+Return, and multi-key mappings are staggered so
+  Copilot's "y" + Return doesn't drop the Return.
+- **A config that exists but can't be read is no longer treated as absent.**
+  `HookInstaller` collapsed every read failure into "fresh install", so a
+  momentarily unreadable `settings.json` — a permission glitch, another process
+  holding it — could be rewritten with only AgentBar's hooks in it. Unreadable
+  now gets the same protection unparseable already had: skip, log, never
+  overwrite.
+- **One failing hook installer no longer skips the rest.** All six ran in a
+  single block, so a throw while wiring Claude silently left Codex, Cursor,
+  Gemini and Antigravity unwired for that launch, behind one generic log line.
+  Each step is isolated and named in its log now. Missing-Node also stopped
+  being silent for Codex, Gemini, Cursor and Antigravity — only Claude used to
+  say so.
+- **Malformed hook input exits immediately instead of blocking for ten minutes.**
+  `permission.js` short-circuited only on completely empty stdin; anything
+  present but unparseable became `{}` and still opened a request, showing a
+  garbled "unknown" row and holding the session for the full timeout.
+- **Update installs stop littering, and failures say why.** Staging directories
+  and the backup bundle survived every update, quietly accumulating a full app
+  copy each time; they're now swept once the new bundle has opened — after the
+  rollback window, never before. Check and download failures log the underlying
+  reason (offline, TLS, rate limit) instead of only showing "Update check
+  failed".
+- **Sessions whose state file can't be parsed are logged.** A torn or corrupt
+  JSON write used to make a session simply invisible, indistinguishable from
+  "nothing running". Logged once per file, not once per poll.
+- **Hooks report a broken state directory.** Every state write swallowed its
+  error, so an unwritable `~/.agentbar/state.d/` produced silence and no
+  diagnostics anywhere. Each hook now warns once per process, on stderr only.
+  Clearing stale state on start says how many files it removed.
+- **The Linux CLI wires Antigravity.** `agentbar install-hooks` copied the
+  Antigravity hook script but never referenced it from any config, so it sat
+  there doing nothing while macOS wired it properly.
+
 - **The menu bar mark keeps its place across island↔bar switches.** macOS
   deletes a status item's remembered position the moment the item is hidden
   (verified on macOS 26), so every return to the menu bar re-inserted the mark

@@ -52,4 +52,9 @@ try {
   const tmp = file + "." + process.pid + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(out));
   fs.renameSync(tmp, file);
-} catch {}
+} catch (e) {
+  // Single stderr line per invocation — enough of a trail to explain "AgentBar
+  // shows nothing", too little to be noise. Self-swallowing: never throws, never
+  // delays the exit.
+  try { console.error("[agentbar] state write " + file + " failed: " + ((e && e.message) || e)); } catch {}
+}

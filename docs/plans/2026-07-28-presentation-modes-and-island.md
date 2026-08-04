@@ -1,7 +1,8 @@
 # Plan — presentation modes: menu bar, notch island, and a first-run chooser
 
-Status: **delivered 2026-07-29** — Phases 0–2 shipped, Phase 3 (content parity)
-and Phase 4 (polish) deliberately not started. See *As built* for where the
+Status: **delivered 2026-07-29** — Phases 0–2 shipped; of Phase 3 (content
+parity) only item 3.1, elapsed time, has since shipped, and Phase 4 (polish) is
+deliberately not started. See *As built* for where the
 shipped app differs from this draft; everything below the fold is the original
 2026-07-28 draft, kept because its survey of the codebase is what the work was
 costed from.
@@ -55,10 +56,12 @@ Shipped files: `Presentation.swift`, `MascotDriver.swift`, `AgentActions.swift`,
 `IslandController.swift`. `StatusItemController.swift` shrank to the status item
 and the menu; `HookInstaller` reports which agents it wired.
 
-Not done, and not regretted: elapsed time, the task name and the model chip that
-comparable panels show. All three need new `state.d` fields written by every
-hook, which is a protocol change reaching the CLI and the Windows port — Phase 3
-below, on its own, once there is a real island to miss them in.
+Not done at 2026-07-29, and not regretted then: elapsed time, the task name and
+the model chip that comparable panels show. All three need new `state.d` fields
+written by every hook, which is a protocol change reaching the CLI and the
+Windows port — Phase 3 below, on its own, once there is a real island to miss
+them in. (Since shipped as three optional, additive fields: `started_at`,
+`prompt`, `model` — see `docs/protocol.md` and Phase 3 item 1.)
 
 ---
 
@@ -221,10 +224,12 @@ the status item already follows this rule, the island must too.
 
 Ordered by value per unit of work.
 
-1. **Elapsed time.** Add `started_at` to the `state.d` schema (`docs/protocol.md`
-   is normative; the CLI frontend and the Windows port read the same fields).
-   Hooks set it on the first real event and preserve it on merge. Absent field →
-   no elapsed shown, so old sessions and third-party writers stay valid.
+1. **Elapsed time.** — **done.** `started_at` is in the `state.d` schema
+   (`docs/protocol.md`, optional and additive), stamped by
+   `Scripts/hooks/claude/update.js` and `lifecycle.js` and preserved on merge,
+   decoded in `Session.swift` (`elapsed`) and rendered on the island rows
+   (`IslandContentView`). Absent field → no elapsed shown, so old sessions and
+   third-party writers stay valid; covered by `Scripts/test/permission-hook-test.sh`.
 2. **Activity feed.** A short ring of recent tool events per session. Cheapest
    honest version: the Claude `update.js` hook keeps the last N `label` values in
    the state file. Bounded size, no new files, no new protocol surface.
@@ -284,7 +289,8 @@ the part that still matters: no dock icon, no heavy dependencies.
    pointer is on and falls back to a floating bar centred at the top when there
    is no notch; that is a handful of lines, not a phase.
 5. GitHub issues — untouched by this work; none of #1, #3, #8, #9 are
-   presentation bugs.
+   presentation bugs. (Since then #9, the stable code-signing identity, was fixed
+   and closed by `827f92d`; open at the time of writing: #1, #3, #8 and #13.)
 
 ## Positioning note
 

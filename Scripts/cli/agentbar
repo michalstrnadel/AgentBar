@@ -7,12 +7,14 @@
 //   agentbar requests [--json]      pending approvals with inline detail
 //   agentbar approve [n] [--always] answer the newest (or n-th) pending request
 //   agentbar deny [n]
-//   agentbar watch [-i SEC]         live view; keys: a allow · d deny · q quit.
-//                                   Holds the watcher heartbeat, so hooks offer
-//                                   remote approval while it runs.
+//   agentbar watch [-i SEC]         live view; keys: a allow · A always · d deny ·
+//                                   f defer (terminal prompt) · q quit. Holds the
+//                                   watcher heartbeat, so hooks offer remote
+//                                   approval while it runs.
 //   agentbar waybar                 one-line JSON for waybar/polybar custom modules
 //                                   (each call refreshes the heartbeat; poll <= 30s)
-//   agentbar install-hooks          wire agent hooks (Claude/Codex/Cursor/Gemini) —
+//   agentbar install-hooks          wire agent hooks (Claude/Codex/Cursor/Antigravity/
+//                                   Gemini) —
 //                                   the Linux equivalent of the macOS app's installer
 
 "use strict";
@@ -83,7 +85,7 @@ function requests() {
   return out;
 }
 
-function answer(r, behavior, always) {
+function answer(r, behavior) {
   fs.mkdirSync(ansDir, { recursive: true });
   const obj = { behavior };
   // "always" only sticks when the hook can match it to a rule Claude itself
@@ -112,13 +114,24 @@ function gitBranch(cwd) {
 
 const DOTS = { permission: yellow("●"), question: blue("●"), thinking: green("●"), tool: green("●"), idle: dim("●"), done: dim("●") };
 
+// Optional per docs/protocol.md: absent started_at simply renders nothing.
+function elapsed(startedAt) {
+  if (!startedAt || startedAt <= 0) return null;
+  const d = now() - startedAt;
+  if (d < 0) return null;
+  if (d < 60) return `${d}s`;
+  if (d < 3600) return `${Math.floor(d / 60)}m`;
+  return `${Math.floor(d / 3600)}h${String(Math.floor((d % 3600) / 60)).padStart(2, "0")}`;
+}
+
 function sessionLine(s) {
   const name = s.project || "session";
   const branch = gitBranch(s.cwd);
+  const age = elapsed(s.started_at);
   const label = s.state === "permission" ? yellow("needs approval")
     : s.state === "question" ? blue(s.label || "waiting for your answer")
     : (s.label ? dim(s.label) : dim(s.state));
-  return `${DOTS[s.state] || dim("●")} ${bold(name)}${branch ? dim(" · " + branch) : ""}  ${label}  ${dim((s.agent || "?").toUpperCase())}`;
+  return `${DOTS[s.state] || dim("●")} ${bold(name)}${branch ? dim(" · " + branch) : ""}  ${label}${age ? dim("  " + age) : ""}  ${dim((s.agent || "?").toUpperCase())}`;
 }
 
 function printStatus(json) {
@@ -150,7 +163,7 @@ function decide(behavior, argv) {
   if (!rs.length) { console.error("No pending requests."); process.exit(1); }
   const r = rs[n - 1];
   if (!r) { console.error(`No request #${n} (have ${rs.length}).`); process.exit(1); }
-  answer(r, behavior === "allow" && always ? "always" : behavior, always);
+  answer(r, behavior === "allow" && always ? "always" : behavior);
   console.log(`${behavior === "deny" ? red("✕ denied") : green("✓ " + (always ? "always allowed" : "allowed"))}  ${r.display || r.toolName}`);
 }
 
@@ -182,7 +195,7 @@ function watch(argv) {
   const interval = Math.max(1, parseInt(i >= 0 ? argv[i + 1] : "2", 10) || 2);
   const render = () => {
     heartbeat();
-    let out = "\x1b[2J\x1b[H" + bold("AgentBar") + dim(`  ·  a allow · d deny · q quit\n\n`);
+    let out = "\x1b[2J\x1b[H" + bold("AgentBar") + dim(`  ·  a allow · A always · d deny · f defer · q quit\n\n`);
     const ss = sessions();
     out += ss.length ? ss.map(sessionLine).join("\n") + "\n" : dim("No active sessions\n");
     const rs = requests();
@@ -204,8 +217,10 @@ function watch(argv) {
       if (k === "q" || k === "\x03") return quit();
       const rs = requests();
       if (!rs.length) return;
-      if (k === "a") { answer(rs[0], "allow", false); render(); }
-      if (k === "d") { answer(rs[0], "deny", false); render(); }
+      if (k === "a") { answer(rs[0], "allow"); render(); }
+      if (k === "A") { answer(rs[0], "always"); render(); }   // allow + the rule Claude suggested
+      if (k === "d") { answer(rs[0], "deny"); render(); }
+      if (k === "f") { answer(rs[0], "defer"); render(); }    // hand it back to the terminal prompt
     });
   }
   render();
@@ -223,13 +238,16 @@ function installHooks() {
   fs.cpSync(srcHooks, hooksDir, { recursive: true });
   const node = process.execPath; // absolute node running this CLI — always valid
 
-  // Cursor runs its hook via shebang: pin it, PATH of a GUI Cursor is unreliable.
+  // Cursor and Antigravity run their hook via its shebang, and a GUI-launched app's
+  // PATH is unreliable — `#!/usr/bin/env node` would silently never fire. Pin node.
+  const pinNodeShebang = (file) => {
+    if (!fs.existsSync(file)) return;
+    const t = fs.readFileSync(file, "utf8");
+    if (t.startsWith("#!")) fs.writeFileSync(file, "#!" + node + t.slice(t.indexOf("\n")));
+    fs.chmodSync(file, 0o755);
+  };
   const cursorJs = path.join(hooksDir, "cursor", "cursor.js");
-  if (fs.existsSync(cursorJs)) {
-    const t = fs.readFileSync(cursorJs, "utf8");
-    if (t.startsWith("#!")) fs.writeFileSync(cursorJs, "#!" + node + t.slice(t.indexOf("\n")));
-    fs.chmodSync(cursorJs, 0o755);
-  }
+  pinNodeShebang(cursorJs);
 
   const readConfig = (file) => {
     if (!fs.existsSync(file)) return {};
@@ -326,6 +344,31 @@ function installHooks() {
     }
   }
 
+  // Antigravity — ~/.gemini/antigravity{,-cli}/hooks.json. Top level is named rule
+  // groups; we own exactly one key ("agentbar") and never touch the rest. The script
+  // runs via its shebang, and the stdin payload carries no event name, so the event
+  // rides along as an argument. Observational only: PreToolUse writes no stdout.
+  const antigravityJs = path.join(hooksDir, "antigravity", "antigravity.js");
+  const antigravityDirs = ["antigravity", "antigravity-cli"]
+    .map((d) => path.join(os.homedir(), ".gemini", d))
+    .filter((d) => fs.existsSync(d));
+  if (antigravityDirs.length) {
+    pinNodeShebang(antigravityJs);
+    const group = {};
+    for (const ev of ["PreInvocation", "PreToolUse", "PostToolUse", "PostInvocation", "Stop"]) {
+      const rule = { hooks: [{ type: "command", command: `"${antigravityJs}" ${ev}`, timeout: 5 }] };
+      if (ev.endsWith("ToolUse")) rule.matcher = "*";
+      group[ev] = [rule];
+    }
+    for (const agDir of antigravityDirs) {
+      const file = path.join(agDir, "hooks.json");
+      const root = readConfig(file);
+      if (root === null) continue;
+      root.agentbar = group;
+      report("antigr  " + file, writeIfChanged(file, root));
+    }
+  }
+
   // Gemini — ~/.gemini/settings.json (timeout in ms)
   const geminiDir = path.join(os.homedir(), ".gemini");
   if (fs.existsSync(geminiDir)) {
@@ -365,8 +408,9 @@ switch (cmd) {
   agentbar requests [--json]      pending approvals with detail
   agentbar approve [n] [--always] answer newest (or n-th) request
   agentbar deny [n]
-  agentbar watch [-i SEC]         live view + keys (a/d/q); enables remote approval
+  agentbar watch [-i SEC]         live view + keys (a allow/A always/d deny/f defer/q quit);
+                                  enables remote approval
   agentbar waybar                 JSON for waybar/polybar (poll <= 30s)
-  agentbar install-hooks          wire Claude/Codex/Cursor/Gemini hooks (Linux installer)`);
+  agentbar install-hooks          wire Claude/Codex/Cursor/Antigravity/Gemini hooks (Linux installer)`);
     break;
 }

@@ -103,7 +103,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard now.timeIntervalSince(lastHotkey) > 1 else { return }
         lastHotkey = now
         guard let r = requestStore.requests.first else { return }  // no-op when nothing pending
-        AnswerWriter.write(behavior: behavior, for: r)
+        AgentActions.reportFailedAnswer(AnswerWriter.write(behavior: behavior, for: r))
     }
 
     // MARK: - NSMenuDelegate
@@ -206,7 +206,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Called by the inline Allow/Always/Deny button strip on permission rows.
-    func answer(_ a: ApprovalAction) {
+    /// A failed write leaves the request in the store, so the next open still
+    /// offers the same row.
+    @discardableResult
+    func answer(_ a: ApprovalAction) -> Bool {
         AgentActions.answer(a)
     }
 

@@ -27,18 +27,22 @@ enum AgentActions {
         }
     }
 
-    /// Bring a terminal app to the front. TERM_PROGRAM values map to app names almost
-    /// verbatim; unknown values are tried as-is (Ghostty, WezTerm, kitty, …).
-    static func focusTerminal(named termProgram: String) {
-        let app: String
+    /// TERM_PROGRAM values map to app names almost verbatim; unknown values are used
+    /// as-is (Ghostty, WezTerm, kitty, …). `KeystrokeApprover` needs the same answer to
+    /// verify what came forward before it types, so the mapping lives here only.
+    static func terminalAppName(for termProgram: String) -> String {
         switch termProgram {
-        case "Apple_Terminal", "": app = "Terminal"
-        case "iTerm.app":          app = "iTerm"
-        case "vscode":             app = "Visual Studio Code"
-        case "WarpTerminal":       app = "Warp"
-        default:                   app = termProgram
+        case "Apple_Terminal", "": return "Terminal"
+        case "iTerm.app":          return "iTerm"
+        case "vscode":             return "Visual Studio Code"
+        case "WarpTerminal":       return "Warp"
+        default:                   return termProgram
         }
-        openApp(named: app)
+    }
+
+    /// Bring a terminal app to the front.
+    static func focusTerminal(named termProgram: String) {
+        openApp(named: terminalAppName(for: termProgram))
     }
 
     /// A row click: jump to wherever the session actually lives. A session waiting
@@ -46,7 +50,7 @@ enum AgentActions {
     /// with the hook still blocked.
     static func focus(_ s: Session, requests: [ApprovalRequest]) {
         if s.state == .permission, let r = requests.first(where: { $0.sessionId == s.id }) {
-            AnswerWriter.write(behavior: "defer", for: r)
+            reportFailedAnswer(AnswerWriter.write(behavior: "defer", for: r))
         }
         switch s.entrypoint {
         case "claude-desktop":   open(Agent.byID("claude"))
@@ -55,22 +59,36 @@ enum AgentActions {
         }
     }
 
-    /// Allow / Always / Deny / defer from an inline button strip.
-    static func answer(_ a: ApprovalAction) {
+    /// Allow / Always / Deny / defer from an inline button strip. False means the
+    /// answer never reached disk: the request is still pending and still answerable.
+    @discardableResult
+    static func answer(_ a: ApprovalAction) -> Bool {
         switch a.behavior {
         case "always":
-            AnswerWriter.write(behavior: "always", rule: a.request.ruleSuggestion, for: a.request)
+            return reportFailedAnswer(
+                AnswerWriter.write(behavior: "always", rule: a.request.ruleSuggestion, for: a.request))
         case "defer":
-            AnswerWriter.write(behavior: "defer", for: a.request)
+            // Hand off only once the hook can actually see the answer, or the user
+            // arrives at a prompt that never reappears.
+            guard reportFailedAnswer(AnswerWriter.write(behavior: "defer", for: a.request)) else { return false }
             // The prompt is about to reappear where the session lives: bring it forward.
             if a.session.entrypoint == "claude-desktop" {
                 open(Agent.byID(a.session.agentID))
             } else {
                 focusTerminal(named: a.session.termProgram)
             }
+            return true
         default:
-            AnswerWriter.write(behavior: a.behavior, for: a.request)
+            return reportFailedAnswer(AnswerWriter.write(behavior: a.behavior, for: a.request))
         }
+    }
+
+    /// A dropped answer has no surface of its own — the row just stays pending — so
+    /// the beep is the only cue that the click didn't land.
+    @discardableResult
+    static func reportFailedAnswer(_ written: Bool) -> Bool {
+        if !written { NSSound.beep() }
+        return written
     }
 
     /// Inline strip on keystroke-backed permission rows (Antigravity, Codex, Copilot).

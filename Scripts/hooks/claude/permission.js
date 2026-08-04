@@ -102,9 +102,14 @@ function run() {
   if (!appRunning()) process.exit(0); // nobody to answer -> terminal prompt
   if (!raw) process.exit(0); // stdin closed (or never arrived) empty: nothing to request
 
+  // Junk on stdin is not a permission request. Bail here rather than posting a
+  // garbled "unknown" row and blocking the session for the whole approval
+  // timeout — same silent-to-terminal-prompt behaviour as empty stdin.
+  let p;
+  try { p = JSON.parse(raw); } catch { process.exit(0); }
+  if (!p || typeof p !== "object" || Array.isArray(p)) process.exit(0);
+
   try {
-    let p = {};
-    try { p = JSON.parse(raw || "{}"); } catch {}
 
     // AskUserQuestion is Claude asking the human, not asking for permission: the
     // question UI renders regardless of any hook decision, so blocking here would

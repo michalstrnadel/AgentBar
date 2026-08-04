@@ -311,7 +311,10 @@ final class IslandController: NSObject {
                 deferTitle: deferTitle(for: s),
                 width: Self.expandedWidth - IslandContentView.hPad * 2 - Self.cardIndent
             ) { [weak self] behavior in
-                AgentActions.answer(ApprovalAction(request: r, behavior: behavior, session: s))
+                // Only confirm what actually reached disk: a dropped answer leaves the
+                // request pending, and a "✓ Allowed" flash would be a lie.
+                guard AgentActions.answer(ApprovalAction(request: r, behavior: behavior, session: s))
+                else { return }
                 self?.flashAnswer(behavior)
             }))
         }

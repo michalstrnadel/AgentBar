@@ -12,6 +12,9 @@ final class SessionStore {
     private var dirSource: DispatchSourceFileSystemObject?
     private var timer: Timer?
     private var lastSnapshot: [String] = []
+    /// Paths already reported as unreadable — `refresh()` runs on every fs event, so a
+    /// permanently corrupt file must be logged once, not on every tick.
+    private var loggedUnreadable: Set<String> = []
 
     func start() {
         try? FileManager.default.createDirectory(at: Self.stateDir, withIntermediateDirectories: true)
@@ -45,8 +48,18 @@ final class SessionStore {
         let fm = FileManager.default
         let files = (try? fm.contentsOfDirectory(at: Self.stateDir, includingPropertiesForKeys: nil)) ?? []
         var sessions: [Session] = []
+        var present: Set<String> = []
         for url in files where url.pathExtension == "json" {
-            guard let s = Session(fileURL: url) else { continue }
+            present.insert(url.path)
+            guard let s = Session(fileURL: url) else {
+                // A torn write self-heals on the next hook write; a corrupt one would
+                // otherwise make the session invisible with no trace at all.
+                if loggedUnreadable.insert(url.path).inserted {
+                    NSLog("AgentBar: unreadable session file, skipped: \(url.lastPathComponent)")
+                }
+                continue
+            }
+            loggedUnreadable.remove(url.path)
             // Prune: the owning agent process is gone, or the file is ancient (24h).
             let dead = s.pid > 0 && kill(s.pid, 0) != 0 && errno == ESRCH
             let stale = s.ts > 0 && Date().timeIntervalSince1970 - s.ts > 86_400
@@ -66,6 +79,7 @@ final class SessionStore {
             sessions.append(live)
         }
         sessions.sort { ($0.priority, $0.ts) > ($1.priority, $1.ts) }
+        loggedUnreadable.formIntersection(present)   // a file that came back may log again
 
         // Only notify when something visible changed, so the menu bar isn't rebuilt every
         // poll. Branch is part of the row, so a checkout must count as a visible change.

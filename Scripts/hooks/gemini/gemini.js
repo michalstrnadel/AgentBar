@@ -29,6 +29,16 @@ const running = () => {
 };
 const writeAtomic = (f, o) => { const t = f + "." + process.pid + ".tmp"; fs.writeFileSync(t, JSON.stringify(o)); fs.renameSync(t, f); };
 
+// One diagnostic per process, never more: this bridge fires on every event, so an
+// unconditional log would flood the host agent's stderr. Self-swallowing and
+// stderr-only — it can neither throw nor delay the exit.
+let warned = false;
+const warn = (what, err) => {
+  if (warned) return;
+  warned = true;
+  try { console.error("[agentbar] " + what + " failed: " + ((err && err.message) || err)); } catch {}
+};
+
 let input = "", done = false;
 process.stdin.on("data", (d) => (input += d));
 process.stdin.on("end", run);
@@ -46,10 +56,20 @@ function run() {
   const cwd = j.cwd || "";
   const statePath = path.join(stateDir, safeId(id) + ".json");
 
-  try { fs.mkdirSync(stateDir, { recursive: true }); } catch {}
-  if (state === "end") { try { fs.rmSync(statePath, { force: true }); } catch {} return process.exit(0); }
+  try { fs.mkdirSync(stateDir, { recursive: true }); } catch (e) { warn("mkdir " + stateDir, e); }
+  if (state === "end") {
+    try { fs.rmSync(statePath, { force: true }); } catch (e) { warn("state remove " + statePath, e); }
+    return process.exit(0);
+  }
   if (state === "idle" && !running()) {
-    try { for (const f of fs.readdirSync(stateDir)) fs.rmSync(path.join(stateDir, f), { force: true }); } catch {}
+    try {
+      const stale = fs.readdirSync(stateDir);
+      for (const f of stale) fs.rmSync(path.join(stateDir, f), { force: true });
+      // Leave a trail: "my sessions vanished" must be explainable after the fact.
+      if (stale.length)
+        console.error("[agentbar] AgentBar not running: cleared " + stale.length +
+                      " stale state file(s) from " + stateDir);
+    } catch (e) { warn("stale state cleanup", e); }
   }
 
   let prev = {}; try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
@@ -68,7 +88,7 @@ function run() {
       ...(typeof j.prompt === "string" && j.prompt.trim() ? { prompt: oneLine(j.prompt) } : {}),
       ts,
     });
-  } catch {}
+  } catch (e) { warn("state write " + statePath, e); }
   if (state === "idle" && process.platform === "darwin")
     cp.spawn("open", ["-g", "-b", BUNDLE_ID], { stdio: "ignore", detached: true }).unref();
   process.exit(0);

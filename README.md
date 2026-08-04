@@ -47,7 +47,8 @@ That's the whole loop. More install options below; troubleshooting at the bottom
 
 ### What the installer changes (and how to undo it)
 
-AgentBar is local-only — no network, no telemetry. The install touches exactly these,
+AgentBar is local-only — no telemetry, and the only network call it ever makes is the
+update check against GitHub Releases. The install touches exactly these,
 all reversible (see [Uninstall](#uninstall)):
 
 - Copies the hook scripts to `~/.agentbar/hooks/`.
@@ -249,7 +250,8 @@ offers to open System Settings until it's granted).
 ## How it works
 
 Tiny hook scripts (Node.js) write one JSON file per session to `~/.agentbar/state.d/`.
-The app watches that folder and renders. No sockets, no daemons, no network.
+The app watches that folder and renders. No sockets, no daemons; the only network
+traffic is the update check against GitHub Releases.
 Permission approvals use two more folders of the same protocol: the blocking hook
 writes `requests.d/`, the app answers into `answers.d/`.
 

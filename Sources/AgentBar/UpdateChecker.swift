@@ -56,6 +56,9 @@ final class UpdateChecker {
                 guard err == nil, let data,
                       let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let tag = o["tag_name"] as? String else {
+                    // The UI stays vague, so the reason (offline, TLS, rate limit) has to
+                    // reach Console or a bug report has nothing to go on.
+                    NSLog("AgentBar update: check failed: \(err.map { "\($0)" } ?? "unreadable release payload")")
                     // Silent when automatic: a laptop that's offline isn't an error.
                     self.setStatus(manual ? .failed("Update check failed") : .idle)
                     return
@@ -104,6 +107,7 @@ final class UpdateChecker {
         URLSession.shared.downloadTask(with: zip) { [weak self] tmp, _, err in
             guard let self else { return }
             guard let tmp, err == nil else {
+                NSLog("AgentBar update: download failed: \(err.map { "\($0)" } ?? "no file on disk")")
                 DispatchQueue.main.async { self.setStatus(.failed("Download failed")) }
                 return
             }
@@ -113,6 +117,7 @@ final class UpdateChecker {
                     do { try self.swapAndRelaunch(with: staged) }
                     catch {
                         NSLog("AgentBar update: swap failed: \(error)")
+                        try? FileManager.default.removeItem(at: staged.deletingLastPathComponent())
                         self.setStatus(.failed("Install failed"))
                     }
                 }
@@ -132,6 +137,9 @@ final class UpdateChecker {
         let fm = FileManager.default
         let dir = fm.temporaryDirectory.appendingPathComponent("agentbar-update-\(UUID().uuidString)")
         try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        // A rejected staging dir holds a full app bundle; it must not outlive the attempt.
+        var accepted = false
+        defer { if !accepted { try? fm.removeItem(at: dir) } }
         let zip = dir.appendingPathComponent("AgentBar.app.zip")
         try fm.moveItem(at: downloaded, to: zip)
         try run("/usr/bin/ditto", "-xk", zip.path, dir.path)
@@ -142,6 +150,7 @@ final class UpdateChecker {
                           userInfo: [NSLocalizedDescriptionKey: "staged bundle version mismatch"])
         }
         _ = try? run("/usr/bin/xattr", "-dr", "com.apple.quarantine", app.path)
+        accepted = true
         return app
     }
 
@@ -161,9 +170,16 @@ final class UpdateChecker {
             throw error
         }
         NSLog("AgentBar update: installed \(currentVersion) → \(current.path), relaunching")
+        // Past the swap the backup is dead weight, but it belongs to the process we are
+        // about to kill: the relaunch script sweeps it — and the leftover staging dir —
+        // only after the new bundle has actually been opened.
+        let staging = staged.deletingLastPathComponent()
         let relaunch = Process()
         relaunch.executableURL = URL(fileURLWithPath: "/bin/bash")
-        relaunch.arguments = ["-c", "sleep 0.6; /usr/bin/open -n \"\(current.path)\""]
+        // Paths go in as arguments, never interpolated into the script: this line runs
+        // `rm -rf`, and a path is not something to hand to the shell's parser.
+        relaunch.arguments = ["-c", "sleep 0.6; /usr/bin/open -n \"$0\"; /bin/rm -rf \"$1\" \"$2\"",
+                              current.path, staging.path, backup.path]
         try relaunch.run()
         NSApp.terminate(nil)
     }
