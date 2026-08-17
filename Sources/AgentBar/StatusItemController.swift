@@ -103,7 +103,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard now.timeIntervalSince(lastHotkey) > 1 else { return }
         lastHotkey = now
         guard let r = requestStore.requests.first else { return }  // no-op when nothing pending
-        AgentActions.reportFailedAnswer(AnswerWriter.write(behavior: behavior, for: r))
+        AgentActions.ack(AgentActions.reportFailedAnswer(
+            AnswerWriter.write(behavior: behavior, for: r)))
     }
 
     // MARK: - NSMenuDelegate

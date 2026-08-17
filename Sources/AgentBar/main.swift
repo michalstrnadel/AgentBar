@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.sessions = sessions
             self.mascot.update(sessions: sessions, systemColor: IconColor.system)
+            SoundCenter.shared.observe(sessions)
             self.controller.apply(sessions)
             if self.islandRunning {
                 self.island.apply(sessions: sessions, requests: self.requestStore.requests)
@@ -47,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.start()
         store.start()
         requestStore.start()
+        SoundCenter.shared.start()
 
         HookInstaller.onFinish = { WelcomeWindow.shared.refreshWired() }
         HookInstaller.installIfNeeded()
@@ -71,6 +73,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             island.stop()
         }
     }
+}
+
+// Silent verification of the synthesized cues (offline render, writes WAVs and
+// asserts audibility/headroom). MUST run before the kill-other-copies loop below,
+// or checking the sounds would terminate the user's live AgentBar.
+if let i = CommandLine.arguments.firstIndex(of: "--render-sounds"),
+   CommandLine.arguments.indices.contains(i + 1) {
+    exit(SoundCenter.renderAllForVerification(
+        to: URL(fileURLWithPath: CommandLine.arguments[i + 1])) ? 0 : 1)
 }
 
 // Two copies running at once — a dev build next to the /Applications install —

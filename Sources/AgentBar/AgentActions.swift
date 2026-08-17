@@ -67,8 +67,8 @@ enum AgentActions {
     static func answer(_ a: ApprovalAction) -> Bool {
         switch a.behavior {
         case "always":
-            return reportFailedAnswer(
-                AnswerWriter.write(behavior: "always", rule: a.request.ruleSuggestion, for: a.request))
+            return ack(reportFailedAnswer(
+                AnswerWriter.write(behavior: "always", rule: a.request.ruleSuggestion, for: a.request)))
         case "defer":
             // Hand off only once the hook can actually see the answer, or the user
             // arrives at a prompt that never reappears.
@@ -81,7 +81,7 @@ enum AgentActions {
             }
             return true
         default:
-            return reportFailedAnswer(AnswerWriter.write(behavior: a.behavior, for: a.request))
+            return ack(reportFailedAnswer(AnswerWriter.write(behavior: a.behavior, for: a.request)))
         }
     }
 
@@ -89,7 +89,7 @@ enum AgentActions {
     /// False means the answer never reached disk — the card stays answerable.
     @discardableResult
     static func answerQuestion(_ labels: [[String]], request: ApprovalRequest) -> Bool {
-        reportFailedAnswer(AnswerWriter.writeAnswer(labels: labels, for: request))
+        ack(reportFailedAnswer(AnswerWriter.writeAnswer(labels: labels, for: request)))
     }
 
     /// A dropped answer has no surface of its own — the row just stays pending — so
@@ -97,6 +97,14 @@ enum AgentActions {
     @discardableResult
     static func reportFailedAnswer(_ written: Bool) -> Bool {
         if !written { NSSound.beep() }
+        return written
+    }
+
+    /// The tiny confirm tick for a decision that actually reached disk. Defer is
+    /// a hand-off, not a decision — it stays silent.
+    @discardableResult
+    static func ack(_ written: Bool) -> Bool {
+        if written { SoundCenter.shared.playAck() }
         return written
     }
 
