@@ -167,7 +167,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     /// row builders read, or a real change would be skipped as a no-op.
     private func contentSignature() -> String {
         let rows = sessions.map {
-            "\($0.id)|\($0.state.rawValue)|\($0.label)|\($0.project)|\($0.gitBranch ?? "")|\($0.termProgram)"
+            "\($0.id)|\($0.state.rawValue)|\($0.label)|\($0.project)|\($0.gitBranch ?? "")|\($0.termProgram)|\($0.recap)"
         }
         let pending = requestStore.requests.map(\.fileName)
         return (rows + ["req:"] + pending

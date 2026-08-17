@@ -23,6 +23,7 @@ struct Session {
     let startedAt: TimeInterval // 0 = the writer doesn't carry the field
     let prompt: String       // latest user prompt — names the task ("" ok)
     let model: String        // model name when the agent reports one ("" ok)
+    let recap: String        // what the agent last said at turn end ("" ok)
 
     /// Sort/priority weight: what the menu bar should surface first.
     var priority: Int {
@@ -52,6 +53,7 @@ struct Session {
         startedAt   = o["started_at"] as? TimeInterval ?? 0
         prompt      = o["prompt"] as? String ?? ""
         model       = o["model"] as? String ?? ""
+        recap       = o["recap"] as? String ?? ""
     }
 
     /// "‹1m" / "28m" / "3h" / "2d" — how long the session has been going.
@@ -95,6 +97,7 @@ struct Session {
         startedAt = 0
         prompt = ""
         model = ""
+        recap = ""
     }
 
     /// Current git branch of the session's project, read straight from `.git/HEAD`

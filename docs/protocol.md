@@ -42,7 +42,9 @@ max 64 chars (fallback `"unknown"`). The file name is the session's identity;
 
   "started_at": 1784844700,    // OPTIONAL: unix seconds the session began
   "prompt": "fix the auth bug",// OPTIONAL: latest user prompt, one line, <= 120 chars
-  "model": "claude-opus-5"     // OPTIONAL: model name, when the agent reports one
+  "model": "claude-opus-5",    // OPTIONAL: model name, when the agent reports one
+  "recap": "Fixed the auth bug and added 3 regression tests"
+                               // OPTIONAL: what the agent last said, one line, <= 160 chars
 }
 ```
 
@@ -52,12 +54,17 @@ Rules:
 - `state: "end"` is not written — the session's file is **deleted** instead.
 - `started` stays `false` on SessionStart; the first real event flips it. Frontends
   MUST hide sessions with `started: false`.
-- The three optional fields are additive: writers that don't know them simply omit
+- The optional fields are additive: writers that don't know them simply omit
   them, and frontends MUST render fine without them — old state files and
   third-party writers stay valid. `started_at` is set once (session start, or first
   write for sessions predating the field) and MUST be preserved on merge; elapsed
   time is `now - started_at`, computed by the frontend. `prompt` is the *latest*
   user prompt — it names the task a session is on, and a newer prompt replaces it.
+  `recap` is the *latest* turn-end summary — one line of what the agent last said,
+  written by the agent's turn-end hook (Claude's Stop) and replaced on each turn
+  end. Writers MUST drop it (omit, not carry forward) when a new prompt starts, so
+  a working session never advertises the previous turn's result. Absent = the
+  writer doesn't know what was said.
 
 Frontend pruning (each refresh):
 - delete when `pid > 0` and the process no longer exists (`kill(pid, 0)` → ESRCH);

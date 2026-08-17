@@ -231,6 +231,27 @@ check "update: injected turn keeps task"  'grep -q "\"prompt\":\"fix the auth bu
 printf '{"session_id":"testsess","prompt":"/compact"}' | "$NODE" "$UPDATE" prompt
 check "update: slash command keeps task"  'grep -q "\"prompt\":\"fix the auth bug\"" "$STATE"'
 
+# 15b. stop event extracts a recap from the transcript tail: skips tool_use-only
+# assistant entries and sidechains, strips markdown, one-lines and caps the text
+FIXTURE="$HOME/transcript.jsonl"
+{
+  printf '%s\n' '{"type":"user","message":{"role":"user","content":"do the thing"}}'
+  printf '%s\n' '{"type":"assistant","isSidechain":true,"message":{"role":"assistant","content":[{"type":"text","text":"subagent noise, must not surface"}]}}'
+  printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"## Done\n\n- Fixed the `auth` bug\n- Added **3** regression tests\n\n```js\nconsole.log(1)\n```"}]}}'
+  printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{}}]}}'
+} > "$FIXTURE"
+printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"%s"}' "$FIXTURE" | "$NODE" "$UPDATE" stop
+check "recap: extracted from tail"    'grep -q "\"recap\":\"Done Fixed the auth bug Added 3 regression tests\"" "$STATE"'
+check "recap: state done"             'grep -q "\"state\":\"done\"" "$STATE"'
+
+# 15c. the next prompt clears the recap (built fresh, never carried forward)
+printf '{"session_id":"testsess","prompt":"next task"}' | "$NODE" "$UPDATE" prompt
+check "recap: cleared on new prompt"  '! grep -q "\"recap\"" "$STATE"'
+
+# 15d. missing/unreadable transcript: stop still lands, just without a recap
+printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"/nonexistent/x.jsonl"}' | "$NODE" "$UPDATE" stop
+check "recap: missing transcript ok"  'grep -q "\"state\":\"done\"" "$STATE" && ! grep -q "\"recap\"" "$STATE"'
+
 # 16. lifecycle start seeds started_at (fake `open` first in PATH so the test
 # can't launch a real AgentBar out of nowhere)
 fresh_home

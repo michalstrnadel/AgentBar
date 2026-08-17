@@ -19,7 +19,7 @@ enum MenuBuilder {
                 item.target = controller
                 item.representedObject = s
                 item.attributedTitle = rowTitle(s)
-                item.toolTip = s.cwd
+                item.toolTip = rowToolTip(s)
                 let sessionRequests = requests.filter { $0.sessionId == s.id }
                 if s.state == .permission {
                     if !sessionRequests.isEmpty {
@@ -216,7 +216,12 @@ enum MenuBuilder {
         title.append(NSAttributedString(string: name, attributes: [
             .font: NSFont.menuFont(ofSize: 0),
         ]))
-        let sub = s.state == .permission ? "  needs approval" : (s.label.isEmpty ? "" : "  \(s.label)")
+        var sub = s.state == .permission ? "  needs approval" : (s.label.isEmpty ? "" : "  \(s.label)")
+        // Done rows say WHAT finished. 60 chars keeps the menu from ballooning;
+        // the tooltip carries the full line.
+        if sub.isEmpty, s.state == .done || s.state == .idle, !s.recap.isEmpty {
+            sub = "  " + String(s.recap.prefix(60)) + (s.recap.count > 60 ? "…" : "")
+        }
         if !sub.isEmpty {
             title.append(NSAttributedString(string: sub, attributes: [
                 .foregroundColor: NSColor.secondaryLabelColor,
@@ -228,6 +233,12 @@ enum MenuBuilder {
             .font: NSFont.monospacedSystemFont(ofSize: 9, weight: .semibold),
         ]))
         return title
+    }
+
+    /// cwd, plus the last turn's recap when the writer carries one.
+    private static func rowToolTip(_ s: Session) -> String {
+        s.recap.isEmpty ? s.cwd
+            : "\(s.cwd)\n\n\(Agent.byID(s.agentID).name): \(s.recap)"
     }
 
     /// Small resting mark used as the item icon in the Open submenu. Every mark is
@@ -441,7 +452,7 @@ enum MenuBuilder {
                 if let updated = live[s.id] {
                     item.representedObject = updated
                     item.attributedTitle = rowTitle(updated)
-                    item.toolTip = updated.cwd
+                    item.toolTip = rowToolTip(updated)
                     // Keystroke fallback appears/disappears with the permission state.
                     let hasStrip = requests.contains { $0.sessionId == updated.id }
                     item.submenu = (updated.state == .permission && !hasStrip)

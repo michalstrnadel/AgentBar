@@ -129,8 +129,10 @@ final class IslandRowView: NSView {
         self.onClick = onClick
         super.init(frame: .zero)
         wantsLayer = true
-        // When the prompt takes the title, the repo identity survives here.
-        toolTip = Self.name(session)
+        // When the prompt takes the title, the repo identity survives here; a
+        // recap rides along so even a compact one-liner can say what finished.
+        toolTip = session.recap.isEmpty ? Self.name(session)
+            : "\(Self.name(session))\n\(Agent.byID(session.agentID).name): \(session.recap)"
 
         let chips = NSStackView(views: Self.chips(session))
         chips.orientation = .horizontal
@@ -175,6 +177,13 @@ final class IslandRowView: NSView {
             column.append(you)
         }
         column.append(status)
+        // "You: …" asked; "Claude: …" answers — the pair reads as the exchange.
+        if !session.recap.isEmpty, session.state == .done || session.state == .idle {
+            let recap = NSTextField(labelWithAttributedString: Self.recapLine(session))
+            recap.lineBreakMode = .byTruncatingTail
+            recap.maximumNumberOfLines = 1
+            column.append(recap)
+        }
         let text = NSStackView(views: column)
         text.orientation = .vertical
         text.alignment = .leading
@@ -263,6 +272,19 @@ final class IslandRowView: NSView {
             .foregroundColor: NSColor.white.withAlphaComponent(0.4),
         ])
         out.append(NSAttributedString(string: s.prompt, attributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.6),
+        ]))
+        return out
+    }
+
+    /// "Claude: Fixed the auth bug…" — what the turn ended with, under "Done".
+    private static func recapLine(_ s: Session) -> NSAttributedString {
+        let out = NSMutableAttributedString(string: "\(Agent.byID(s.agentID).name): ", attributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.4),
+        ])
+        out.append(NSAttributedString(string: s.recap, attributes: [
             .font: NSFont.systemFont(ofSize: 11),
             .foregroundColor: NSColor.white.withAlphaComponent(0.6),
         ]))

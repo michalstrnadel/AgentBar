@@ -82,8 +82,11 @@ final class SessionStore {
         loggedUnreadable.formIntersection(present)   // a file that came back may log again
 
         // Only notify when something visible changed, so the menu bar isn't rebuilt every
-        // poll. Branch is part of the row, so a checkout must count as a visible change.
-        let snapshot = sessions.map { "\($0.id):\($0.state.rawValue):\($0.label):\($0.project):\($0.gitBranch ?? "")" }
+        // poll. Branch is part of the row, so a checkout must count as a visible change;
+        // recap too — a second Stop can rewrite it while the state stays "done".
+        let snapshot = sessions.map {
+            "\($0.id):\($0.state.rawValue):\($0.label):\($0.project):\($0.gitBranch ?? ""):\($0.recap)"
+        }
         guard snapshot != lastSnapshot else { return }
         lastSnapshot = snapshot
         onChange?(sessions)
