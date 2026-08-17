@@ -12,6 +12,9 @@ struct Session {
     let id: String
     let agentID: String
     var state: State
+    /// True when `state` was synthesized by a frontend watchdog (Antigravity's
+    /// 90s quiet decay), not reported by the agent — celebrations should skip it.
+    var decayed = false
     let label: String
     let project: String
     let cwd: String
@@ -98,6 +101,7 @@ struct Session {
         prompt = ""
         model = ""
         recap = ""
+        decayed = false
     }
 
     /// Current git branch of the session's project, read straight from `.git/HEAD`

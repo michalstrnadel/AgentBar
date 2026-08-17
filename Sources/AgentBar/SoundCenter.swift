@@ -120,6 +120,7 @@ final class SoundCenter {
         defer { last = now }
         guard primed else { primed = true; return }
 
+        let decayed = Set(sessions.filter(\.decayed).map(\.id))
         var fired: Set<Cue> = []
         for (id, state) in now {
             let prev = last[id]
@@ -127,8 +128,11 @@ final class SoundCenter {
             if state == .permission, prev != .permission { fired.insert(.permission) }
             if state == .question, prev != .question { fired.insert(.question) }
             // Same condition as the mascot's done-hop; a file appearing already
-            // done (or question→done) stays silent. A deleted file is no cue.
-            if state == .done, prev?.isWorking == true { fired.insert(.done) }
+            // done (or question→done) stays silent, and so does a watchdog-decayed
+            // "done" — a guess is not a finish. A deleted file is no cue.
+            if state == .done, prev?.isWorking == true, !decayed.contains(id) {
+                fired.insert(.done)
+            }
         }
         // One tick, one sound — most urgent wins.
         for cue in [Cue.permission, .question, .done] where fired.contains(cue) {
@@ -153,6 +157,10 @@ final class SoundCenter {
         if cooldown > 0, let t = lastPlayed[cue], now - t < cooldown { return }
         lastPlayed[cue] = now
         playGeneration += 1
+        // Re-armed BEFORE the scheduling block is enqueued: play() and the timer
+        // both live on main, so a pending 10s timer is dead before it could put
+        // a teardown on the queue behind this cue.
+        armIdleStop()
         let volume = Float(Self.volume) * 0.9
         audioQueue.async { [weak self] in
             guard let self, let buffer = self.buffer(for: cue) else { return }
@@ -160,7 +168,6 @@ final class SoundCenter {
             player.volume = volume
             player.scheduleBuffer(buffer, at: nil, options: .interrupts)
             player.play()
-            DispatchQueue.main.async { self.armIdleStop() }
         }
     }
 

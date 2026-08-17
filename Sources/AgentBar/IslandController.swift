@@ -206,7 +206,17 @@ final class IslandController: NSObject {
         // place the island must not disappear from.
         guard Presentation.current.showsIsland, IslandGeometry.screen != nil,
               !wantsHidden
-        else { panel.orderOut(nil); return }
+        else {
+            // A hidden panel can't hear the pointer leave — clear the hover
+            // intent the way stop() does, or the next un-hide opens expanded
+            // on its own.
+            expandWork?.cancel()
+            collapseWork?.cancel()
+            wantsExpanded = false
+            hovered = false
+            panel.orderOut(nil)
+            return
+        }
 
         // Only the pointer opens the panel. Even a pending approval stays a pill —
         // an island that unfolds over the screen on its own is in the way, which is

@@ -230,6 +230,9 @@ function run() {
       ruleSuggestion: suggestion, pid: process.ppid, hookPid: process.pid,
       ts: Math.floor(Date.now() / 1000),
     });
+    // A leftover answer under this name (orphan of a crashed twin, prompt_id
+    // reuse) must not be mistaken for the user's decision on THIS request.
+    try { fs.rmSync(ansPath, { force: true }); } catch {}
 
     const cleanup = () => {
       try { fs.rmSync(reqPath, { force: true }); } catch {}
@@ -258,12 +261,20 @@ function run() {
     const timer = setInterval(() => {
       try {
         if (fs.existsSync(ansPath)) {
-          clearInterval(timer);
           let a = {};
           // Contract: the app writes answers atomically (tmp+rename), so a plain
           // read here never observes a partially written file.
           try { a = JSON.parse(fs.readFileSync(ansPath, "utf8")); } catch {}
           const b = a.behavior;
+          if (isQuestion && (b === "allow" || b === "always" || b === "deny")) {
+            // A frontend speaking the pre-question protocol pressed its verbs at
+            // a question. That's not an answer — swallow the stale verdict and
+            // keep polling, so the question stays pending and answerable instead
+            // of silently deferring under a frontend that just showed "allowed".
+            try { fs.rmSync(ansPath, { force: true }); } catch {}
+            return;
+          }
+          clearInterval(timer);
           if (isQuestion) {
             // Only a well-formed answer speaks for the user; anything else exits
             // silently and the wizard (already on screen) stays the way to answer.

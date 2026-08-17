@@ -11,7 +11,11 @@ final class SessionStore {
 
     private var dirSource: DispatchSourceFileSystemObject?
     private var timer: Timer?
-    private var lastSnapshot: [String] = []
+    /// nil until the first refresh, so the launch snapshot always reaches
+    /// onChange — even when it is empty. Consumers that prime on the first
+    /// delivery (SoundCenter) would otherwise mistake the first real session
+    /// for the launch state.
+    private var lastSnapshot: [String]?
     /// Paths already reported as unreadable — `refresh()` runs on every fs event, so a
     /// permanently corrupt file must be logged once, not on every tick.
     private var loggedUnreadable: Set<String> = []
@@ -75,6 +79,7 @@ final class SessionStore {
             if live.agentID == "antigravity", live.state.isWorking,
                Date().timeIntervalSince1970 - live.ts > 90 {
                 live.state = .done
+                live.decayed = true // a watchdog guess, not a reported finish
             }
             sessions.append(live)
         }

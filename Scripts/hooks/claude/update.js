@@ -51,8 +51,10 @@ const recapFromTranscript = (file) => {
       if (!e) continue;
       // A real user prompt is the turn boundary: past it, any assistant text
       // belongs to the PREVIOUS turn and must not pose as this one's result.
-      // (tool_result entries are also type "user" — those ride inside the turn.)
+      // (tool_result entries are also type "user" — those ride inside the turn,
+      // and sidechain user entries belong to subagents, not the turn structure.)
       if (e.type === "user") {
+        if (e.isSidechain) continue;
         const c = e.message && e.message.content;
         const isPrompt = typeof c === "string" ||
           (Array.isArray(c) && c.some((b) => b && b.type === "text"));

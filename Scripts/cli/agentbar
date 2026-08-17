@@ -172,11 +172,15 @@ function printRequests(json) {
 }
 
 function decide(behavior, argv) {
-  const n = parseInt(argv.find((a) => /^\d+$/.test(a)) || "1", 10);
+  const explicit = argv.find((a) => /^\d+$/.test(a));
+  const n = parseInt(explicit || "1", 10);
   const always = argv.includes("--always");
   const rs = requests();
   if (!rs.length) { console.error("No pending requests."); process.exit(1); }
-  const r = rs[n - 1];
+  // Bare approve/deny means the newest PERMISSION — a question sorting to the
+  // head of the queue must not shadow it. An explicit index is taken literally.
+  const r = explicit ? rs[n - 1]
+                     : rs.find((x) => (x.context || {}).kind !== "question") || rs[0];
   if (!r) { console.error(`No request #${n} (have ${rs.length}).`); process.exit(1); }
   if ((r.context || {}).kind === "question" && behavior !== "defer") {
     console.error("That's a question, not a permission — pick an option in `agentbar watch` (keys 1-9) or answer in the terminal wizard.");
@@ -230,10 +234,11 @@ function watch(argv) {
     const rs = requests();
     if (rs.length) {
       out += "\n" + bold("Pending") + "\n";
+      const firstQuestion = rs.find((r) => (r.context || {}).kind === "question");
       rs.forEach((r, k) => {
         out += `${k + 1}. ${yellow(r.display || r.toolName)}\n`;
-        // The newest request's single-select options answer on a digit key.
-        const opts = k === 0 ? simpleQuestion(r) : null;
+        // The newest question's single-select options answer on a digit key.
+        const opts = r === firstQuestion ? simpleQuestion(r) : null;
         if (opts) opts.forEach((label, j) => { out += `   ${bold(String(j + 1) + ")")} ${label}\n`; });
       });
     }
@@ -251,15 +256,19 @@ function watch(argv) {
       if (k === "q" || k === "\x03") return quit();
       const rs = requests();
       if (!rs.length) return;
-      const isQuestion = (rs[0].context || {}).kind === "question";
-      if (k === "a" && !isQuestion) { answer(rs[0], "allow"); render(); }
-      if (k === "A" && !isQuestion) { answer(rs[0], "always"); render(); }   // allow + the rule Claude suggested
-      if (k === "d" && !isQuestion) { answer(rs[0], "deny"); render(); }
-      if (k === "f") { answer(rs[0], "defer"); render(); }    // hand it back to the terminal prompt
-      if (/^[1-9]$/.test(k)) {
-        const opts = simpleQuestion(rs[0]);
+      // Letters answer the newest PERMISSION even when a question sorts ahead
+      // of it; digits answer the newest question's options. Neither queue can
+      // shadow the other.
+      const perm = rs.find((r) => (r.context || {}).kind !== "question");
+      const quest = rs.find((r) => (r.context || {}).kind === "question");
+      if (k === "a" && perm) { answer(perm, "allow"); render(); }
+      if (k === "A" && perm) { answer(perm, "always"); render(); }   // allow + the rule Claude suggested
+      if (k === "d" && perm) { answer(perm, "deny"); render(); }
+      if (k === "f") { answer(rs[0], "defer"); render(); }    // hand the newest back to its own prompt
+      if (/^[1-9]$/.test(k) && quest) {
+        const opts = simpleQuestion(quest);
         const label = opts && opts[parseInt(k, 10) - 1];
-        if (label) { answerQuestion(rs[0], [[label]]); render(); }
+        if (label) { answerQuestion(quest, [[label]]); render(); }
       }
     });
   }
