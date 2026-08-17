@@ -96,11 +96,21 @@ if let i = CommandLine.arguments.firstIndex(of: "--render-sounds"),
 // fight over the same island: each draws its own panel in the same spot and
 // whichever window is stacked on top wins, so fixes appear and disappear at
 // random. The copy the user just launched is the one they mean; every other
-// running AgentBar is told to quit.
+// running AgentBar is told to quit. One exception: hooks auto-launch the app by
+// bundle ID, which LaunchServices may resolve to an OLDER installed copy — that
+// stale launch must bow out instead of stomping the newer running one (and
+// downgrading the installed hook scripts with it).
 if let bundleID = Bundle.main.bundleIdentifier {
     let me = ProcessInfo.processInfo.processIdentifier
+    let myVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
     for other in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
         where other.processIdentifier != me {
+        let otherVersion = other.bundleURL
+            .flatMap { Bundle(url: $0)?.infoDictionary?["CFBundleShortVersionString"] as? String }
+            ?? "0"
+        if otherVersion.compare(myVersion, options: .numeric) == .orderedDescending {
+            exit(0) // a newer copy is already running — it wins
+        }
         other.terminate()
     }
 }
