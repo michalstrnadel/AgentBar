@@ -168,6 +168,10 @@ final class IslandController: NSObject {
     func apply(sessions: [Session], requests: [ApprovalRequest]) {
         self.sessions = sessions
         self.requests = requests
+        // Half-made choices die with their request (answered in the terminal,
+        // timed out, hook gone) — a later request must start clean.
+        let live = Set(requests.map(\.fileName))
+        questionSelections = questionSelections.filter { live.contains($0.key) }
         rebuild(animated: true)
     }
 
@@ -321,17 +325,44 @@ final class IslandController: NSObject {
         return out
     }
 
-    /// The question card under a session that asked one. The hooks don't carry the
-    /// options yet, so it shows the question and hands over in one click.
+    /// Toggle-mode selections per pending question request, keyed by the request
+    /// file name. They live here, not in the card: the island rebuilds its rows on
+    /// every store tick, so view state would be torn down mid-choice.
+    private var questionSelections: [String: [Set<Int>]] = [:]
+
+    /// The question card under a session that asked one. When the hook carried the
+    /// options, the card is answerable in place; otherwise it names the question
+    /// and hands over in one click.
     private func questionView(for s: Session) -> NSView? {
         guard s.state == .question else { return nil }
+        let width = Self.expandedWidth - IslandContentView.hPad * 2 - Self.cardIndent
+        if let r = requests.first(where: { $0.sessionId == s.id }), let qs = r.questions {
+            return card(IslandQuestionCardView(
+                questions: qs,
+                selections: questionSelections[r.fileName] ?? [],
+                deferTitle: deferTitle(for: s),
+                width: width,
+                onAnswer: { [weak self] labels in
+                    guard AgentActions.answerQuestion(labels, request: r) else { return }
+                    self?.questionSelections[r.fileName] = nil
+                    self?.flashAnswer("answer")
+                },
+                onSelect: { [weak self] selections in
+                    self?.questionSelections[r.fileName] = selections
+                },
+                onDefer: { [weak self] in
+                    guard let self else { return }
+                    self.questionSelections[r.fileName] = nil
+                    AgentActions.focus(s, requests: self.requests)
+                }))
+        }
         var q = s.label
         if q.hasPrefix("❓") { q.removeFirst(); q = q.trimmingCharacters(in: .whitespaces) }
-        if q.isEmpty { q = "Claude has a question" }
+        if q.isEmpty { q = "\(Agent.byID(s.agentID).name) has a question" }
         return card(IslandQuestionView(
             question: q,
             deferTitle: deferTitle(for: s),
-            width: Self.expandedWidth - IslandContentView.hPad * 2 - Self.cardIndent
+            width: width
         ) { [weak self] in
             guard let self else { return }
             AgentActions.focus(s, requests: self.requests)
@@ -348,6 +379,7 @@ final class IslandController: NSObject {
         switch behavior {
         case "allow":  flash = ("✓ Allowed", green)
         case "always": flash = ("✓ Always allowed", green)
+        case "answer": flash = ("✓ Answered", green)
         case "deny":   flash = ("✕ Denied", NSColor(srgbRed: 1, green: 0.45, blue: 0.42, alpha: 1))
         default:       flash = nil
         }

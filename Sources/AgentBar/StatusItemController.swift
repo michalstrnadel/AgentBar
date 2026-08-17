@@ -230,4 +230,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard let s = sender.representedObject as? Session else { return }
         AgentActions.keystroke("allow", session: s)
     }
+
+    /// One clicked option on an inline question row.
+    @objc func questionOptionClicked(_ sender: NSMenuItem) {
+        guard let a = sender.representedObject as? QuestionAnswerAction else { return }
+        AgentActions.answerQuestion(a.labels, request: a.request)
+    }
 }

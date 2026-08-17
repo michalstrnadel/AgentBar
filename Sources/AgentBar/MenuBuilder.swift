@@ -39,6 +39,14 @@ enum MenuBuilder {
                     }
                     item.submenu = keystrokeSubmenu(for: s, controller: controller)
                 }
+                if s.state == .question,
+                   let r = sessionRequests.first(where: { $0.questions != nil }),
+                   let qs = r.questions {
+                    menu.addItem(item)
+                    addInlineQuestion(to: menu, for: s, request: r, questions: qs,
+                                      controller: controller)
+                    continue
+                }
                 menu.addItem(item)
             }
         }
@@ -321,6 +329,71 @@ enum MenuBuilder {
         }
     }
 
+    /// The pending question inserted directly under the session row. The common
+    /// case — one question, pick one option — answers on click, like the approval
+    /// strip. multiSelect and multi-question calls need toggles a menu can't hold
+    /// open, so they point at the island card instead.
+    private static func addInlineQuestion(to menu: NSMenu, for s: Session,
+                                          request r: ApprovalRequest,
+                                          questions qs: [ApprovalRequest.Context.Question],
+                                          controller: StatusItemController) {
+        let tag = "req:\(r.fileName)"
+        let simple = qs.count == 1 && !qs[0].multiSelect
+
+        let what = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        what.isEnabled = false
+        what.toolTip = r.toolInputPretty
+        what.representedObject = tag
+        what.attributedTitle = NSAttributedString(string: "      ❓ \(qs[0].question)", attributes: [
+            .font: NSFont.menuFont(ofSize: 11),
+            .foregroundColor: NSColor.secondaryLabelColor,
+        ])
+        menu.addItem(what)
+
+        if simple {
+            for opt in qs[0].options {
+                let item = NSMenuItem(title: "",
+                                      action: #selector(StatusItemController.questionOptionClicked(_:)),
+                                      keyEquivalent: "")
+                item.target = controller
+                item.identifier = NSUserInterfaceItemIdentifier(tag)
+                item.representedObject = QuestionAnswerAction(request: r, labels: [[opt.label]],
+                                                              session: s)
+                let title = NSMutableAttributedString(string: "      \(opt.label)", attributes: [
+                    .font: NSFont.menuFont(ofSize: 0),
+                ])
+                if !opt.description.isEmpty {
+                    title.append(NSAttributedString(string: "  \(opt.description)", attributes: [
+                        .font: NSFont.menuFont(ofSize: 11),
+                        .foregroundColor: NSColor.secondaryLabelColor,
+                    ]))
+                }
+                item.attributedTitle = title
+                menu.addItem(item)
+            }
+        } else {
+            let hint = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            hint.isEnabled = false
+            hint.representedObject = tag
+            hint.attributedTitle = NSAttributedString(
+                string: "      \(qs.count > 1 ? "\(qs.count) questions" : "Pick several") — answer on the island",
+                attributes: [.font: NSFont.menuFont(ofSize: 11),
+                             .foregroundColor: NSColor.tertiaryLabelColor])
+            menu.addItem(hint)
+        }
+
+        // The wizard is already on the terminal's screen; this just retires the
+        // card here and takes the user to it.
+        let escape = NSMenuItem(title: s.entrypoint == "claude-desktop"
+                                ? "      ⧉ Answer in Claude" : "      ⌨ Answer in terminal",
+                                action: #selector(StatusItemController.sessionRowClicked(_:)),
+                                keyEquivalent: "")
+        escape.target = controller
+        escape.identifier = NSUserInterfaceItemIdentifier(tag)
+        escape.representedObject = s
+        menu.addItem(escape)
+    }
+
     // MARK: - Live refresh of an open menu
 
     /// Reconcile an OPEN menu with fresh state without adding or removing rows.
@@ -330,15 +403,27 @@ enum MenuBuilder {
     /// approval strips); the next open rebuilds cleanly. Returns false when
     /// fresh state needs rows that aren't displayed (new session or request):
     /// growth needs a real populate, which an open menu handles fine.
+    /// The request an item belongs to, whichever way it carries the tag: summary
+    /// lines and card views hold a "req:<file>" string in representedObject; a
+    /// question's option/escape items need representedObject for their payload,
+    /// so their tag rides in the identifier instead.
+    private static func requestTag(_ item: NSMenuItem) -> String? {
+        if let tag = item.representedObject as? String, tag.hasPrefix("req:") {
+            return String(tag.dropFirst(4))
+        }
+        if let id = item.identifier?.rawValue, id.hasPrefix("req:") {
+            return String(id.dropFirst(4))
+        }
+        return nil
+    }
+
     static func updateInPlace(_ menu: NSMenu, sessions: [Session], requests: [ApprovalRequest],
                               controller: StatusItemController) -> Bool {
         var displayedSessions = Set<String>()
         var displayedRequests = Set<String>()
         for item in menu.items {
+            if let tag = requestTag(item) { displayedRequests.insert(tag); continue }
             if let s = item.representedObject as? Session { displayedSessions.insert(s.id) }
-            if let tag = item.representedObject as? String, tag.hasPrefix("req:") {
-                displayedRequests.insert(String(tag.dropFirst(4)))
-            }
         }
         guard Set(sessions.map(\.id)).isSubset(of: displayedSessions),
               Set(requests.map(\.fileName)).isSubset(of: displayedRequests) else { return false }
@@ -346,6 +431,12 @@ enum MenuBuilder {
         let live = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
         let liveRequests = Set(requests.map(\.fileName))
         for item in menu.items {
+            // Request-tagged rows first: a question's escape item also carries a
+            // Session and must not be rewritten into a second session row.
+            if let tag = requestTag(item) {
+                if !liveRequests.contains(tag) { mute(item) }
+                continue
+            }
             if let s = item.representedObject as? Session {
                 if let updated = live[s.id] {
                     item.representedObject = updated
@@ -359,9 +450,6 @@ enum MenuBuilder {
                     item.attributedTitle = endedRowTitle(s)
                     item.submenu = nil
                 }
-            } else if let tag = item.representedObject as? String, tag.hasPrefix("req:"),
-                      !liveRequests.contains(String(tag.dropFirst(4))) {
-                mute(item)
             } else if item.identifier?.rawValue == "updateRow" {
                 configureUpdateRow(item, controller: controller)
             } else if item.identifier?.rawValue == "shortcutRow" {
@@ -380,8 +468,9 @@ enum MenuBuilder {
 
     /// A vanished approval strip: fade the custom views and disarm their buttons
     /// so an already-answered request can't be answered twice; the summary line
-    /// dims to match.
+    /// dims to match, and clickable rows (question options) lose their action.
     private static func mute(_ item: NSMenuItem) {
+        item.action = nil
         if let view = item.view {
             guard view.alphaValue > 0.55 else { return } // already muted
             view.alphaValue = 0.5
@@ -494,6 +583,18 @@ final class ApprovalAction: NSObject {
     init(request: ApprovalRequest, behavior: String, session: Session) {
         self.request = request
         self.behavior = behavior
+        self.session = session
+    }
+}
+
+/// Payload for one clicked question option: the chosen labels, per question.
+final class QuestionAnswerAction: NSObject {
+    let request: ApprovalRequest
+    let labels: [[String]]
+    let session: Session
+    init(request: ApprovalRequest, labels: [[String]], session: Session) {
+        self.request = request
+        self.labels = labels
         self.session = session
     }
 }

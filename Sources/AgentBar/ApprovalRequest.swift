@@ -20,6 +20,22 @@ struct ApprovalRequest {
         case bash(String)                              // full command
         case diff(old: String, new: String, more: Int) // Edit/MultiEdit (more = extra edits)
         case write(String)                             // Write content preview
+        case question([Question])                      // AskUserQuestion — answerable in place
+
+        /// One AskUserQuestion entry, options included, so a frontend can offer
+        /// the same choices the terminal wizard does.
+        struct Question {
+            let question: String
+            let header: String
+            let options: [(label: String, description: String)]
+            let multiSelect: Bool
+        }
+    }
+
+    /// The decoded questions when this request is an answerable AskUserQuestion.
+    var questions: [Context.Question]? {
+        if case .question(let qs) = context { return qs }
+        return nil
     }
 
     init?(fileURL: URL) {
@@ -47,6 +63,18 @@ struct ApprovalRequest {
                                    new: c["new"] as? String ?? "",
                                    more: c["more"] as? Int ?? 0)
         case "write": return .write(c["preview"] as? String ?? "")
+        case "question":
+            let qs = (c["questions"] as? [[String: Any]] ?? []).map { q in
+                Context.Question(
+                    question: q["question"] as? String ?? "",
+                    header: q["header"] as? String ?? "",
+                    options: (q["options"] as? [[String: Any]] ?? []).map {
+                        (label: $0["label"] as? String ?? "",
+                         description: $0["description"] as? String ?? "")
+                    }.filter { !$0.label.isEmpty },
+                    multiSelect: q["multiSelect"] as? Bool ?? false)
+            }.filter { !$0.question.isEmpty && !$0.options.isEmpty }
+            return qs.isEmpty ? nil : .question(qs)
         default:      return nil
         }
     }

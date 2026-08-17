@@ -40,6 +40,10 @@ final class ApprovalContextView: NSView {
             out += take(splitNonEmpty(new), max: 3, kind: .add)
             if more > 0 { out.append(Line(text: "+\(more) more edit\(more == 1 ? "" : "s")", kind: .plain)) }
             return out.isEmpty ? [Line(text: "(no change)", kind: .plain)] : out
+        case .question(let qs):
+            // Questions render their own answerable cards; this fallback only
+            // shows if one ever lands here (e.g. a future menu path).
+            return take(qs.map(\.question), max: 4, kind: .plain)
         }
     }
 

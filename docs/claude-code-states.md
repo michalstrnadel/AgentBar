@@ -17,7 +17,7 @@ the authoritative map of what AgentBar consumes and why. Sources:
 | `PreToolUse` | `tool` | brand dot, per-tool label ("Running command", "Editing", …) | |
 | `PostToolUse` | `thinking` | brand dot, "Thinking…" | also what clears `question` after the user answers |
 | `PermissionRequest` (regular tool) | `permission` | **amber dot, "needs approval"** + inline ✓ Allow / ✓ Always / ✕ Deny / defer | `permission.js` blocks polling `answers.d/`; every failure path falls back to the terminal prompt |
-| `PermissionRequest` (`tool_name == "AskUserQuestion"`) | `question` | **blue dot, "❓ \<question\>"** — row click jumps to the session | Claude is asking the human; the question UI renders regardless of any hook decision, so the hook only marks state and exits |
+| `PermissionRequest` (`tool_name == "AskUserQuestion"`) | `question` | **blue dot, "❓ \<question\>"** + inline options — answerable from the menu and island | The terminal wizard renders alongside the hook's wait, so blocking costs the terminal nothing; a remote answer returns deny-with-message, which the model reads as the user's answer and the wizard is dismissed (verified on 2.1.234, both race directions). Options that don't decode fall back to mark-state-and-exit. |
 | `Stop` | `done` | dimmed dot | turn finished, waiting for the next prompt |
 | `SessionEnd` | (row removed) | — | `lifecycle.js end` deletes the state file |
 

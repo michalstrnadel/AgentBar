@@ -286,10 +286,19 @@ final class IslandRowView: NSView {
             }
             return out
         case .question:
-            return NSAttributedString(string: "Claude asks", attributes: [
+            let out = NSMutableAttributedString(string: "\(Agent.byID(s.agentID).name) asks", attributes: [
                 .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
                 .foregroundColor: IconRenderer.questionDot,
             ])
+            var q = s.label
+            if q.hasPrefix("❓") { q.removeFirst(); q = q.trimmingCharacters(in: .whitespaces) }
+            if !q.isEmpty {
+                out.append(NSAttributedString(string: "  \(q)", attributes: [
+                    .font: NSFont.systemFont(ofSize: 11),
+                    .foregroundColor: NSColor.white.withAlphaComponent(0.55),
+                ]))
+            }
+            return out
         case .idle, .done:
             return NSAttributedString(string: "Done — click to jump", attributes: [
                 .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
@@ -569,10 +578,10 @@ final class IslandApprovalView: NSView {
     }
 }
 
-/// A question the agent is waiting on, shown under its session. The options live
-/// in the agent's own UI — the hook that could carry them here deliberately does
-/// not block on questions yet — so the card names the question and hands over in
-/// one click instead of pretending to be answerable.
+/// Fallback question card: the writer didn't carry the options (an older hook, or
+/// an agent whose questions only live in its own UI), so the card names the
+/// question and hands over in one click. Answerable questions render
+/// `IslandQuestionCardView` instead.
 final class IslandQuestionView: NSView {
     private let onDefer: () -> Void
 
@@ -619,6 +628,274 @@ final class IslandQuestionView: NSView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     @objc private func deferClicked() { onDefer() }
+}
+
+/// A question with its options, answerable in place. One tap answers the common
+/// case (one question, one choice); multiSelect and multi-question calls switch to
+/// toggle mode with a prominent Answer button. The terminal wizard renders in
+/// parallel while the hook waits, so whoever answers first wins — this card is the
+/// "without leaving the screen you're on" way.
+///
+/// Selections live OUTSIDE the view (the island rebuilds its rows on every store
+/// tick, so anything stateful in a row is torn down within seconds): the card is
+/// handed the current selections and reports every change back to its owner.
+final class IslandQuestionCardView: NSView {
+    private let questions: [ApprovalRequest.Context.Question]
+    private let onAnswer: ([[String]]) -> Void
+    private let onSelect: ([Set<Int>]) -> Void
+    private var selections: [Set<Int>]
+    private var optionButtons: [[IslandOptionButton]] = []
+    private var answerButton: IslandButton?
+
+    /// Toggle mode: any multiSelect, or more than one question — a lone
+    /// single-select answers on tap instead, matching Allow's immediacy.
+    private var needsAnswerButton: Bool {
+        questions.count > 1 || questions.contains { $0.multiSelect }
+    }
+
+    init(questions: [ApprovalRequest.Context.Question], selections: [Set<Int>],
+         deferTitle: String, width: CGFloat,
+         onAnswer: @escaping ([[String]]) -> Void,
+         onSelect: @escaping ([Set<Int>]) -> Void,
+         onDefer: @escaping () -> Void) {
+        self.questions = questions
+        self.selections = selections.count == questions.count
+            ? selections : Array(repeating: [], count: questions.count)
+        self.onAnswer = onAnswer
+        self.onSelect = onSelect
+        self.deferAction = onDefer
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+
+        var rows: [NSView] = []
+        let toggle = needsAnswerButton
+        for (qi, q) in questions.enumerated() {
+            if qi > 0 { rows.append(Self.sectionGap()) }
+            rows.append(Self.header(q, index: qi, count: questions.count))
+            let text = NSTextField(wrappingLabelWithString: q.question)
+            text.font = .systemFont(ofSize: 13, weight: .medium)
+            text.textColor = .white
+            text.preferredMaxLayoutWidth = width
+            rows.append(text)
+
+            var buttons: [IslandOptionButton] = []
+            for (oi, opt) in q.options.enumerated() {
+                let b = IslandOptionButton(
+                    label: opt.label, description: opt.description,
+                    showsCheck: toggle, width: width
+                ) { [weak self] in self?.tapped(question: qi, option: oi) }
+                b.selected = self.selections[qi].contains(oi)
+                buttons.append(b)
+            }
+            optionButtons.append(buttons)
+            let optionStack = NSStackView(views: buttons)
+            optionStack.orientation = .vertical
+            optionStack.alignment = .leading
+            optionStack.spacing = 5
+            rows.append(optionStack)
+        }
+
+        if toggle {
+            let b = IslandButton(title: "", target: self, action: #selector(answerClicked))
+            b.isBordered = false
+            b.wantsLayer = true
+            b.layer?.cornerRadius = 7
+            b.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.92).cgColor
+            b.attributedTitle = NSAttributedString(string: "Answer", attributes: [
+                .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+                .foregroundColor: NSColor.black,
+            ])
+            b.heightAnchor.constraint(equalToConstant: 26).isActive = true
+            b.widthAnchor.constraint(equalToConstant: width).isActive = true
+            answerButton = b
+            rows.append(b)
+        }
+
+        let escape = IslandButton(title: "", target: self, action: #selector(deferClicked))
+        escape.isBordered = false
+        escape.attributedTitle = NSAttributedString(string: deferTitle, attributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.5),
+        ])
+        rows.append(escape)
+
+        let stack = NSStackView(views: rows)
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor),
+            stack.topAnchor.constraint(equalTo: topAnchor),
+            stack.bottomAnchor.constraint(equalTo: bottomAnchor),
+            widthAnchor.constraint(equalToConstant: width),
+        ])
+        for buttons in optionButtons {
+            for b in buttons { b.widthAnchor.constraint(equalToConstant: width).isActive = true }
+        }
+        syncAnswerButton()
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    private let deferAction: () -> Void
+
+    private func tapped(question qi: Int, option oi: Int) {
+        let q = questions[qi]
+        if !needsAnswerButton {
+            // The common case answers like Allow does: one tap, done.
+            onAnswer([[q.options[oi].label]])
+            return
+        }
+        if q.multiSelect {
+            if selections[qi].contains(oi) { selections[qi].remove(oi) }
+            else { selections[qi].insert(oi) }
+        } else {
+            selections[qi] = [oi] // radio within its own question
+        }
+        for (i, b) in optionButtons[qi].enumerated() { b.selected = selections[qi].contains(i) }
+        syncAnswerButton()
+        onSelect(selections)
+    }
+
+    private func syncAnswerButton() {
+        guard let b = answerButton else { return }
+        let ready = selections.allSatisfy { !$0.isEmpty }
+        b.isEnabled = ready
+        b.alphaValue = ready ? 1 : 0.35
+    }
+
+    @objc private func answerClicked() {
+        guard selections.allSatisfy({ !$0.isEmpty }) else { return }
+        let labels = zip(questions, selections).map { q, sel in
+            sel.sorted().map { q.options[$0].label }
+        }
+        onAnswer(labels)
+    }
+
+    @objc private func deferClicked() { deferAction() }
+
+    /// "● Auth" / "● Question 2" — names the section the way the approval card
+    /// names itself.
+    private static func header(_ q: ApprovalRequest.Context.Question,
+                               index: Int, count: Int) -> NSView {
+        let title = q.header.isEmpty ? (count > 1 ? "Question \(index + 1)" : "Question") : q.header
+        let out = NSMutableAttributedString(string: "● ", attributes: [
+            .font: NSFont.systemFont(ofSize: 9),
+            .foregroundColor: IconRenderer.questionDot,
+        ])
+        out.append(NSAttributedString(string: title, attributes: [
+            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.55),
+        ]))
+        return NSTextField(labelWithAttributedString: out)
+    }
+
+    private static func sectionGap() -> NSView {
+        let v = NSView()
+        v.heightAnchor.constraint(equalToConstant: 4).isActive = true
+        return v
+    }
+
+    // MARK: Free text (extension point: IslandOptionButton.freeTextRow)
+    // The wizard's "type something" answer stays terminal-only for now — the
+    // non-activating panel cannot take keyboard focus safely.
+}
+
+/// One tappable option: label, quiet description, and — in toggle mode — a ✓
+/// column that keeps its width whether or not it is shown, so labels never shift.
+final class IslandOptionButton: NSView {
+    private let onTap: () -> Void
+    private let check = NSTextField(labelWithString: "✓")
+    private var hovered = false { didSet { needsDisplay = true } }
+    private var tracking: NSTrackingArea?
+
+    var selected = false {
+        didSet {
+            check.alphaValue = selected ? 1 : 0
+            needsDisplay = true
+        }
+    }
+
+    init(label: String, description: String, showsCheck: Bool, width: CGFloat,
+         onTap: @escaping () -> Void) {
+        self.onTap = onTap
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        wantsLayer = true
+
+        check.font = .systemFont(ofSize: 11, weight: .semibold)
+        check.textColor = IconRenderer.questionDot
+        check.alphaValue = 0
+        check.translatesAutoresizingMaskIntoConstraints = false
+
+        let title = NSTextField(labelWithString: label)
+        title.font = .systemFont(ofSize: 12, weight: .semibold)
+        title.textColor = NSColor.white.withAlphaComponent(0.92)
+        title.lineBreakMode = .byTruncatingTail
+        title.maximumNumberOfLines = 1
+        title.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(title)
+        let textLeading: CGFloat = showsCheck ? 10 + 14 + 4 : 10
+        if showsCheck {
+            addSubview(check)
+            NSLayoutConstraint.activate([
+                check.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+                check.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+                check.widthAnchor.constraint(equalToConstant: 14),
+            ])
+        }
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: textLeading),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
+            title.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+        ])
+
+        if description.isEmpty {
+            title.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6).isActive = true
+        } else {
+            let sub = NSTextField(wrappingLabelWithString: description)
+            sub.font = .systemFont(ofSize: 11)
+            sub.textColor = NSColor.white.withAlphaComponent(0.55)
+            sub.maximumNumberOfLines = 2
+            sub.preferredMaxLayoutWidth = width - textLeading - 10
+            sub.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(sub)
+            NSLayoutConstraint.activate([
+                sub.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+                sub.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -10),
+                sub.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2),
+                sub.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+            ])
+        }
+        heightAnchor.constraint(greaterThanOrEqualToConstant: 28).isActive = true
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let t = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways],
+                               owner: self, userInfo: nil)
+        addTrackingArea(t)
+        tracking = t
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseUp(with event: NSEvent) { onTap() }
+    /// Same reason as IslandButton: the panel never becomes key.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        // One notch quieter than the approval buttons at rest, so a prominent
+        // Answer button (when present) still leads the card.
+        let alpha: CGFloat = selected ? 0.16 : (hovered ? 0.12 : 0.07)
+        NSColor.white.withAlphaComponent(alpha).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 7, yRadius: 7).fill()
+    }
 }
 
 /// A button inside the island. The panel is deliberately non-activating and never

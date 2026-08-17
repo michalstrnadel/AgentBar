@@ -1,7 +1,10 @@
 #!/usr/bin/env node
-// Claude Code PermissionRequest -> remote approval from the AgentBar menu.
+// Claude Code PermissionRequest -> remote approval (and remote question answering)
+// from the AgentBar menu and island.
 // Writes a request file, then BLOCKS polling answers.d for the user's decision;
-// returning a decision replaces the terminal prompt entirely.
+// for permissions, returning a decision replaces the terminal prompt entirely;
+// for AskUserQuestion, the terminal wizard renders alongside the wait and whoever
+// answers first — terminal or AgentBar — wins.
 // Deliberate exception to "hooks never block": the session is already waiting on
 // a human, and every failure path (no app, app quits, timeout, junk input, signal,
 // filesystem error) exits silently so the ordinary terminal prompt appears instead.
@@ -71,7 +74,52 @@ function buildContext(tool, input) {
              more: Math.max(0, edits.length - 1) };
   }
   if (t === "Write") return { kind: "write", preview: cap(i.content, 1200) };
+  if (t === "AskUserQuestion") return { kind: "question", questions: cappedQuestions(i) };
   return null;
+}
+
+// The tool allows up to 4 questions of up to 4 options; cap defensively anyway so a
+// malformed payload can't balloon the request file the frontends read.
+function cappedQuestions(input) {
+  const qs = Array.isArray((input || {}).questions) ? input.questions : [];
+  return qs.slice(0, 4).map((q) => ({
+    question: cap((q || {}).question, 300),
+    header: cap((q || {}).header, 60),
+    multiSelect: (q || {}).multiSelect === true,
+    options: (Array.isArray((q || {}).options) ? q.options : []).slice(0, 6).map((o) => ({
+      label: cap((o || {}).label, 100),
+      description: cap((o || {}).description, 200),
+    })).filter((o) => o.label),
+  })).filter((q) => q.question && q.options.length);
+}
+
+// An answer may only say things the request itself offered — same forgery posture
+// as the "always" rule check. One array of chosen labels per question; single-select
+// questions take exactly one. Anything off-shape degrades to defer (terminal wizard).
+function validAnswers(answers, questions) {
+  if (!Array.isArray(answers) || answers.length !== questions.length) return false;
+  return questions.every((q, i) => {
+    const a = answers[i];
+    if (!Array.isArray(a) || a.length === 0) return false;
+    if (!q.multiSelect && a.length !== 1) return false;
+    const labels = q.options.map((o) => o.label);
+    return a.every((s) => typeof s === "string" && labels.includes(s)) &&
+           new Set(a).size === a.length;
+  });
+}
+
+// What the model reads instead of the wizard's selection. Deny-with-message is the
+// only channel a PermissionRequest hook has: the message lands as the tool result,
+// the wizard is dismissed, and the model continues with the answer (verified on
+// Claude Code 2.1.234 — an answer given in the terminal first wins the race and the
+// late deny is ignored cleanly).
+function answerMessage(questions, answers) {
+  if (questions.length === 1)
+    return 'User answered "' + answers[0].join('", "') + '" (via AgentBar). ' +
+           "Proceed with this answer; do not ask again.";
+  return "User answered (via AgentBar):\n" +
+    questions.map((q, i) => "- " + (q.header || q.question) + ": " + answers[i].join(", ")).join("\n") +
+    "\nProceed with these answers; do not ask again.";
 }
 
 function displaySummary(tool, input, cwd) {
@@ -111,11 +159,19 @@ function run() {
 
   try {
 
-    // AskUserQuestion is Claude asking the human, not asking for permission: the
-    // question UI renders regardless of any hook decision, so blocking here would
-    // be pointless. Mark the session "question" and get out of the way —
-    // PostToolUse flips the state back once the user answers.
-    if (p.tool_name === "AskUserQuestion") {
+    // AskUserQuestion is Claude asking the human, not asking for permission. The
+    // terminal wizard renders regardless of the hook while it waits, so blocking
+    // costs the terminal nothing — it opens a second way to answer: the request
+    // file carries the options, the frontend writes the chosen labels back, and
+    // the hook turns them into a deny-with-message the model reads as the answer.
+    // Whoever answers first wins; the loser's decision is ignored upstream.
+    const isQuestion = p.tool_name === "AskUserQuestion";
+    const questions = isQuestion ? cappedQuestions(p.tool_input) : null;
+
+    // A question whose options didn't decode can't be answered remotely: mark the
+    // session and get out of the way — PostToolUse flips the state back after the
+    // wizard is answered.
+    if (isQuestion && questions.length === 0) {
       try {
         const q = (((p.tool_input || {}).questions || [])[0] || {});
         const statePath = path.join(stateDir, safeId(p.session_id) + ".json");
@@ -133,16 +189,17 @@ function run() {
     const name = safeId(p.session_id) + "-" + safeId(p.prompt_id || String(process.pid));
     const reqPath = path.join(reqDir, name + ".json");
     const ansPath = path.join(ansDir, name + ".json");
-    const display = displaySummary(p.tool_name, p.tool_input, p.cwd);
+    const display = isQuestion ? "Question: " + oneLine(questions[0].question)
+                               : displaySummary(p.tool_name, p.tool_input, p.cwd);
 
     let pretty = "";
     try { pretty = JSON.stringify(p.tool_input || {}, null, 2); } catch {}
     if (pretty.length > 4096) pretty = pretty.slice(0, 4096) + "\n…";
 
     // Rule suggestions come from Claude Code and go back verbatim on "Always allow";
-    // the hook never invents permission rules itself.
+    // the hook never invents permission rules itself. Questions carry none.
     const suggestions = Array.isArray(p.permission_suggestions) ? p.permission_suggestions : [];
-    const suggestion = suggestions[0] || null;
+    const suggestion = isQuestion ? null : suggestions[0] || null;
 
     fs.mkdirSync(reqDir, { recursive: true });
     fs.mkdirSync(ansDir, { recursive: true });
@@ -153,7 +210,9 @@ function run() {
       fs.mkdirSync(stateDir, { recursive: true });
       let prev = {};
       try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
-      writeAtomic(statePath, { ...prev, agent: "claude", state: "permission", label: display,
+      writeAtomic(statePath, { ...prev, agent: "claude",
+        state: isQuestion ? "question" : "permission",
+        label: isQuestion ? "❓ " + oneLine(questions[0].question) : display,
         sessionId: p.session_id || "", pid: process.ppid, started: true,
         ts: Math.floor(Date.now() / 1000) });
     } catch {}
@@ -189,6 +248,23 @@ function run() {
           // read here never observes a partially written file.
           try { a = JSON.parse(fs.readFileSync(ansPath, "utf8")); } catch {}
           const b = a.behavior;
+          if (isQuestion) {
+            // Only a well-formed answer speaks for the user; anything else exits
+            // silently and the wizard (already on screen) stays the way to answer.
+            if (b === "answer" && validAnswers(a.answers, questions)) {
+              respond({ behavior: "deny", message: answerMessage(questions, a.answers) });
+              // A denied tool fires no PostToolUse, so nothing else would clear
+              // the question state until the next event — flip it here.
+              try {
+                const statePath = path.join(stateDir, safeId(p.session_id) + ".json");
+                let prev = {};
+                try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
+                writeAtomic(statePath, { ...prev, agent: "claude", state: "thinking",
+                  label: "Thinking…", ts: Math.floor(Date.now() / 1000) });
+              } catch {}
+            }
+            process.exit(0);
+          }
           if (b === "allow" || b === "always") {
             const decision = { behavior: "allow" };
             // Only pin a standing rule when it's structurally one Claude Code itself

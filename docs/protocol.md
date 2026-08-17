@@ -88,17 +88,40 @@ Request:
 ```
 
 `context` is one of: `{kind:"bash", command}`, `{kind:"diff", old, new, more}`,
-`{kind:"write", preview}`, or absent.
+`{kind:"write", preview}`, `{kind:"question", questions}`, or absent.
+
+`kind:"question"` marks an **answerable question** (Claude's `AskUserQuestion`):
+the hook blocks the same way it does for permissions, but the terminal wizard
+renders alongside the wait — whoever answers first wins, and the loser's answer
+is ignored upstream. `questions` carries what the wizard shows (≤ 4 questions,
+≤ 6 options each, strings capped):
+
+```json
+{ "kind": "question", "questions": [
+  { "question": "Which auth strategy?",   // <= 300 chars
+    "header": "Auth",                     // may be ""
+    "multiSelect": false,
+    "options": [
+      { "label": "JWT", "description": "Stateless tokens" }
+    ] }
+] }
+```
 
 Answer (frontend → hook):
 ```json
 { "behavior": "allow", "rule": { } }
+{ "behavior": "answer", "answers": [["JWT"]] }
 ```
-`behavior`: `allow` | `always` | `deny` | `defer`. `rule` only with `always`, and
-the hook accepts it **only** if it structurally equals one of the request's own
-`ruleSuggestion` entries (key-order-insensitive) — a forged rule degrades to a
-one-shot allow. `defer` (or junk) makes the hook exit silently, falling back to
-the agent's normal terminal prompt.
+`behavior`: `allow` | `always` | `deny` | `defer` | `answer`. `rule` only with
+`always`, and the hook accepts it **only** if it structurally equals one of the
+request's own `ruleSuggestion` entries (key-order-insensitive) — a forged rule
+degrades to a one-shot allow. `answer` only for `kind:"question"` requests:
+`answers` is one array of chosen option **labels** per question (exactly one
+unless that question's `multiSelect`); labels the request never offered, wrong
+counts, or duplicates degrade to `defer` — an answer can only say things the
+request itself offered. `defer` (or junk) makes the hook exit silently, falling
+back to the agent's normal terminal prompt (for questions: the wizard, which is
+already on screen).
 
 Lifecycle: the hook polls `answers.d` (100 ms), times out after 600 s (env
 `AGENTBAR_APPROVAL_TIMEOUT`), and deletes both files on exit (including SIGTERM/

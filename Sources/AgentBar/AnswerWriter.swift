@@ -9,10 +9,22 @@ enum AnswerWriter {
     /// so the caller must leave the request actionable instead of clearing it.
     @discardableResult
     static func write(behavior: String, rule: [String: Any]? = nil, for request: ApprovalRequest) -> Bool {
-        let fm = FileManager.default
-        let final = RequestStore.answersDir.appendingPathComponent(request.fileName)
         var obj: [String: Any] = ["behavior": behavior]
         if let rule { obj["rule"] = rule }
+        return write(obj: obj, behavior: behavior, for: request)
+    }
+
+    /// A question's answer: the chosen option labels, one array per question. The
+    /// hook only accepts labels the request itself offered, so there is nothing
+    /// here a frontend could get creative with.
+    @discardableResult
+    static func writeAnswer(labels: [[String]], for request: ApprovalRequest) -> Bool {
+        write(obj: ["behavior": "answer", "answers": labels], behavior: "answer", for: request)
+    }
+
+    private static func write(obj: [String: Any], behavior: String, for request: ApprovalRequest) -> Bool {
+        let fm = FileManager.default
+        let final = RequestStore.answersDir.appendingPathComponent(request.fileName)
         let data: Data
         do {
             try fm.createDirectory(at: RequestStore.answersDir, withIntermediateDirectories: true)

@@ -94,6 +94,13 @@ function answer(r, behavior) {
   writeAtomic(path.join(ansDir, r.fileName), obj);
 }
 
+// Chosen option labels for a question request, one array per question. The hook
+// only accepts labels the request itself offered.
+function answerQuestion(r, labels) {
+  fs.mkdirSync(ansDir, { recursive: true });
+  writeAtomic(path.join(ansDir, r.fileName), { behavior: "answer", answers: labels });
+}
+
 // Same .git/HEAD trick as the app: no git invocation, handles worktrees.
 function gitBranch(cwd) {
   if (!cwd) return null;
@@ -152,6 +159,14 @@ function printRequests(json) {
     if (ctx.kind === "bash") lines(ctx.command, dim("$ "));
     if (ctx.kind === "diff") { lines(ctx.old, red("− ")); lines(ctx.new, green("+ ")); if (ctx.more) console.log(dim(`   +${ctx.more} more edit(s)`)); }
     if (ctx.kind === "write") lines(ctx.preview, dim("  "));
+    if (ctx.kind === "question") {
+      for (const q of ctx.questions || []) {
+        if ((ctx.questions || []).length > 1) console.log(`   ${bold(q.header || q.question)}`);
+        (q.options || []).forEach((o, k) =>
+          console.log(`   ${bold(String(k + 1) + ")")} ${o.label}${o.description ? dim("  " + o.description) : ""}`));
+        if (q.multiSelect) console.log(dim("   (pick several — answer from the app or the wizard)"));
+      }
+    }
     if (r.ruleSuggestion) console.log(dim("   --always available"));
   });
 }
@@ -163,8 +178,22 @@ function decide(behavior, argv) {
   if (!rs.length) { console.error("No pending requests."); process.exit(1); }
   const r = rs[n - 1];
   if (!r) { console.error(`No request #${n} (have ${rs.length}).`); process.exit(1); }
+  if ((r.context || {}).kind === "question" && behavior !== "defer") {
+    console.error("That's a question, not a permission — pick an option in `agentbar watch` (keys 1-9) or answer in the terminal wizard.");
+    process.exit(1);
+  }
   answer(r, behavior === "allow" && always ? "always" : behavior);
   console.log(`${behavior === "deny" ? red("✕ denied") : green("✓ " + (always ? "always allowed" : "allowed"))}  ${r.display || r.toolName}`);
+}
+
+// A single single-select question's options, when request r is one — the shape
+// the digit keys in `watch` can answer.
+function simpleQuestion(r) {
+  const ctx = r.context || {};
+  if (ctx.kind !== "question") return null;
+  const qs = ctx.questions || [];
+  if (qs.length !== 1 || qs[0].multiSelect) return null;
+  return (qs[0].options || []).map((o) => o.label);
 }
 
 // MARK: - Presence (what makes hooks block for remote approval on Linux)
@@ -195,13 +224,18 @@ function watch(argv) {
   const interval = Math.max(1, parseInt(i >= 0 ? argv[i + 1] : "2", 10) || 2);
   const render = () => {
     heartbeat();
-    let out = "\x1b[2J\x1b[H" + bold("AgentBar") + dim(`  ·  a allow · A always · d deny · f defer · q quit\n\n`);
+    let out = "\x1b[2J\x1b[H" + bold("AgentBar") + dim(`  ·  a allow · A always · d deny · f defer · 1-9 answer · q quit\n\n`);
     const ss = sessions();
     out += ss.length ? ss.map(sessionLine).join("\n") + "\n" : dim("No active sessions\n");
     const rs = requests();
     if (rs.length) {
       out += "\n" + bold("Pending") + "\n";
-      rs.forEach((r, k) => { out += `${k + 1}. ${yellow(r.display || r.toolName)}\n`; });
+      rs.forEach((r, k) => {
+        out += `${k + 1}. ${yellow(r.display || r.toolName)}\n`;
+        // The newest request's single-select options answer on a digit key.
+        const opts = k === 0 ? simpleQuestion(r) : null;
+        if (opts) opts.forEach((label, j) => { out += `   ${bold(String(j + 1) + ")")} ${label}\n`; });
+      });
     }
     process.stdout.write(out);
   };
@@ -217,10 +251,16 @@ function watch(argv) {
       if (k === "q" || k === "\x03") return quit();
       const rs = requests();
       if (!rs.length) return;
-      if (k === "a") { answer(rs[0], "allow"); render(); }
-      if (k === "A") { answer(rs[0], "always"); render(); }   // allow + the rule Claude suggested
-      if (k === "d") { answer(rs[0], "deny"); render(); }
+      const isQuestion = (rs[0].context || {}).kind === "question";
+      if (k === "a" && !isQuestion) { answer(rs[0], "allow"); render(); }
+      if (k === "A" && !isQuestion) { answer(rs[0], "always"); render(); }   // allow + the rule Claude suggested
+      if (k === "d" && !isQuestion) { answer(rs[0], "deny"); render(); }
       if (k === "f") { answer(rs[0], "defer"); render(); }    // hand it back to the terminal prompt
+      if (/^[1-9]$/.test(k)) {
+        const opts = simpleQuestion(rs[0]);
+        const label = opts && opts[parseInt(k, 10) - 1];
+        if (label) { answerQuestion(rs[0], [[label]]); render(); }
+      }
     });
   }
   render();

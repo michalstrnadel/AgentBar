@@ -137,7 +137,8 @@ check "edit display is cwd-relative" 'grep -q "Edit: Sources/App/File.swift" "$H
 printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 
-# 12. AskUserQuestion -> "question" state, immediate exit, no request file
+# 12. AskUserQuestion with no decodable options -> "question" state, immediate
+# exit, no request file (nothing to answer remotely; the wizard owns it)
 fresh_home
 Q_EVENT='{"session_id":"testsess","prompt_id":"p3","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Which direction should we take?","header":"Direction","options":[]}]}}'
 start=$(date +%s)
@@ -146,6 +147,65 @@ end=$(date +%s)
 check "question: exits immediately"  '[ $((end-start)) -le 2 ] && [ ! -s "$HOME/out.json" ]'
 check "question: no request file"    '[ -z "$(ls "$HOME/.agentbar/requests.d/" 2>/dev/null)" ]'
 check "question: state + label"      'grep -q "\"state\":\"question\"" "$HOME/.agentbar/state.d/testsess.json" && grep -q "Which direction" "$HOME/.agentbar/state.d/testsess.json"'
+
+# 12a. AskUserQuestion with options -> request file with question context, blocks,
+# answer round-trips into a deny-with-message the model reads as the answer
+fresh_home
+QO_EVENT='{"session_id":"testsess","prompt_id":"p4","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Which color do you prefer?","header":"Color","multiSelect":false,"options":[{"label":"Red","description":"Warm"},{"label":"Blue","description":"Cool"}]}]}}'
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$QO_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+check "question: request written"    '[ -n "$REQ" ]'
+check "question: context kind"       'grep -q "\"kind\":\"question\"" "$HOME/.agentbar/requests.d/$REQ"'
+check "question: options carried"    'grep -q "\"label\":\"Blue\"" "$HOME/.agentbar/requests.d/$REQ"'
+check "question: state flipped"      'grep -q "\"state\":\"question\"" "$HOME/.agentbar/state.d/testsess.json"'
+printf '{"behavior":"answer","answers":[["Blue"]]}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "question: deny decision out"  'grep -q "\"behavior\":\"deny\"" "$HOME/out.json"'
+check "question: message has answer" 'grep -q "User answered \\\\\"Blue\\\\\"" "$HOME/out.json"'
+check "question: do-not-ask-again"   'grep -q "do not ask again" "$HOME/out.json"'
+check "question: state -> thinking"  'grep -q "\"state\":\"thinking\"" "$HOME/.agentbar/state.d/testsess.json"'
+check "question: request cleaned"    '[ ! -e "$HOME/.agentbar/requests.d/$REQ" ]'
+
+# 12b. forged answer (label the request never offered) -> silent defer, no output
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$QO_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"behavior":"answer","answers":[["Green"]]}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "forged answer: silent"        '[ ! -s "$HOME/out.json" ]'
+check "forged answer: state stays"   'grep -q "\"state\":\"question\"" "$HOME/.agentbar/state.d/testsess.json"'
+
+# 12c. multiSelect + two questions -> enumerated message, one line per question
+fresh_home
+QM_EVENT='{"session_id":"testsess","prompt_id":"p5","tool_name":"AskUserQuestion","tool_input":{"questions":[{"question":"Which layers?","header":"Layers","multiSelect":true,"options":[{"label":"API"},{"label":"UI"},{"label":"DB"}]},{"question":"Ship now?","header":"","multiSelect":false,"options":[{"label":"Yes"},{"label":"No"}]}]}}'
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$QM_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"behavior":"answer","answers":[["API","DB"],["Yes"]]}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "multi: deny decision out"     'grep -q "\"behavior\":\"deny\"" "$HOME/out.json"'
+check "multi: first answer listed"   'grep -q "Layers: API, DB" "$HOME/out.json"'
+check "multi: headerless falls back" 'grep -q "Ship now?: Yes" "$HOME/out.json"'
+
+# 12d. single-select answered with two labels -> off-shape, silent defer
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$QO_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"behavior":"answer","answers":[["Red","Blue"]]}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "overfull answer: silent"      '[ ! -s "$HOME/out.json" ]'
+
+# 12e. defer on a question -> silent exit (wizard already on screen)
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$QO_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"behavior":"defer"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "question defer: silent"       '[ ! -s "$HOME/out.json" ]'
 
 # 13. update.js prompt event: stamps started_at, one-lines the prompt, keeps model
 fresh_home

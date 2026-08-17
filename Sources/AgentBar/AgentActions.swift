@@ -47,9 +47,11 @@ enum AgentActions {
 
     /// A row click: jump to wherever the session actually lives. A session waiting
     /// on us is released to its own prompt first, or the user lands on a spinner
-    /// with the hook still blocked.
+    /// with the hook still blocked. (A question's wizard is already on screen, but
+    /// deferring still retires the island card — answered where the user is going.)
     static func focus(_ s: Session, requests: [ApprovalRequest]) {
-        if s.state == .permission, let r = requests.first(where: { $0.sessionId == s.id }) {
+        if s.state == .permission || s.state == .question,
+           let r = requests.first(where: { $0.sessionId == s.id }) {
             reportFailedAnswer(AnswerWriter.write(behavior: "defer", for: r))
         }
         switch s.entrypoint {
@@ -81,6 +83,13 @@ enum AgentActions {
         default:
             return reportFailedAnswer(AnswerWriter.write(behavior: a.behavior, for: a.request))
         }
+    }
+
+    /// Chosen option labels for a pending question, one array per question.
+    /// False means the answer never reached disk — the card stays answerable.
+    @discardableResult
+    static func answerQuestion(_ labels: [[String]], request: ApprovalRequest) -> Bool {
+        reportFailedAnswer(AnswerWriter.writeAnswer(labels: labels, for: request))
     }
 
     /// A dropped answer has no surface of its own — the row just stays pending — so
