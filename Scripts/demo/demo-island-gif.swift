@@ -210,17 +210,28 @@ func chipsRight(_ items: [(String, NSColor)], trailing: CGFloat, y: CGFloat, ela
     }
 }
 
-enum Phase { case working, attention, expand, open, clicked, collapse, flash, resumed }
+enum Phase {
+    case working, attention, expand, open, clicked, collapse, flash, resumed
+    // Second act: Claude asks a question, one tap on an option answers it.
+    case attention2, expand2, openQ, clickedQ, collapse2, flashQ, resumed2
+}
 func phase(for f: Int) -> Phase {
     switch f {
-    case 0..<16:   return .working
-    case 16..<30:  return .attention
-    case 30..<38:  return .expand
-    case 38..<58:  return .open
-    case 58..<62:  return .clicked
-    case 62..<69:  return .collapse
-    case 69..<86:  return .flash
-    default:       return .resumed
+    case 0..<16:    return .working
+    case 16..<30:   return .attention
+    case 30..<38:   return .expand
+    case 38..<58:   return .open
+    case 58..<62:   return .clicked
+    case 62..<69:   return .collapse
+    case 69..<86:   return .flash
+    case 86..<98:   return .resumed
+    case 98..<112:  return .attention2
+    case 112..<120: return .expand2
+    case 120..<142: return .openQ
+    case 142..<146: return .clickedQ
+    case 146..<153: return .collapse2
+    case 153..<170: return .flashQ
+    default:        return .resumed2
     }
 }
 func smooth(_ t: CGFloat) -> CGFloat { t * t * (3 - 2 * t) }
@@ -232,8 +243,8 @@ let panelW: CGFloat = 920, panelH: CGFloat = 456
 
 func pillWidth(_ p: Phase) -> CGFloat {
     switch p {
-    case .flash: return 250
-    case .attention, .expand: return 260
+    case .flash, .flashQ: return 250
+    case .attention, .expand, .attention2, .expand2: return 260
     default: return 300
     }
 }
@@ -315,6 +326,73 @@ func drawPanelContent(_ panel: NSRect, p: Phase, f: Int) -> NSRect {
     return allow
 }
 
+/// Second act's panel: the question card — hero row, "● Auth" header, the
+/// question, three tappable options, the quiet defer link. Returns the rect of
+/// the option the cursor goes for.
+func drawQuestionContent(_ panel: NSRect, p: Phase, f: Int) -> NSRect {
+    let pad: CGFloat = 28
+    let x = panel.minX + pad
+    let top = panel.maxY
+
+    // ---- hero box ----
+    let hero = NSRect(x: x, y: top - 132, width: panel.width - pad * 2, height: 104)
+    rgb(0xFFFFFF, 0.055).setFill()
+    rounded(hero, 20).fill()
+    let mascot = crab[f % crab.count]
+    let mh: CGFloat = 44
+    let mw = mh * mascot.size.width / mascot.size.height
+    mascot.draw(in: NSRect(x: hero.minX + 20, y: hero.maxY - mh - 16, width: mw, height: mh))
+    let tx = hero.minX + 20 + mw + 18
+    text("auth-api · main", 26, .white, weight: .semibold)
+        .draw(at: NSPoint(x: tx, y: hero.maxY - 42))
+    let you = NSMutableAttributedString()
+    you.append(text("You: ", 21, rgb(0xFFFFFF, 0.4)))
+    you.append(text("add authentication to the API", 21, rgb(0xFFFFFF, 0.6)))
+    you.draw(at: NSPoint(x: tx, y: hero.maxY - 71))
+    let status = NSMutableAttributedString()
+    status.append(text("Claude asks", 22, blue, weight: .medium))
+    status.append(text("  Which auth strategy?", 21, rgb(0xFFFFFF, 0.55)))
+    status.draw(at: NSPoint(x: tx, y: hero.maxY - 99))
+    chipsRight([("Claude", claudeBrand), ("opus-5", rgb(0xFFFFFF, 0.85)), ("Warp", .white)],
+               trailing: hero.maxX - 16, y: hero.maxY - 46, elapsed: "31m")
+
+    // ---- question card ----
+    let head = NSMutableAttributedString()
+    head.append(text("● ", 17, blue))
+    head.append(text("Auth", 21, rgb(0xFFFFFF, 0.55), weight: .semibold))
+    head.draw(at: NSPoint(x: x + 20, y: top - 166))
+    text("Which auth strategy should the new API use?", 25, .white, weight: .medium)
+        .draw(at: NSPoint(x: x + 20, y: top - 202))
+
+    let options: [(String, String)] = [
+        ("JWT tokens", "Stateless, works across services"),
+        ("Server sessions", "Simple, revocable, needs sticky state"),
+        ("OAuth via provider", ""),
+    ]
+    var clicked = NSRect.zero
+    var oy = top - 222
+    for (i, opt) in options.enumerated() {
+        let h: CGFloat = opt.1.isEmpty ? 46 : 66
+        let box = NSRect(x: x + 20, y: oy - h, width: panel.width - pad * 2 - 40, height: h)
+        let hot = i == 0 && (p == .clickedQ || p == .flashQ)
+        rgb(0xFFFFFF, hot ? 0.16 : 0.07).setFill()
+        rounded(box, 12).fill()
+        text(opt.0, 22, rgb(0xFFFFFF, 0.92), weight: .semibold)
+            .draw(at: NSPoint(x: box.minX + 18, y: box.maxY - 32))
+        if !opt.1.isEmpty {
+            text(opt.1, 19, rgb(0xFFFFFF, 0.55))
+                .draw(at: NSPoint(x: box.minX + 18, y: box.maxY - 58))
+        }
+        if i == 0 { clicked = box }
+        oy = box.minY - 8
+    }
+    text("Answer in terminal", 19, rgb(0xFFFFFF, 0.5))
+        .draw(at: NSPoint(x: x + 20, y: oy - 26))
+    text("⋯", 26, rgb(0xFFFFFF, 0.55), weight: .semibold)
+        .draw(at: NSPoint(x: panel.maxX - pad - 24, y: oy - 28))
+    return clicked
+}
+
 func renderFrame(_ f: Int) -> CGImage {
     let img = NSImage(size: NSSize(width: W, height: H))
     img.lockFocus()
@@ -331,10 +409,16 @@ func renderFrame(_ f: Int) -> CGImage {
     shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
 
     switch p {
-    case .expand, .collapse:
+    case .expand, .collapse, .expand2, .collapse2:
         // The shape inflates out of the notch (and folds back into it): width and
         // height interpolate around the centre, content fades in with the growth.
-        let t = p == .expand ? smooth(CGFloat(f - 30) / 7) : smooth(1 - CGFloat(f - 62) / 6)
+        let t: CGFloat
+        switch p {
+        case .expand:    t = smooth(CGFloat(f - 30) / 7)
+        case .collapse:  t = smooth(1 - CGFloat(f - 62) / 6)
+        case .expand2:   t = smooth(CGFloat(f - 112) / 7)
+        default:         t = smooth(1 - CGFloat(f - 146) / 6)
+        }
         let w = pillWidth(.attention) + (panelW - pillWidth(.attention)) * t
         let h = pillH + (panelH - pillH) * t
         let r = NSRect(x: (W - w) / 2, y: topY - h, width: w, height: h)
@@ -348,19 +432,26 @@ func renderFrame(_ f: Int) -> CGImage {
             flushTop(r, 26).addClip()
             cg.setAlpha((t - 0.55) / 0.45)
             cg.beginTransparencyLayer(auxiliaryInfo: nil)
-            _ = drawPanelContent(NSRect(x: (W - panelW) / 2, y: topY - panelH,
-                                        width: panelW, height: panelH), p: p, f: f)
+            let full = NSRect(x: (W - panelW) / 2, y: topY - panelH,
+                              width: panelW, height: panelH)
+            if p == .expand2 || p == .collapse2 {
+                _ = drawQuestionContent(full, p: p, f: f)
+            } else {
+                _ = drawPanelContent(full, p: p, f: f)
+            }
             cg.endTransparencyLayer()
             cg.restoreGState()
         }
-    case .open, .clicked:
+    case .open, .clicked, .openQ, .clickedQ:
         let r = NSRect(x: (W - panelW) / 2, y: topY - panelH, width: panelW, height: panelH)
         NSGraphicsContext.current?.saveGraphicsState()
         shadow.set()
         NSColor.black.setFill()
         flushTop(r, 26).fill()
         NSGraphicsContext.current?.restoreGraphicsState()
-        allowRect = drawPanelContent(r, p: p, f: f)
+        allowRect = p == .openQ || p == .clickedQ
+            ? drawQuestionContent(r, p: p, f: f)
+            : drawPanelContent(r, p: p, f: f)
     default:
         let w = pillWidth(p)
         let r = NSRect(x: (W - w) / 2, y: topY - pillH, width: w, height: pillH)
@@ -370,8 +461,8 @@ func renderFrame(_ f: Int) -> CGImage {
         flushTop(r, 26).fill()
         NSGraphicsContext.current?.restoreGraphicsState()
 
-        if p == .flash {
-            let t = text("✓ Allowed", 25, green, weight: .semibold)
+        if p == .flash || p == .flashQ {
+            let t = text(p == .flash ? "✓ Allowed" : "✓ Answered", 25, green, weight: .semibold)
             t.draw(at: NSPoint(x: r.midX - t.size().width / 2,
                                y: r.midY - t.size().height / 2))
         } else {
@@ -381,7 +472,9 @@ func renderFrame(_ f: Int) -> CGImage {
             let label: NSAttributedString =
                 p == .attention || p == .expand
                 ? text("approve?", 23, rgb(0xFFFFFF, 0.9), weight: .medium, mono: true)
-                : text(p == .resumed ? "Pondering…" : "Weaving…", 23,
+                : p == .attention2 || p == .expand2
+                ? text("answer?", 23, rgb(0xFFFFFF, 0.9), weight: .medium, mono: true)
+                : text(p == .resumed ? "Pondering…" : p == .resumed2 ? "Simmering…" : "Weaving…", 23,
                        rgb(0xFFFFFF, 0.9), weight: .medium, mono: true)
             let badge = text("2", 19, rgb(0xFFFFFF, 0.65), weight: .semibold, mono: true)
             let badgeW = badge.size().width + 18
@@ -397,31 +490,34 @@ func renderFrame(_ f: Int) -> CGImage {
         }
     }
 
-    // ---- Cursor: flies in during attention, lands on Allow, leaves after ----
-    if p != .working, p != .resumed {
+    // ---- Cursor: flies in during attention, lands on Allow (act 1) or the
+    // first option (act 2), leaves after ----
+    if p != .working, p != .resumed, p != .resumed2 {
         let start = NSPoint(x: W - 140, y: 150)
         let pillPt = NSPoint(x: W / 2 + 40, y: topY - pillH - 6)
+        let secondAct = [Phase.attention2, .expand2, .openQ, .clickedQ, .collapse2, .flashQ].contains(p)
         let allowPt = allowRect == .zero
-            ? NSPoint(x: W / 2 + 240, y: topY - panelH + 130)
+            ? (secondAct ? NSPoint(x: W / 2, y: topY - 250)
+                         : NSPoint(x: W / 2 + 240, y: topY - panelH + 130))
             : NSPoint(x: allowRect.midX, y: allowRect.midY + 16)
         var pos: NSPoint
         switch p {
-        case .attention:
-            let t = smooth(CGFloat(f - 16) / 13)
+        case .attention, .attention2:
+            let t = smooth(CGFloat(f - (p == .attention ? 16 : 98)) / 13)
             pos = NSPoint(x: start.x + (pillPt.x - start.x) * t,
                           y: start.y + (pillPt.y - start.y) * t)
-        case .expand:
-            let t = smooth(CGFloat(f - 30) / 7)
+        case .expand, .expand2:
+            let t = smooth(CGFloat(f - (p == .expand ? 30 : 112)) / 7)
             pos = NSPoint(x: pillPt.x + (allowPt.x - pillPt.x) * t,
                           y: pillPt.y + (allowPt.y - pillPt.y) * t)
-        case .open:
-            let t = smooth(min(1, CGFloat(f - 38) / 10))
+        case .open, .openQ:
+            let t = smooth(min(1, CGFloat(f - (p == .open ? 38 : 120)) / 10))
             pos = NSPoint(x: pillPt.x + (allowPt.x - pillPt.x) * min(1, 0.4 + t),
                           y: pillPt.y + (allowPt.y - pillPt.y) * min(1, 0.4 + t))
-        case .clicked:
+        case .clicked, .clickedQ:
             pos = allowPt
-        default: // collapse, flash — fly out, then stay gone
-            let t = smooth(min(1, CGFloat(f - 62) / 16))
+        default: // collapse/flash of either act — fly out, then stay gone
+            let t = smooth(min(1, CGFloat(f - (secondAct ? 146 : 62)) / 16))
             if t >= 1 { pos = NSPoint(x: -100, y: -100) }
             else {
                 pos = NSPoint(x: allowPt.x + (start.x - allowPt.x) * t,
@@ -449,7 +545,7 @@ func renderFrame(_ f: Int) -> CGImage {
     return img.cgImage(forProposedRect: &rect, context: nil, hints: nil)!
 }
 
-let frames = 100
+let frames = 180
 let dest = CGImageDestinationCreateWithURL(URL(fileURLWithPath: outPath) as CFURL,
                                            UTType.gif.identifier as CFString, frames, nil)!
 CGImageDestinationSetProperties(dest, [kCGImagePropertyGIFDictionary: [
@@ -459,7 +555,7 @@ for f in 0..<frames {
     CGImageDestinationAddImage(dest, cg, [kCGImagePropertyGIFDictionary: [
         kCGImagePropertyGIFUnclampedDelayTime: 0.085,
         kCGImagePropertyGIFDelayTime: 0.085]] as CFDictionary)
-    if let dir = dumpDir, [8, 24, 34, 48, 60, 66, 76, 94].contains(f) {
+    if let dir = dumpDir, [8, 24, 34, 48, 60, 66, 76, 94, 105, 116, 130, 144, 150, 160, 175].contains(f) {
         let rep = NSBitmapImageRep(cgImage: cg)
         try? rep.representation(using: .png, properties: [:])?
             .write(to: URL(fileURLWithPath: "\(dir)/frame-\(f).png"))
