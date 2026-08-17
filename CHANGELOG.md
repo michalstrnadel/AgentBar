@@ -5,9 +5,39 @@ All notable changes to AgentBar are documented here. This project follows
 
 ## Unreleased
 
-## 1.11.0 - 2026-08-04
+## 1.11.0 - 2026-08-18
 
 ### Added
+- **Claude's questions are answerable from the island, the menu and the CLI.**
+  When Claude asks a multiple-choice question (`AskUserQuestion`), the row used
+  to say "Claude asks" and the only move was jumping to the terminal. The
+  permission hook now carries the question's options in the request file and
+  waits alongside the terminal wizard: the island shows the actual options as
+  tappable cards (multiSelect and multi-question calls get toggles and an
+  Answer button), the menu answers single-choice questions inline, and
+  `agentbar watch` answers them with a digit key. Whoever answers first —
+  terminal or AgentBar — wins; the other side's answer is ignored cleanly
+  (verified both directions on Claude Code 2.1.234). A remote answer can only
+  say things the request itself offered: forged labels degrade to the terminal
+  wizard, never to a made-up answer.
+- **Done rows say what finished.** The Stop hook reads the tail of the session
+  transcript (one bounded 64 KB read, best-effort) and stores one line of the
+  agent's closing words in the state file. The island hero shows it under the
+  green "Done" — "You: …" asks, "Claude: …" answers — menu rows carry a
+  60-char snippet plus the full line in the tooltip, and a new prompt clears
+  it so a working session never advertises the previous turn's result.
+- **Sound cues, off by default.** Four tiny synthesized retro-console motifs —
+  a falling knock for *needs approval*, a rising "hm?" for *questions*, a
+  rising arpeggio for *done*, and a click when an answer reaches disk. No
+  audio files: the waveforms are generated in code, band-limited so they stay
+  soft. Edges only (a burst of sessions finishing plays once), silent while
+  the screen is locked, and the whole thing stays off until you enable it in
+  Settings or the one-click **Sounds** menu toggle.
+- **Settings grew into three quiet sections** — Sounds (enable, volume with an
+  audition on release, Test), Shortcuts (as before), and Island: an opt-in
+  **Hide island when no sessions** that lets the pill slip away when nothing
+  runs and return with the next session (honored alongside the menu bar mark,
+  so island-only mode never loses its only surface).
 - `agentbar watch` gained the two behaviours it was missing: `A` for *always*
   and `f` for *defer*, alongside the existing allow/deny. Session lines now show
   elapsed time.

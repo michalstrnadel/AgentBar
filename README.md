@@ -78,12 +78,24 @@ don't use. Hooks are snapshotted per session — start a new agent session after
 - **Two looks** — full-color mascots, or a monochrome System mode that matches the menu bar.
 - **Remote Allow/Deny** — answer Claude Code permission prompts straight from the menu:
   see exactly what's requested, then Allow once, Always allow, Deny, or defer to terminal.
+- **Answer questions too** — when Claude asks a multiple-choice question, the island
+  and the menu show the actual options: tap one and the session continues, no
+  terminal switch. The terminal wizard stays live the whole time — whoever answers
+  first wins. multiSelect and multi-question calls get toggles and an Answer button.
+- **Turn recaps** — a finished session's row says *what* finished: one line of the
+  agent's closing words under "Done", not just a green dot.
+- **Sound cues (opt-in)** — four tiny synthesized retro-console motifs: needs
+  approval, question, done, and an answer-confirm tick. Generated in code (no audio
+  files), silent while your screen is locked, off until you flip them on in Settings
+  or the menu.
 - **Built-in updates** — a quiet daily check of GitHub Releases plus **Check for
   Updates…** in the menu; one click installs the new version and relaunches.
 - **Linux too** — the [`agentbar` CLI](#linux-cli) is a full peer of the menu bar app:
-  live status, pending approvals, `a`/`d` remote Allow/Deny, waybar module.
-- **Nothing else** — no dock icon, no countdown timers, no sounds, nothing that
-  unfolds over your screen on its own. One process, tiny footprint.
+  live status, pending approvals, `a`/`d` remote Allow/Deny, digit keys to answer
+  questions, waybar module.
+- **Nothing else** — no dock icon, no countdown timers, no sounds unless you ask
+  for them, nothing that unfolds over your screen on its own. One process, tiny
+  footprint.
 
 ## Requirements
 

@@ -396,8 +396,13 @@ enum MenuBuilder {
             let hint = NSMenuItem(title: "", action: nil, keyEquivalent: "")
             hint.isEnabled = false
             hint.representedObject = tag
+            // Point at a surface the user actually has: menus can't hold toggles
+            // open, so complex calls answer on the island — or in the terminal
+            // when there is no island to point at.
+            let surface = Presentation.current.showsIsland ? "answer on the island"
+                                                           : "answer in the terminal"
             hint.attributedTitle = NSAttributedString(
-                string: "      \(qs.count > 1 ? "\(qs.count) questions" : "Pick several") — answer on the island",
+                string: "      \(qs.count > 1 ? "\(qs.count) questions" : "Pick several") — \(surface)",
                 attributes: [.font: NSFont.menuFont(ofSize: 11),
                              .foregroundColor: NSColor.tertiaryLabelColor])
             menu.addItem(hint)

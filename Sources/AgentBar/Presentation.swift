@@ -38,7 +38,7 @@ enum Presentation: String, CaseIterable {
         switch self {
         case .menuBar: return "The mark sits in the menu bar. Click it for the full menu."
         case .island:  return "A small pill under the notch. Push the pointer up to the "
-                            + "notch to open the sessions and any approval waiting on you."
+                            + "notch to open the sessions and any approval or question waiting on you."
         case .both:    return "Island for glancing, menu bar for the full menu."
         }
     }

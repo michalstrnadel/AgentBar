@@ -87,6 +87,10 @@ final class SoundCenter {
     private var screenLocked = false
     private var lastPlayed: [Cue: TimeInterval] = [:]
     private var idleStop: Timer?
+    /// Bumped per play (main thread). The idle-stop timer captures the value it
+    /// was armed for and bails when a newer play slipped in before it fired —
+    /// otherwise a stale timer could cut a cue scheduled in the same instant.
+    private var playGeneration = 0
 
     // MARK: - Lifecycle
 
@@ -148,6 +152,7 @@ final class SoundCenter {
         // split one "everyone finished" moment) into a single cue.
         if cooldown > 0, let t = lastPlayed[cue], now - t < cooldown { return }
         lastPlayed[cue] = now
+        playGeneration += 1
         let volume = Float(Self.volume) * 0.9
         audioQueue.async { [weak self] in
             guard let self, let buffer = self.buffer(for: cue) else { return }
@@ -188,8 +193,9 @@ final class SoundCenter {
     /// play the engine goes away and the next cue rebuilds it (~ms).
     private func armIdleStop() {
         idleStop?.invalidate()
+        let generation = playGeneration
         idleStop = Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { [weak self] _ in
-            guard let self else { return }
+            guard let self, self.playGeneration == generation else { return }
             self.audioQueue.async { self.teardownEngine() }
         }
     }

@@ -48,7 +48,18 @@ const recapFromTranscript = (file) => {
     for (let i = lines.length - 1, scanned = 0; i >= 0 && scanned < 200; i--, scanned++) {
       let e;
       try { e = JSON.parse(lines[i]); } catch { continue; }
-      if (!e || e.type !== "assistant" || e.isSidechain || e.isApiErrorMessage) continue;
+      if (!e) continue;
+      // A real user prompt is the turn boundary: past it, any assistant text
+      // belongs to the PREVIOUS turn and must not pose as this one's result.
+      // (tool_result entries are also type "user" — those ride inside the turn.)
+      if (e.type === "user") {
+        const c = e.message && e.message.content;
+        const isPrompt = typeof c === "string" ||
+          (Array.isArray(c) && c.some((b) => b && b.type === "text"));
+        if (isPrompt) break;
+        continue;
+      }
+      if (e.type !== "assistant" || e.isSidechain || e.isApiErrorMessage) continue;
       const content = e.message && e.message.content;
       if (!Array.isArray(content)) continue;
       const text = content

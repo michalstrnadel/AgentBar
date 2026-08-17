@@ -207,6 +207,20 @@ printf '{"behavior":"defer"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 check "question defer: silent"       '[ ! -s "$HOME/out.json" ]'
 
+# 12f. question answered in the terminal wizard (PostToolUse moves the state off
+# "question") -> the waiting hook retires its request within ~2s, silently
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=30 "$NODE" "$HOOK" <<<"$QO_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+start=$(date +%s)
+printf '{"session_id":"testsess","tool_name":"AskUserQuestion"}' | "$NODE" Scripts/hooks/claude/update.js post
+wait "$hookpid"
+end=$(date +%s)
+check "wizard answer: hook retires fast" '[ $((end-start)) -le 4 ]'
+check "wizard answer: silent"            '[ ! -s "$HOME/out.json" ]'
+check "wizard answer: request cleaned"   '[ ! -e "$HOME/.agentbar/requests.d/$REQ" ]'
+
 # 13. update.js prompt event: stamps started_at, one-lines the prompt, keeps model
 fresh_home
 STATE="$HOME/.agentbar/state.d/testsess.json"
@@ -251,6 +265,17 @@ check "recap: cleared on new prompt"  '! grep -q "\"recap\"" "$STATE"'
 # 15d. missing/unreadable transcript: stop still lands, just without a recap
 printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"/nonexistent/x.jsonl"}' | "$NODE" "$UPDATE" stop
 check "recap: missing transcript ok"  'grep -q "\"state\":\"done\"" "$STATE" && ! grep -q "\"recap\"" "$STATE"'
+
+# 15e. the walk-back stops at the turn boundary: a turn that ended without any
+# assistant text must NOT surface the previous turn's text as its recap
+{
+  printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"previous turn result, stale"}]}}'
+  printf '%s\n' '{"type":"user","message":{"role":"user","content":"new prompt"}}'
+  printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{}}]}}'
+  printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"ran"}]}}'
+} > "$FIXTURE"
+printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"%s"}' "$FIXTURE" | "$NODE" "$UPDATE" stop
+check "recap: stops at turn boundary" '! grep -q "\"recap\"" "$STATE"'
 
 # 16. lifecycle start seeds started_at (fake `open` first in PATH so the test
 # can't launch a real AgentBar out of nowhere)

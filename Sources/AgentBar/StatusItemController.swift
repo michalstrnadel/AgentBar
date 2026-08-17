@@ -101,12 +101,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             onDeny:  { [weak self] in self?.hotkeyAnswer("deny") })
     }
 
-    /// Answer the newest pending request. Debounced so a held chord can't double-fire.
+    /// Answer the newest pending PERMISSION request. Debounced so a held chord
+    /// can't double-fire. Questions are skipped: Allow/Deny is not an answer to
+    /// "which option?", and the hook would silently defer while the chord's tick
+    /// claimed success.
     private func hotkeyAnswer(_ behavior: String) {
         let now = Date()
         guard now.timeIntervalSince(lastHotkey) > 1 else { return }
         lastHotkey = now
-        guard let r = requestStore.requests.first else { return }  // no-op when nothing pending
+        guard let r = requestStore.requests.first(where: { $0.questions == nil })
+        else { return }  // no-op when nothing answerable is pending
         AgentActions.ack(AgentActions.reportFailedAnswer(
             AnswerWriter.write(behavior: behavior, for: r)))
     }

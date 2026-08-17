@@ -82,15 +82,20 @@ function buildContext(tool, input) {
 // malformed payload can't balloon the request file the frontends read.
 function cappedQuestions(input) {
   const qs = Array.isArray((input || {}).questions) ? input.questions : [];
-  return qs.slice(0, 4).map((q) => ({
-    question: cap((q || {}).question, 300),
-    header: cap((q || {}).header, 60),
-    multiSelect: (q || {}).multiSelect === true,
-    options: (Array.isArray((q || {}).options) ? q.options : []).slice(0, 6).map((o) => ({
-      label: cap((o || {}).label, 100),
-      description: cap((o || {}).description, 200),
-    })).filter((o) => o.label),
-  })).filter((q) => q.question && q.options.length);
+  return qs.slice(0, 4).map((q) => {
+    const seen = new Set();
+    return {
+      question: cap((q || {}).question, 300),
+      header: cap((q || {}).header, 60),
+      multiSelect: (q || {}).multiSelect === true,
+      // Labels are the answer protocol's identity — a duplicate label would make
+      // a valid-looking selection fail validation, so only the first survives.
+      options: (Array.isArray((q || {}).options) ? q.options : []).slice(0, 6).map((o) => ({
+        label: cap((o || {}).label, 100),
+        description: cap((o || {}).description, 200),
+      })).filter((o) => o.label && !seen.has(o.label) && seen.add(o.label)),
+    };
+  }).filter((q) => q.question && q.options.length);
 }
 
 // An answer may only say things the request itself offered — same forgery posture
@@ -238,6 +243,17 @@ function run() {
     process.on("SIGINT", () => { cleanup(); process.exit(0); });
 
     const deadline = Date.now() + TIMEOUT_MS;
+    const statePath = path.join(stateDir, safeId(p.session_id) + ".json");
+    // The wizard renders alongside a question wait, so the question can be
+    // answered there while this hook still polls. PostToolUse then moves the
+    // session off "question" — that's the retire signal: without it, the island
+    // card would stay up (and answerable, uselessly) for the rest of the wait.
+    const answeredElsewhere = () => {
+      try {
+        const s = JSON.parse(fs.readFileSync(statePath, "utf8"));
+        return s.state !== "question";
+      } catch { return false; }
+    };
     let ticks = 0;
     const timer = setInterval(() => {
       try {
@@ -254,13 +270,16 @@ function run() {
             if (b === "answer" && validAnswers(a.answers, questions)) {
               respond({ behavior: "deny", message: answerMessage(questions, a.answers) });
               // A denied tool fires no PostToolUse, so nothing else would clear
-              // the question state until the next event — flip it here.
+              // the question state until the next event — flip it here. Only
+              // while it still IS "question": if the wizard won the race a beat
+              // ago, newer real state must not be clobbered by this stale write.
               try {
-                const statePath = path.join(stateDir, safeId(p.session_id) + ".json");
                 let prev = {};
                 try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
-                writeAtomic(statePath, { ...prev, agent: "claude", state: "thinking",
-                  label: "Thinking…", ts: Math.floor(Date.now() / 1000) });
+                if (prev.state === "question") {
+                  writeAtomic(statePath, { ...prev, agent: "claude", state: "thinking",
+                    label: "Thinking…", ts: Math.floor(Date.now() / 1000) });
+                }
               } catch {}
             }
             process.exit(0);
@@ -280,9 +299,10 @@ function run() {
             respond({ behavior: "deny" });
           }
           process.exit(0); // "defer"/junk: silent exit -> terminal prompt
-        } else if (++ticks % 20 === 0 && !appRunning()) {
+        } else if (++ticks % 20 === 0 &&
+                   ((isQuestion && answeredElsewhere()) || !appRunning())) {
           clearInterval(timer);
-          process.exit(0); // app quit mid-wait
+          process.exit(0); // wizard answered it, or app quit mid-wait
         } else if (Date.now() >= deadline) {
           clearInterval(timer);
           process.exit(0); // timeout -> terminal prompt
