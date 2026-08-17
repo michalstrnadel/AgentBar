@@ -36,10 +36,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         statusItem.menu = menu
         UpdateChecker.shared.onChange = { [weak self] in self?.refreshOpenMenu() }
         UpdateChecker.shared.startPeriodicChecks()
-        SettingsWindow.shared.onChange = { [weak self] in
-            self?.applyHotKeyState()
-            self?.refreshOpenMenu()   // tooltip on the shortcut row shows the combos
-        }
         applyHotKeyState()
         mascot.sink("statusItem") { [weak self] image, word in
             guard let button = self?.statusItem.button else { return }
@@ -58,6 +54,14 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     func requestsChanged() { refreshOpenMenu() }
+
+    /// A Settings control (or menu quick-toggle) changed something. Re-register
+    /// hotkeys — idempotent, unregister-then-register — and refresh the open
+    /// menu so its checkmarks and tooltips tell the truth.
+    func settingsChanged() {
+        applyHotKeyState()
+        refreshOpenMenu()
+    }
 
     /// In Island mode the mark is hidden — the panel is the whole surface.
     ///
@@ -173,7 +177,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return (rows + ["req:"] + pending
                 + ["upd:\(UpdateChecker.shared.status)",
                    "hk:\(approvalShortcutEnabled):\(KeyCombo.allow.display)\(KeyCombo.deny.display)",
-                   "mode:\(systemColor)"]).joined(separator: "\n")
+                   "mode:\(systemColor)",
+                   "snd:\(SoundCenter.enabled)"]).joined(separator: "\n")
     }
 
     // MARK: - Actions (targets for MenuBuilder items)
@@ -200,6 +205,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc func openShortcutSettings(_ sender: NSMenuItem) {
         SettingsWindow.shared.show()
+    }
+
+    /// The menu's one-click sound toggle. A just-enabled cue set says hello, so
+    /// the click is audibly confirmed; the Settings window (if open) follows.
+    @objc func toggleSounds(_ sender: NSMenuItem) {
+        SoundCenter.enabled.toggle()
+        if SoundCenter.enabled { SoundCenter.shared.preview() }
+        SettingsWindow.shared.refreshIfVisible()
+        refreshOpenMenu()
     }
 
     @objc func openWelcome(_ sender: NSMenuItem) {

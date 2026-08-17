@@ -187,11 +187,25 @@ final class IslandController: NSObject {
         }.map(\.1)
     }
 
+    /// A Settings control changed something the island renders from
+    /// (hide-when-empty, most likely) — re-evaluate now, not on the next tick.
+    func settingsChanged() { rebuild(animated: true) }
+
+    /// Opt-in: with nothing running, the pill slips away entirely. Only honored
+    /// alongside the menu bar mark — in island-only mode the pill is the app's
+    /// sole surface, and hiding it would leave Settings unreachable. A flash
+    /// ("✓ Allowed" just as the last session ends) finishes before the exit.
+    private var wantsHidden: Bool {
+        sessions.isEmpty && flash == nil && Presentation.current == .both
+            && UserDefaults.standard.bool(forKey: "hideIslandWhenEmpty")
+    }
+
     private func rebuild(animated: Bool = false) {
         // No fullscreen exception. Hiding there was in the plan and it was wrong:
         // a fullscreen terminal is where the agents actually run, so that is the one
         // place the island must not disappear from.
-        guard Presentation.current.showsIsland, IslandGeometry.screen != nil
+        guard Presentation.current.showsIsland, IslandGeometry.screen != nil,
+              !wantsHidden
         else { panel.orderOut(nil); return }
 
         // Only the pointer opens the panel. Even a pending approval stays a pill —
@@ -480,7 +494,11 @@ final class IslandController: NSObject {
         }
         colorParent.submenu = colorSub
         menu.addItem(colorParent)
-        menu.addItem(withTitle: "Global Allow / Deny shortcut…", action: #selector(openSettings),
+        // One-click mute/unmute; volume and the cue details live in Settings.
+        let sounds = NSMenuItem(title: "Sounds", action: #selector(toggleSounds), keyEquivalent: "")
+        sounds.state = SoundCenter.enabled ? .on : .off
+        menu.addItem(sounds)
+        menu.addItem(withTitle: "Settings…", action: #selector(openSettings),
                      keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Check for Updates…", action: #selector(checkUpdates), keyEquivalent: "")
@@ -495,6 +513,12 @@ final class IslandController: NSObject {
 
     @objc private func chooseColor(_ sender: NSMenuItem) {
         IconColor.system = (sender.representedObject as? Bool) ?? false
+    }
+
+    @objc private func toggleSounds() {
+        SoundCenter.enabled.toggle()
+        if SoundCenter.enabled { SoundCenter.shared.preview() }
+        SettingsWindow.shared.refreshIfVisible()
     }
 
     @objc private func openWelcome() { WelcomeWindow.shared.show() }

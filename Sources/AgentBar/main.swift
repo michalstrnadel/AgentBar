@@ -50,6 +50,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         requestStore.start()
         SoundCenter.shared.start()
 
+        // Settings changes fan out from here — the surfaces never reach into
+        // each other. (One closure, single-assignment: this is the only owner.)
+        SettingsWindow.shared.onChange = { [weak self] in
+            guard let self else { return }
+            self.controller.settingsChanged()
+            if self.islandRunning { self.island.settingsChanged() }
+        }
+
         HookInstaller.onFinish = { WelcomeWindow.shared.refreshWired() }
         HookInstaller.installIfNeeded()
         antigravityWatcher.start()

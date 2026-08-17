@@ -1,10 +1,10 @@
 import Carbon.HIToolbox
 import Cocoa
 
-/// AgentBar's one window: a small Settings panel (the app is otherwise menu bar
-/// only). Currently hosts the global Allow/Deny shortcut — an enable toggle plus
-/// recorders to rebind either combo. State lives in UserDefaults; after any change
-/// the panel calls `onChange` so the controller re-registers the hotkeys.
+/// AgentBar's Settings: one small window, three quiet sections — Sounds, the
+/// global Allow/Deny shortcut, and the island. Every control writes UserDefaults
+/// directly and fires `onChange`, so changes apply live; the app delegate owns
+/// the fan-out to whichever surfaces care.
 final class SettingsWindow: NSObject, NSWindowDelegate {
     static let shared = SettingsWindow()
     var onChange: (() -> Void)?
@@ -13,6 +13,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var enableBox: NSButton!
     private var allowRecorder: ShortcutRecorder!
     private var denyRecorder: ShortcutRecorder!
+    private var soundsBox: NSButton!
+    private var volumeSlider: NSSlider!
+    private var testButton: NSButton!
+    private var volumeRow: NSStackView!
+    private var hideIslandBox: NSButton!
 
     func show() {
         if window == nil { build() }
@@ -20,6 +25,13 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         reload()
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+    }
+
+    /// The menu quick-toggle flips the same defaults this window shows; a visible
+    /// stale checkbox would look like the click didn't land.
+    func refreshIfVisible() {
+        guard window?.isVisible == true else { return }
+        reload()
     }
 
     private func cancelCaptures() {
@@ -35,6 +47,27 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         w.delegate = self
         w.center()
 
+        // ---- Sounds ----
+        soundsBox = NSButton(checkboxWithTitle: "Play sounds for agent events",
+                             target: self, action: #selector(toggleSounds))
+        let soundsCap = caption(
+            "A soft cue when a session needs approval, asks a question,\nor finishes. Nothing plays while agents are working.")
+
+        volumeSlider = NSSlider(value: 0.5, minValue: 0, maxValue: 1,
+                                target: self, action: #selector(volumeChanged(_:)))
+        volumeSlider.isContinuous = true
+        volumeSlider.widthAnchor.constraint(equalToConstant: 168).isActive = true
+        volumeSlider.setAccessibilityLabel("Sound volume")
+        testButton = NSButton(title: "Test", target: self, action: #selector(testClicked))
+        testButton.bezelStyle = .rounded
+        volumeRow = NSStackView(views: [speakerGlyph("speaker.fill"), volumeSlider,
+                                        speakerGlyph("speaker.wave.3.fill"), testButton])
+        volumeRow.orientation = .horizontal
+        volumeRow.alignment = .centerY
+        volumeRow.spacing = 8
+        volumeRow.setCustomSpacing(12, after: volumeRow.arrangedSubviews[2])
+
+        // ---- Shortcuts ----
         enableBox = NSButton(checkboxWithTitle: "Global Allow / Deny shortcut",
                              target: self, action: #selector(toggleEnabled))
         let enableCaption = caption(
@@ -72,11 +105,27 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         grid.columnSpacing = 10
         grid.column(at: 0).xPlacement = .trailing
 
-        let stack = NSStackView(views: [enableBox, enableCaption, grid])
+        // ---- Island ----
+        hideIslandBox = NSButton(checkboxWithTitle: "Hide island when no sessions",
+                                 target: self, action: #selector(toggleHideIsland))
+        let islandCaption = caption(
+            "The pill slips away when nothing is running and returns with\nthe next session. Applies when the menu bar mark is shown too.")
+
+        let sep1 = separator(), sep2 = separator()
+        let stack = NSStackView(views: [
+            sectionLabel("Sounds"), soundsBox, soundsCap, volumeRow, sep1,
+            sectionLabel("Shortcuts"), enableBox, enableCaption, grid, sep2,
+            sectionLabel("Island"), hideIslandBox, islandCaption,
+        ])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
+        stack.setCustomSpacing(12, after: stack.arrangedSubviews[2]) // caption → volume row
+        stack.setCustomSpacing(16, after: volumeRow)
+        stack.setCustomSpacing(16, after: sep1)
         stack.setCustomSpacing(14, after: enableCaption)
+        stack.setCustomSpacing(16, after: grid)
+        stack.setCustomSpacing(16, after: sep2)
         stack.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
         stack.translatesAutoresizingMaskIntoConstraints = false
 
@@ -90,6 +139,9 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             stack.trailingAnchor.constraint(equalTo: w.contentView!.trailingAnchor),
             stack.bottomAnchor.constraint(equalTo: w.contentView!.bottomAnchor),
             grid.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: 38),
+            volumeRow.leadingAnchor.constraint(equalTo: stack.leadingAnchor, constant: 38),
+            sep1.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
+            sep2.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -40),
         ])
         w.setContentSize(stack.fittingSize)
         window = w
@@ -99,7 +151,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         enableBox.state = UserDefaults.standard.bool(forKey: "globalApprovalShortcut") ? .on : .off
         allowRecorder.reload()
         denyRecorder.reload()
+        soundsBox.state = SoundCenter.enabled ? .on : .off
+        volumeSlider.doubleValue = SoundCenter.volume
+        hideIslandBox.state = UserDefaults.standard.bool(forKey: "hideIslandWhenEmpty") ? .on : .off
         syncRecorderState()
+        syncSoundControls()
     }
 
     @objc private func toggleEnabled() {
@@ -108,10 +164,39 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         onChange?()
     }
 
+    @objc private func toggleSounds() {
+        SoundCenter.enabled = soundsBox.state == .on
+        syncSoundControls()
+        if SoundCenter.enabled { SoundCenter.shared.preview() }
+        onChange?()
+    }
+
+    @objc private func volumeChanged(_ sender: NSSlider) {
+        SoundCenter.volume = sender.doubleValue
+        // Audition on release, not per tick — matches the system alert-volume slider.
+        if NSApp.currentEvent?.type == .leftMouseUp { SoundCenter.shared.preview() }
+    }
+
+    @objc private func testClicked() {
+        SoundCenter.shared.preview()
+    }
+
+    @objc private func toggleHideIsland() {
+        UserDefaults.standard.set(hideIslandBox.state == .on, forKey: "hideIslandWhenEmpty")
+        onChange?()
+    }
+
     private func syncRecorderState() {
         let on = enableBox.state == .on
         allowRecorder.isEnabled = on
         denyRecorder.isEnabled = on
+    }
+
+    private func syncSoundControls() {
+        let on = soundsBox.state == .on
+        volumeSlider.isEnabled = on
+        testButton.isEnabled = on
+        volumeRow.alphaValue = on ? 1 : 0.5 // dims the glyphs too; NSImageView has no isEnabled
     }
 
     func windowWillClose(_ notification: Notification) {
@@ -129,6 +214,27 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         l.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         l.textColor = .secondaryLabelColor
         return l
+    }
+
+    private func sectionLabel(_ text: String) -> NSTextField {
+        let l = NSTextField(labelWithString: text)
+        l.font = .boldSystemFont(ofSize: NSFont.systemFontSize)
+        return l
+    }
+
+    private func separator() -> NSBox {
+        let b = NSBox()
+        b.boxType = .separator
+        b.translatesAutoresizingMaskIntoConstraints = false
+        return b
+    }
+
+    private func speakerGlyph(_ symbol: String) -> NSImageView {
+        let v = NSImageView()
+        v.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .regular))
+        v.contentTintColor = .secondaryLabelColor
+        return v
     }
 
     private func gridLabel(_ text: String) -> NSTextField {

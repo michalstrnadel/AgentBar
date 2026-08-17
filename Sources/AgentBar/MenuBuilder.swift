@@ -102,6 +102,16 @@ enum MenuBuilder {
         colorParent.submenu = colorSub
         menu.addItem(colorParent)
 
+        // One-click mute/unmute; volume and the cue details live in Settings.
+        let sounds = NSMenuItem(title: "Sounds",
+                                action: #selector(StatusItemController.toggleSounds(_:)),
+                                keyEquivalent: "")
+        sounds.identifier = NSUserInterfaceItemIdentifier("soundsRow")
+        sounds.target = controller
+        sounds.image = NSImage(systemSymbolName: "speaker.wave.2", accessibilityDescription: nil)
+        configureSoundsRow(sounds)
+        menu.addItem(sounds)
+
         // Where AgentBar shows itself (menu bar / island / both), plus the first-run
         // blurb — the same window, reachable again.
         let appearance = NSMenuItem(title: "Appearance…",
@@ -465,9 +475,19 @@ enum MenuBuilder {
                 configureUpdateRow(item, controller: controller)
             } else if item.identifier?.rawValue == "shortcutRow" {
                 configureShortcutRow(item, controller: controller)
+            } else if item.identifier?.rawValue == "soundsRow" {
+                configureSoundsRow(item)
             }
         }
         return true
+    }
+
+    static func configureSoundsRow(_ item: NSMenuItem) {
+        let on = SoundCenter.enabled
+        item.state = on ? .on : .off
+        item.toolTip = on
+            ? "Cues when a session needs approval, asks a question or finishes — volume in Settings"
+            : "Off — click for a soft cue when a session needs approval, asks or finishes"
     }
 
     static func configureShortcutRow(_ item: NSMenuItem, controller: StatusItemController) {
