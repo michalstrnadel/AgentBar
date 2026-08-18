@@ -159,15 +159,17 @@ git clone https://github.com/michalstrnadel/AgentBar.git && cd AgentBar
 sudo ln -s "$PWD/Scripts/cli/agentbar" /usr/local/bin/agentbar   # optional
 
 agentbar                 # session list (same rows as the macOS menu)
-agentbar watch           # live view; a = allow, d = deny, q = quit
-agentbar requests        # pending approvals with the mini-diff / full command
+agentbar watch           # live view; a = allow, d = deny, 1-9 = answer a question, q = quit
+agentbar requests        # pending approvals & questions with the mini-diff / options
 agentbar approve --always
+agentbar answer Blue     # answer a pending question by option label (or number)
 ```
 
 Remote Allow/Deny works exactly like on macOS: while `agentbar watch` (or a
 `waybar` poll) is running, a Claude Code permission prompt appears in the CLI and
-your `a`/`d` answers it; with no watcher running, hooks stay silent and the normal
-terminal prompt appears. Waybar module:
+your `a`/`d` answers it — and when Claude asks a multiple-choice question, its
+options render right in the list and a digit key (or `agentbar answer`) picks one.
+With no watcher running, hooks stay silent and the normal terminal prompt appears. Waybar module:
 
 ```jsonc
 "custom/agentbar": {

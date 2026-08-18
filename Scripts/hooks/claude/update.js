@@ -23,13 +23,25 @@ const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 6
 // One display line: the prompt names the task in a row, not a transcript.
 const oneLine = (s) => String(s).replace(/\s+/g, " ").trim().slice(0, 120);
 
-// One line of what the agent last said — read from the transcript's tail on
-// "stop", so a done row can say WHAT finished. Best-effort by design: any miss
-// (no path, unreadable file, format drift) returns "" and the field is simply
-// omitted. Bounded work — one 64 KB read, at most 200 lines parsed — so it can
-// never meaningfully delay the hook's exit.
+// One line of what the agent last said, for done rows. The Stop payload's
+// last_assistant_message is the primary source (verified on 2.1.234 — the
+// transcript flushes the final text only at session end, far too late to read
+// back). The transcript tail below stays as the fallback for versions that
+// don't carry the field. Best-effort by design: any miss returns "" and the
+// recap is simply omitted.
 const RECAP_TAIL = 64 * 1024;
 const RECAP_MAX = 160;
+const cleanRecapText = (text) => {
+  const cleaned = String(text || "")
+    .replace(/```[^]*?```/g, " ")    // fenced code blocks ([^] spans newlines)
+    .replace(/^#{1,6}\s+/gm, "")     // heading markers
+    .replace(/^\s*[-*+]\s+/gm, "")   // bullet markers
+    .replace(/^\s*\d+[.)]\s+/gm, "") // numbered-list markers
+    .replace(/[`*_]/g, "")           // inline backticks / bold / italics
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.slice(0, RECAP_MAX);
+};
 const recapFromTranscript = (file) => {
   try {
     if (typeof file !== "string" || !file) return "";
@@ -67,15 +79,8 @@ const recapFromTranscript = (file) => {
       const text = content
         .filter((c) => c && c.type === "text" && typeof c.text === "string")
         .map((c) => c.text).join(" ");
-      const cleaned = text
-        .replace(/```[^]*?```/g, " ")    // fenced code blocks ([^] spans newlines)
-        .replace(/^#{1,6}\s+/gm, "")     // heading markers
-        .replace(/^\s*[-*+]\s+/gm, "")   // bullet markers
-        .replace(/^\s*\d+[.)]\s+/gm, "") // numbered-list markers
-        .replace(/[`*_]/g, "")           // inline backticks / bold / italics
-        .replace(/\s+/g, " ")
-        .trim();
-      if (cleaned) return cleaned.slice(0, RECAP_MAX);
+      const cleaned = cleanRecapText(text);
+      if (cleaned) return cleaned;
       // tool_use- or thinking-only assistant entry — keep walking back.
     }
   } catch {}
@@ -154,7 +159,9 @@ process.stdin.on("end", () => {
   // naturally clears the previous turn's recap and a working session never shows
   // a stale result.
   if (event === "stop") {
-    const recap = recapFromTranscript(p.transcript_path);
+    const recap = (typeof p.last_assistant_message === "string"
+                   ? cleanRecapText(p.last_assistant_message) : "")
+                  || recapFromTranscript(p.transcript_path);
     if (recap) out.recap = recap;
   }
   try {

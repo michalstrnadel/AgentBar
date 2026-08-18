@@ -304,6 +304,18 @@ check "recap: missing transcript ok"  'grep -q "\"state\":\"done\"" "$STATE" && 
 printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"%s"}' "$FIXTURE" | "$NODE" "$UPDATE" stop
 check "recap: stops at turn boundary" '! grep -q "\"recap\"" "$STATE"'
 
+# 15f. the Stop payload's last_assistant_message is the PRIMARY recap source —
+# the transcript flushes the final text only at session end (verified live on
+# Claude Code 2.1.234), so payload-first is what makes recaps exist at all.
+# Markdown cleaning applies; a missing/empty transcript doesn't matter.
+printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"/nonexistent/x.jsonl","last_assistant_message":"## Done\\n\\n- Fixed the `late` bug — **all green**"}' | "$NODE" "$UPDATE" stop
+check "recap: payload is primary source" 'grep -q "\"recap\":\"Done Fixed the late bug — all green\"" "$STATE"'
+
+# 15g. when the payload carries the message, the transcript tail is not consulted
+printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"stale transcript text"}]}}' > "$FIXTURE"
+printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"%s","last_assistant_message":"fresh payload text"}' "$FIXTURE" | "$NODE" "$UPDATE" stop
+check "recap: payload beats transcript"  'grep -q "\"recap\":\"fresh payload text\"" "$STATE"'
+
 # 16. lifecycle start seeds started_at (fake `open` first in PATH so the test
 # can't launch a real AgentBar out of nowhere)
 fresh_home

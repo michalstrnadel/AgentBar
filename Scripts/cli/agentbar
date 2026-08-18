@@ -275,11 +275,14 @@ function watch(argv) {
   const quit = () => { clearInterval(timer); clearHeartbeat(); process.stdout.write("\n"); process.exit(0); };
   process.on("SIGINT", quit);
   process.on("SIGTERM", quit);
+  process.on("SIGHUP", quit); // PTY closed under us — the heartbeat must not outlive the terminal
   if (process.stdin.isTTY) {
     process.stdin.setRawMode(true);
     process.stdin.resume();
-    process.stdin.on("data", (b) => {
-      const k = b.toString();
+    // Keys can arrive several to a chunk (fast typing, pastes, test PTYs) —
+    // handle each, not the chunk as one "key".
+    process.stdin.on("data", (b) => { for (const k of b.toString()) handleKey(k); });
+    const handleKey = (k) => {
       if (k === "q" || k === "\x03") return quit();
       const rs = requests();
       if (!rs.length) return;
@@ -297,7 +300,7 @@ function watch(argv) {
         const label = opts && opts[parseInt(k, 10) - 1];
         if (label) { answerQuestion(quest, [[label]]); render(); }
       }
-    });
+    };
   }
   render();
 }
