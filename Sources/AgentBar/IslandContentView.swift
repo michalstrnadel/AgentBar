@@ -691,6 +691,10 @@ final class IslandQuestionCardView: NSView {
 
         var rows: [NSView] = []
         let toggle = needsAnswerButton
+        // A 4-question call with full descriptions runs past the screen (the
+        // panel can't scroll); past two questions the labels carry the card and
+        // the descriptions stay in the terminal wizard.
+        let showDescriptions = questions.count <= 2
         for (qi, q) in questions.enumerated() {
             if qi > 0 { rows.append(Self.sectionGap()) }
             rows.append(Self.header(q, index: qi, count: questions.count))
@@ -703,7 +707,7 @@ final class IslandQuestionCardView: NSView {
             var buttons: [IslandOptionButton] = []
             for (oi, opt) in q.options.enumerated() {
                 let b = IslandOptionButton(
-                    label: opt.label, description: opt.description,
+                    label: opt.label, description: showDescriptions ? opt.description : "",
                     showsCheck: toggle, width: width
                 ) { [weak self] in self?.tapped(question: qi, option: oi) }
                 b.selected = self.selections[qi].contains(oi)
@@ -882,6 +886,7 @@ final class IslandOptionButton: NSView {
             sub.font = .systemFont(ofSize: 11)
             sub.textColor = NSColor.white.withAlphaComponent(0.55)
             sub.maximumNumberOfLines = 2
+            sub.lineBreakMode = .byTruncatingTail // a hard cut mid-sentence needs its …
             sub.preferredMaxLayoutWidth = width - textLeading - 10
             sub.translatesAutoresizingMaskIntoConstraints = false
             addSubview(sub)

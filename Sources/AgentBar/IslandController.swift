@@ -269,8 +269,13 @@ final class IslandController: NSObject {
         case .expanded:
             content.topInset = 10
             content.setRows(rows())
+            // Failsafe, not a layout tool: an extreme card set (max-shape
+            // questions) must clip at the screen edge rather than run past it —
+            // the panel cannot scroll, and the terminal remains the way out.
+            let maxHeight = screen.visibleFrame.height - 24
             target = IslandGeometry.frame(width: Self.expandedWidth,
-                                          height: content.contentHeight, on: screen)
+                                          height: min(content.contentHeight, maxHeight),
+                                          on: screen)
         }
         let modeChanged = mode != lastLaidMode
         lastLaidMode = mode

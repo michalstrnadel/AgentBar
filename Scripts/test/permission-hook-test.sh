@@ -307,10 +307,23 @@ check "recap: stops at turn boundary" '! grep -q "\"recap\"" "$STATE"'
 # 16. lifecycle start seeds started_at (fake `open` first in PATH so the test
 # can't launch a real AgentBar out of nowhere)
 fresh_home
-FAKEBIN="$HOME/fakebin"; mkdir -p "$FAKEBIN"; printf '#!/bin/sh\nexit 0\n' > "$FAKEBIN/open"; chmod +x "$FAKEBIN/open"
-printf '{"session_id":"lcsess","cwd":"/tmp/proj"}' | PATH="$FAKEBIN:$PATH" "$NODE" Scripts/hooks/claude/lifecycle.js start
+FAKEBIN="$HOME/fakebin"; mkdir -p "$FAKEBIN"
+printf '#!/bin/sh\ntouch "$FAKEOPEN_MARK"\nexit 0\n' > "$FAKEBIN/open"; chmod +x "$FAKEBIN/open"
+export FAKEOPEN_MARK="$HOME/open-called"
+printf '{"session_id":"lcsess","cwd":"/tmp/proj"}' | PATH="$FAKEBIN:$PATH" AGENTBAR_FORCE_APP=0 "$NODE" Scripts/hooks/claude/lifecycle.js start
 check "lifecycle: started_at seeded" 'grep -q "\"started_at\":" "$HOME/.agentbar/state.d/lcsess.json"'
 check "lifecycle: still started:false" 'grep -q "\"started\":false" "$HOME/.agentbar/state.d/lcsess.json"'
+
+# 16a. app not running -> lifecycle launches it; app running -> it must NOT
+# start a second copy (two copies on disk = LaunchServices roulette).
+# The launch is a detached spawn, so give the fake `open` a beat to land.
+sleep 1
+check "lifecycle: launches when down"  '[ "$(uname)" != "Darwin" ] || [ -e "$FAKEOPEN_MARK" ]'
+rm -f "$FAKEOPEN_MARK"
+printf '{"session_id":"lcsess","cwd":"/tmp/proj"}' | PATH="$FAKEBIN:$PATH" AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/claude/lifecycle.js start
+sleep 1
+check "lifecycle: no relaunch when up" '[ ! -e "$FAKEOPEN_MARK" ]'
+unset FAKEOPEN_MARK
 
 # 17. the permission hook's own state write must carry the optional task fields
 # through — its {...prev} merge is exactly what the protocol relies on

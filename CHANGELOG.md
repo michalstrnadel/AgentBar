@@ -38,9 +38,21 @@ All notable changes to AgentBar are documented here. This project follows
   **Hide island when no sessions** that lets the pill slip away when nothing
   runs and return with the next session (honored alongside the menu bar mark,
   so island-only mode never loses its only surface).
-- `agentbar watch` gained the two behaviours it was missing: `A` for *always*
-  and `f` for *defer*, alongside the existing allow/deny. Session lines now show
-  elapsed time.
+- **Cowork sessions get recaps too.** The desktop app's audit log carries the
+  turn's closing words in its result event; the watcher now writes the same
+  `recap` field the Claude hook does, so a finished Cowork row also says what
+  it finished — link text kept, since Cowork results end with a link whose
+  text names the deliverable.
+- `agentbar answer [n] <label|num>…` answers a pending question from a plain
+  shell — labels case-insensitively or by option number, several for
+  multiSelect, and a wrong label lists the real choices. `agentbar watch`
+  gained `A` for *always*, `f` for *defer* and digit keys for question
+  options, alongside the existing allow/deny; session lines show elapsed
+  time. A question at the head of the queue never shadows a pending
+  permission: letters answer the newest permission, digits the newest
+  question.
+- The open island's elapsed labels keep counting (a slow 30s tick) instead of
+  freezing at the moment the panel was built.
 
 ### Fixed
 - **An approval that fails to reach disk no longer looks like it worked.**
