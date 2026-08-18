@@ -175,25 +175,97 @@ enum RenderPreview {
             guard let qs = singleQ.questions else { fatalError("no questions decoded") }
             let hero = IslandRowView(session: questionSession, mark: mark(for: "claude"),
                                      style: .hero, onClick: { _ in })
-            let card = IslandQuestionCardView(questions: qs, selections: [],
+            let card = IslandQuestionCardView(questions: qs, selections: [], step: 0,
                                               deferTitle: "Answer in terminal", width: cardW,
-                                              onAnswer: { _ in }, onSelect: { _ in }, onDefer: {})
+                                              onAnswer: { _ in }, onSelect: { _ in },
+                                              onStep: { _ in }, onDefer: {})
             let wrap = NSStackView(views: [card])
             wrap.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 0)
             renderSlab([sized(hero, rowW), wrap], name: "02-question-single")
         }
 
-        // Scene 3: multi question with multiSelect + selections in progress.
+        // Scene 3: wizard step 1 — a multiSelect step mid-choice, "1/2" up top.
         do {
             guard let qs = multiQ.questions else { fatalError("no questions decoded") }
             let hero = IslandRowView(session: questionSession, mark: mark(for: "claude"),
                                      style: .hero, onClick: { _ in })
             let card = IslandQuestionCardView(questions: qs, selections: [[0, 2], []],
+                                              step: 0,
                                               deferTitle: "Answer in terminal", width: cardW,
-                                              onAnswer: { _ in }, onSelect: { _ in }, onDefer: {})
+                                              onAnswer: { _ in }, onSelect: { _ in },
+                                              onStep: { _ in }, onDefer: {})
             let wrap = NSStackView(views: [card])
             wrap.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 0)
             renderSlab([sized(hero, rowW), wrap], name: "03-question-multi")
+        }
+
+        // Scene 3b: wizard step 2 — the final single-select step with Back and "2/2".
+        do {
+            guard let qs = multiQ.questions else { fatalError("no questions decoded") }
+            let hero = IslandRowView(session: questionSession, mark: mark(for: "claude"),
+                                     style: .hero, onClick: { _ in })
+            let card = IslandQuestionCardView(questions: qs, selections: [[0, 2], []],
+                                              step: 1,
+                                              deferTitle: "Answer in terminal", width: cardW,
+                                              onAnswer: { _ in }, onSelect: { _ in },
+                                              onStep: { _ in }, onDefer: {})
+            let wrap = NSStackView(views: [card])
+            wrap.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 0)
+            renderSlab([sized(hero, rowW), wrap], name: "03b-question-wizard-step2")
+        }
+
+        // Scene 3c: plan review — full markdown plan in its scrollable box.
+        do {
+            let planSession = makeSession("plan-sess", [
+                "agent": "claude", "state": "permission", "label": "Plan ready for review",
+                "project": "auth-api", "cwd": "/tmp", "sessionId": "plan-sess", "pid": 1,
+                "started": true, "ts": now, "started_at": now - 240,
+                "prompt": "add authentication to the API", "model": "claude-opus-5",
+                "term_program": "WarpTerminal",
+            ])
+            let planReq = makeRequest("plan-sess-p1", [
+                "sessionId": "plan-sess", "agent": "claude", "toolName": "ExitPlanMode",
+                "display": "Plan ready for review", "toolInputPretty": "{}",
+                "context": ["kind": "plan", "plan": """
+                ## Auth middleware plan
+
+                1. Add `verifyToken` to `src/auth/middleware.ts` — reject expired \
+                tokens with **401**.
+                2. Wire it into the router before the `/api` group.
+                3. Add regression tests:
+
+                ```
+                npm test -- auth
+                ```
+
+                - Covers refresh flow
+                - Covers the expired-token path
+                """,
+                ],
+                "pid": 1, "hookPid": 1, "ts": now,
+            ])
+            let hero = IslandRowView(session: planSession, mark: mark(for: "claude"),
+                                     style: .hero, onClick: { _ in })
+            let card = IslandApprovalView(request: planReq, deferTitle: "Review in terminal",
+                                          width: cardW, onChoose: { _ in })
+            let wrap = NSStackView(views: [card])
+            wrap.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 0)
+            renderSlab([sized(hero, rowW), wrap], name: "03c-plan-review")
+        }
+
+        // Scene 3d: a failed turn — red, named, and never a green tick.
+        do {
+            let failed = makeSession("failed-sess", [
+                "agent": "opencode", "state": "error", "label": "provider returned 429",
+                "project": "auth-api", "cwd": "/tmp", "sessionId": "failed-sess", "pid": 1,
+                "started": true, "ts": now, "started_at": now - 420,
+                "prompt": "add authentication to the API", "term_program": "WarpTerminal",
+            ])
+            let hero = IslandRowView(session: failed, mark: mark(for: "opencode"),
+                                     style: .hero, onClick: { _ in })
+            let c1 = IslandRowView(session: compactWorking, mark: mark(for: "codex"),
+                                   style: .compact, onClick: { _ in })
+            renderSlab([sized(hero, rowW), sized(c1, rowW)], name: "03d-error-row")
         }
 
         // Scene 4: done hero with a recap — "You: …" asks, "Claude: …" answers.

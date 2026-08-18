@@ -9,6 +9,8 @@ final class IslandContentView: NSView {
     static let hPad: CGFloat = 14
 
     private let stack = NSStackView()
+    private let scroll = NSScrollView()
+    private let doc = FlippedView()
     private var stackTop: NSLayoutConstraint!
     private var tracking: NSTrackingArea?
 
@@ -35,13 +37,40 @@ final class IslandContentView: NSView {
         stack.alignment = .leading
         stack.spacing = 8
         stack.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(stack)
-        stackTop = stack.topAnchor.constraint(equalTo: topAnchor, constant: 0)
+
+        // The rows live in a scroll view so a panel clamped at the screen edge
+        // still shows everything: normally the panel is sized to the content and
+        // nothing scrolls, but when the content is taller than the screen allows,
+        // the overflow is reachable by wheel/trackpad instead of cut off.
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
+        scroll.horizontalScrollElasticity = .none
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        doc.translatesAutoresizingMaskIntoConstraints = false
+        doc.addSubview(stack)
+        scroll.documentView = doc
+        addSubview(scroll)
+        stackTop = stack.topAnchor.constraint(equalTo: doc.topAnchor, constant: 0)
         NSLayoutConstraint.activate([
+            scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
+            doc.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+            doc.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
+            doc.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+            doc.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            // The document is exactly as tall as the rows — no trailing padding,
+            // or the collapsed pill's document would outgrow its 30pt clip and a
+            // legacy scroller would paint a bar down the side of the pill. The
+            // panel's own bottom padding lives in `contentHeight` instead.
+            doc.bottomAnchor.constraint(equalTo: stack.bottomAnchor),
             // Centred, not leading-pinned: during the expand animation both edges
             // then grow away from the notch symmetrically — the island inflates
             // from the top centre instead of sliding off to the left.
-            stack.centerXAnchor.constraint(equalTo: centerXAnchor),
+            stack.centerXAnchor.constraint(equalTo: doc.centerXAnchor),
             stackTop,
         ])
     }
@@ -71,10 +100,17 @@ final class IslandContentView: NSView {
     /// than the view: the view's own size is whatever the panel last gave it.
     var contentHeight: CGFloat { topInset + stack.fittingSize.height + 12 }
 
-    func setRows(_ views: [NSView]) {
+    /// `resetScroll` on shape changes (collapsed↔expanded) only: the store ticks
+    /// rebuild these rows about once a second while an agent works, and yanking
+    /// the offset to the top each time made the overflow unreachable — the exact
+    /// bug the scroll view exists to fix.
+    func setRows(_ views: [NSView], resetScroll: Bool = false) {
+        let offset = scroll.contentView.bounds.origin
         for v in stack.arrangedSubviews { stack.removeArrangedSubview(v); v.removeFromSuperview() }
         for v in views { stack.addArrangedSubview(v) }
         stack.layoutSubtreeIfNeeded()
+        scroll.contentView.scroll(to: resetScroll ? .zero : offset)
+        scroll.reflectScrolledClipView(scroll.contentView)
     }
 
     /// Fade freshly set rows in, so a shape change arrives with its content
@@ -105,6 +141,12 @@ final class IslandContentView: NSView {
         layer?.backgroundColor = NSColor.black.cgColor
     }
     override var wantsUpdateLayer: Bool { true }
+}
+
+/// Scroll-view document that lays out from the top, so partial content hugs the
+/// notch instead of the bottom edge.
+final class FlippedView: NSView {
+    override var isFlipped: Bool { true }
 }
 
 /// One session inside the island. The first row is the hero — the session the
@@ -321,6 +363,18 @@ final class IslandRowView: NSView {
                 ]))
             }
             return out
+        case .error:
+            let out = NSMutableAttributedString(string: "failed", attributes: [
+                .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
+                .foregroundColor: NSColor(srgbRed: 1, green: 0.45, blue: 0.42, alpha: 1),
+            ])
+            if !s.label.isEmpty {
+                out.append(NSAttributedString(string: "  \(s.label)", attributes: [
+                    .font: NSFont.systemFont(ofSize: 11),
+                    .foregroundColor: NSColor.white.withAlphaComponent(0.55),
+                ]))
+            }
+            return out
         case .idle, .done:
             return NSAttributedString(string: "Done — click to jump", attributes: [
                 .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
@@ -356,6 +410,7 @@ final class IslandRowView: NSView {
         case .permission:      return IconRenderer.amberDot
         case .question:        return IconRenderer.questionDot
         case .thinking, .tool: return NSColor(srgbRed: 0.40, green: 0.83, blue: 0.45, alpha: 1)
+        case .error:           return NSColor(srgbRed: 1, green: 0.45, blue: 0.42, alpha: 1)
         case .idle, .done:     return NSColor.white.withAlphaComponent(0.35)
         }
     }
@@ -443,9 +498,14 @@ final class IslandApprovalView: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
-        var rows: [NSView] = [Self.header()]
-        if let tool = Self.toolLine(request) { rows.append(tool) }
-        if let context = request.context {
+        let plan = request.isPlanRequest ? (request.planText ?? "(plan text missing)") : nil
+        var rows: [NSView] = [Self.header(plan: plan != nil)]
+        if plan == nil, let tool = Self.toolLine(request) { rows.append(tool) }
+        if let plan {
+            // The whole plan, readable in place — this card is a review, not a
+            // prompt. Long plans scroll inside the box rather than growing it.
+            rows.append(Self.planBox(plan, width: width))
+        } else if let context = request.context {
             let box = NSView()
             box.wantsLayer = true
             box.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
@@ -465,10 +525,18 @@ final class IslandApprovalView: NSView {
         }
 
         let shortcuts = UserDefaults.standard.bool(forKey: "globalApprovalShortcut")
-        let deny = Self.button("Deny", hint: shortcuts ? KeyCombo.deny.display : nil,
+        let deny = Self.button(plan != nil ? "Keep planning" : "Deny",
+                               hint: shortcuts ? KeyCombo.deny.display : nil,
                                prominent: false, target: self, action: #selector(denyClicked))
-        let allow = Self.button("Allow", hint: shortcuts ? KeyCombo.allow.display : nil,
+        let allow = Self.button(plan != nil ? "Approve plan" : "Allow",
+                                hint: shortcuts ? KeyCombo.allow.display : nil,
                                 prominent: true, target: self, action: #selector(allowClicked))
+        if plan != nil {
+            // Say where the click lands: this one leaves the island and answers
+            // the session's own dialog.
+            allow.toolTip = "Jumps to the session and answers its plan dialog"
+            deny.toolTip = "Tells Claude to refine the plan before making changes"
+        }
         let main = NSStackView(views: [deny, allow])
         main.orientation = .horizontal
         main.distribution = .fillEqually
@@ -476,7 +544,10 @@ final class IslandApprovalView: NSView {
         rows.append(main)
 
         var secondary: [NSView] = []
-        if request.ruleSuggestion != nil {
+        // A plan approval hides the rule link even when a suggestion rides along:
+        // "always allow ExitPlanMode" would auto-approve every future plan sight
+        // unseen, which defeats the card.
+        if request.ruleSuggestion != nil, plan == nil {
             let always = Self.link("Always allow", target: self, action: #selector(alwaysClicked))
             always.toolTip = request.ruleMenuTitle
             secondary.append(always)
@@ -509,17 +580,61 @@ final class IslandApprovalView: NSView {
     @objc private func alwaysClicked() { onChoose("always") }
     @objc private func deferClicked() { onChoose("defer") }
 
-    /// "● Permission Request" — names what this card is, the way the reference does.
-    private static func header() -> NSView {
+    /// "● Permission Request" / "● Plan Review" — names what this card is, the way
+    /// the reference does.
+    private static func header(plan: Bool) -> NSView {
         let out = NSMutableAttributedString(string: "● ", attributes: [
             .font: NSFont.systemFont(ofSize: 9),
             .foregroundColor: IconRenderer.amberDot,
         ])
-        out.append(NSAttributedString(string: "Permission Request", attributes: [
+        out.append(NSAttributedString(string: plan ? "Plan Review" : "Permission Request",
+                                      attributes: [
             .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
             .foregroundColor: NSColor.white.withAlphaComponent(0.55),
         ]))
         return NSTextField(labelWithAttributedString: out)
+    }
+
+    /// The plan markdown in its own quiet box. Sized to the text up to a cap;
+    /// past the cap the box holds still and the text scrolls inside it.
+    private static let planMaxHeight: CGFloat = 300
+    private static func planBox(_ plan: String, width: CGFloat) -> NSView {
+        let inset: CGFloat = 10
+        let rendered = MarkdownLite.render(plan)
+        let label = NSTextField(wrappingLabelWithString: "")
+        label.attributedStringValue = rendered
+        label.preferredMaxLayoutWidth = width - inset * 2
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let doc = FlippedView()
+        doc.translatesAutoresizingMaskIntoConstraints = false
+        doc.addSubview(label)
+
+        let scroll = NSScrollView()
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
+        scroll.horizontalScrollElasticity = .none
+        scroll.wantsLayer = true
+        scroll.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
+        scroll.layer?.cornerRadius = 6
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = doc
+
+        let textHeight = ceil(rendered.boundingRect(
+            with: NSSize(width: width - inset * 2, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]).height) + 6
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: doc.leadingAnchor, constant: inset),
+            label.topAnchor.constraint(equalTo: doc.topAnchor, constant: 8),
+            label.widthAnchor.constraint(equalToConstant: width - inset * 2),
+            doc.widthAnchor.constraint(equalToConstant: width),
+            doc.bottomAnchor.constraint(equalTo: label.bottomAnchor, constant: 8),
+            scroll.widthAnchor.constraint(equalToConstant: width),
+            scroll.heightAnchor.constraint(equalToConstant: min(textHeight + 16, planMaxHeight)),
+        ])
+        return scroll
     }
 
     /// "⚠︎ Edit  src/auth/middleware.ts" — the tool in warning orange, its target
@@ -653,97 +768,103 @@ final class IslandQuestionView: NSView {
 }
 
 /// A question with its options, answerable in place. One tap answers the common
-/// case (one question, one choice); multiSelect and multi-question calls switch to
-/// toggle mode with a prominent Answer button. The terminal wizard renders in
-/// parallel while the hook waits, so whoever answers first wins — this card is the
-/// "without leaving the screen you're on" way.
+/// case (one question, one choice). A multi-question call becomes a wizard: one
+/// question on the card at a time with a "2/4" mark, a single-select tap records
+/// the choice and slides to the next question, and the last answer submits the
+/// whole set — four questions are four taps, and the card never outgrows the
+/// screen. multiSelect steps toggle and move on with a Next button. The terminal
+/// wizard renders in parallel while the hook waits, so whoever answers first
+/// wins — this card is the "without leaving the screen you're on" way.
 ///
-/// Selections live OUTSIDE the view (the island rebuilds its rows on every store
-/// tick, so anything stateful in a row is torn down within seconds): the card is
-/// handed the current selections and reports every change back to its owner.
+/// Selections and the wizard step live OUTSIDE the view (the island rebuilds its
+/// rows on every store tick, so anything stateful in a row is torn down within
+/// seconds): the card is handed the current state and reports every change back
+/// to its owner.
 final class IslandQuestionCardView: NSView {
     private let questions: [ApprovalRequest.Context.Question]
+    private let step: Int
     private let onAnswer: ([[String]]) -> Void
     private let onSelect: ([Set<Int>]) -> Void
+    private let onStep: (Int) -> Void
     private var selections: [Set<Int>]
-    private var optionButtons: [[IslandOptionButton]] = []
-    private var answerButton: IslandButton?
+    private var optionButtons: [IslandOptionButton] = []
+    private var actionButton: IslandButton?
+    /// One advance per card build: a double-tap during the beat between choosing
+    /// and sliding must not skip a question.
+    private var advancePending = false
 
-    /// Toggle mode: any multiSelect, or more than one question — a lone
-    /// single-select answers on tap instead, matching Allow's immediacy.
-    private var needsAnswerButton: Bool {
-        questions.count > 1 || questions.contains { $0.multiSelect }
-    }
+    private var isWizard: Bool { questions.count > 1 }
+    private var isLastStep: Bool { step >= questions.count - 1 }
+    private var current: ApprovalRequest.Context.Question { questions[step] }
 
     init(questions: [ApprovalRequest.Context.Question], selections: [Set<Int>],
-         deferTitle: String, width: CGFloat,
+         step: Int, deferTitle: String, width: CGFloat,
          onAnswer: @escaping ([[String]]) -> Void,
          onSelect: @escaping ([Set<Int>]) -> Void,
+         onStep: @escaping (Int) -> Void,
          onDefer: @escaping () -> Void) {
         self.questions = questions
+        self.step = max(0, min(step, questions.count - 1))
+        // Stored selections belong to the request they were made on; if a new
+        // request reuses the file name with a different shape, an out-of-range
+        // option index must drop rather than crash the submit.
         self.selections = selections.count == questions.count
-            ? selections : Array(repeating: [], count: questions.count)
+            ? zip(selections, questions).map { sel, q in sel.filter { $0 < q.options.count } }
+            : Array(repeating: [], count: questions.count)
         self.onAnswer = onAnswer
         self.onSelect = onSelect
+        self.onStep = onStep
         self.deferAction = onDefer
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
         var rows: [NSView] = []
-        let toggle = needsAnswerButton
-        // A 4-question call with full descriptions runs past the screen (the
-        // panel can't scroll); past two questions the labels carry the card and
-        // the descriptions stay in the terminal wizard.
-        let showDescriptions = questions.count <= 2
-        for (qi, q) in questions.enumerated() {
-            if qi > 0 { rows.append(Self.sectionGap()) }
-            rows.append(Self.header(q, index: qi, count: questions.count))
-            let text = NSTextField(wrappingLabelWithString: q.question)
-            text.font = .systemFont(ofSize: 13, weight: .medium)
-            text.textColor = .white
-            text.preferredMaxLayoutWidth = width
-            rows.append(text)
+        let q = current
+        rows.append(headerRow(q, width: width))
+        let text = NSTextField(wrappingLabelWithString: q.question)
+        text.font = .systemFont(ofSize: 13, weight: .medium)
+        text.textColor = .white
+        text.preferredMaxLayoutWidth = width
+        rows.append(text)
 
-            var buttons: [IslandOptionButton] = []
-            for (oi, opt) in q.options.enumerated() {
-                let b = IslandOptionButton(
-                    label: opt.label, description: showDescriptions ? opt.description : "",
-                    showsCheck: toggle, width: width
-                ) { [weak self] in self?.tapped(question: qi, option: oi) }
-                b.selected = self.selections[qi].contains(oi)
-                buttons.append(b)
-            }
-            optionButtons.append(buttons)
-            let optionStack = NSStackView(views: buttons)
-            optionStack.orientation = .vertical
-            optionStack.alignment = .leading
-            optionStack.spacing = 5
-            rows.append(optionStack)
+        // The ✓ column stays through a wizard even on single-select steps, so
+        // stepping Back shows the recorded choice and labels never shift.
+        let showsCheck = isWizard || q.multiSelect
+        for (oi, opt) in q.options.enumerated() {
+            let b = IslandOptionButton(
+                label: opt.label, description: opt.description,
+                showsCheck: showsCheck, width: width
+            ) { [weak self] in self?.tapped(option: oi) }
+            b.selected = self.selections[self.step].contains(oi)
+            optionButtons.append(b)
         }
+        let optionStack = NSStackView(views: optionButtons)
+        optionStack.orientation = .vertical
+        optionStack.alignment = .leading
+        optionStack.spacing = 5
+        rows.append(optionStack)
 
-        if toggle {
-            let b = IslandButton(title: "", target: self, action: #selector(answerClicked))
+        // Single-select steps advance on the tap itself; only multiSelect needs a
+        // button to say "these are all I'm picking".
+        if q.multiSelect {
+            let b = IslandButton(title: "", target: self, action: #selector(actionClicked))
             b.isBordered = false
             b.wantsLayer = true
             b.layer?.cornerRadius = 7
             b.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.92).cgColor
-            b.attributedTitle = NSAttributedString(string: "Answer", attributes: [
-                .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
-                .foregroundColor: NSColor.black,
-            ])
+            b.attributedTitle = NSAttributedString(
+                string: isWizard && !isLastStep ? "Next" : "Answer",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+                    .foregroundColor: NSColor.black,
+                ])
             b.heightAnchor.constraint(equalToConstant: 26).isActive = true
             b.widthAnchor.constraint(equalToConstant: width).isActive = true
-            answerButton = b
+            actionButton = b
             rows.append(b)
         }
 
-        let escape = IslandButton(title: "", target: self, action: #selector(deferClicked))
-        escape.isBordered = false
-        escape.attributedTitle = NSAttributedString(string: deferTitle, attributes: [
-            .font: NSFont.systemFont(ofSize: 11),
-            .foregroundColor: NSColor.white.withAlphaComponent(0.5),
-        ])
-        rows.append(escape)
+        rows.append(bottomRow(deferTitle: deferTitle, width: width))
 
         let stack = NSStackView(views: rows)
         stack.orientation = .vertical
@@ -758,41 +879,71 @@ final class IslandQuestionCardView: NSView {
             stack.bottomAnchor.constraint(equalTo: bottomAnchor),
             widthAnchor.constraint(equalToConstant: width),
         ])
-        for buttons in optionButtons {
-            for b in buttons { b.widthAnchor.constraint(equalToConstant: width).isActive = true }
-        }
-        syncAnswerButton()
+        for b in optionButtons { b.widthAnchor.constraint(equalToConstant: width).isActive = true }
+        syncActionButton()
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
     private let deferAction: () -> Void
 
-    private func tapped(question qi: Int, option oi: Int) {
-        let q = questions[qi]
-        if !needsAnswerButton {
-            // The common case answers like Allow does: one tap, done.
-            onAnswer([[q.options[oi].label]])
+    private func tapped(option oi: Int) {
+        guard !advancePending else { return }
+        if current.multiSelect {
+            if selections[step].contains(oi) { selections[step].remove(oi) }
+            else { selections[step].insert(oi) }
+            for (i, b) in optionButtons.enumerated() { b.selected = selections[step].contains(i) }
+            syncActionButton()
+            onSelect(selections)
             return
         }
-        if q.multiSelect {
-            if selections[qi].contains(oi) { selections[qi].remove(oi) }
-            else { selections[qi].insert(oi) }
-        } else {
-            selections[qi] = [oi] // radio within its own question
-        }
-        for (i, b) in optionButtons[qi].enumerated() { b.selected = selections[qi].contains(i) }
-        syncAnswerButton()
+        selections[step] = [oi] // radio within its own question
+        for (i, b) in optionButtons.enumerated() { b.selected = i == oi }
         onSelect(selections)
+        if !isWizard {
+            // The common case answers like Allow does: one tap, done.
+            submit()
+            return
+        }
+        if isLastStep {
+            submit()
+            return
+        }
+        // A beat with the choice highlighted, then the next question slides in —
+        // an instant swap read as the tap not registering. The step callback is
+        // captured on its own: a store tick can tear this view down during the
+        // beat, and the advance must land regardless (the controller owns the
+        // step; setting an absolute index is idempotent).
+        advancePending = true
+        let next = step + 1
+        let advance = onStep
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+            advance(next)
+        }
     }
 
-    private func syncAnswerButton() {
-        guard let b = answerButton else { return }
-        let ready = selections.allSatisfy { !$0.isEmpty }
+    private func syncActionButton() {
+        guard let b = actionButton else { return }
+        // Next needs this step chosen; a final Answer needs the whole set.
+        let ready = isWizard && !isLastStep
+            ? !selections[step].isEmpty
+            : selections.allSatisfy { !$0.isEmpty }
         b.isEnabled = ready
         b.alphaValue = ready ? 1 : 0.35
     }
 
-    @objc private func answerClicked() {
+    @objc private func actionClicked() {
+        guard !selections[step].isEmpty else { return }
+        if isWizard && !isLastStep { onStep(step + 1); return }
+        submit()
+    }
+
+    private func submit() {
+        // Reaching the end with a hole (possible after stepping Back and forth)
+        // returns to the first unanswered question instead of failing silently.
+        if let hole = selections.firstIndex(where: { $0.isEmpty }), hole != step {
+            onStep(hole)
+            return
+        }
         guard selections.allSatisfy({ !$0.isEmpty }) else { return }
         let labels = zip(questions, selections).map { q, sel in
             sel.sorted().map { q.options[$0].label }
@@ -801,12 +952,13 @@ final class IslandQuestionCardView: NSView {
     }
 
     @objc private func deferClicked() { deferAction() }
+    @objc private func backClicked() { onStep(step - 1) }
 
-    /// "● Auth" / "● Question 2" — names the section the way the approval card
-    /// names itself.
-    private static func header(_ q: ApprovalRequest.Context.Question,
-                               index: Int, count: Int) -> NSView {
-        let title = q.header.isEmpty ? (count > 1 ? "Question \(index + 1)" : "Question") : q.header
+    /// "● Auth                    2/4" — names the step the way the approval card
+    /// names itself, with the wizard's position kept quietly to the right.
+    private func headerRow(_ q: ApprovalRequest.Context.Question, width: CGFloat) -> NSView {
+        let title = q.header.isEmpty
+            ? (isWizard ? "Question \(step + 1)" : "Question") : q.header
         let out = NSMutableAttributedString(string: "● ", attributes: [
             .font: NSFont.systemFont(ofSize: 9),
             .foregroundColor: IconRenderer.questionDot,
@@ -815,13 +967,47 @@ final class IslandQuestionCardView: NSView {
             .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
             .foregroundColor: NSColor.white.withAlphaComponent(0.55),
         ]))
-        return NSTextField(labelWithAttributedString: out)
+        let label = NSTextField(labelWithAttributedString: out)
+        guard isWizard else { return label }
+        let progress = NSTextField(labelWithString: "\(step + 1)/\(questions.count)")
+        progress.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+        progress.textColor = NSColor.white.withAlphaComponent(0.4)
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let row = NSStackView(views: [label, spacer, progress])
+        row.orientation = .horizontal
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.widthAnchor.constraint(equalToConstant: width).isActive = true
+        return row
     }
 
-    private static func sectionGap() -> NSView {
-        let v = NSView()
-        v.heightAnchor.constraint(equalToConstant: 4).isActive = true
-        return v
+    /// "‹ Back" on the left (past the first step), the defer escape on the right.
+    private func bottomRow(deferTitle: String, width: CGFloat) -> NSView {
+        var views: [NSView] = []
+        if isWizard && step > 0 {
+            let back = IslandButton(title: "", target: self, action: #selector(backClicked))
+            back.isBordered = false
+            back.attributedTitle = NSAttributedString(string: "‹ Back", attributes: [
+                .font: NSFont.systemFont(ofSize: 11),
+                .foregroundColor: NSColor.white.withAlphaComponent(0.5),
+            ])
+            views.append(back)
+        }
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        views.append(spacer)
+        let escape = IslandButton(title: "", target: self, action: #selector(deferClicked))
+        escape.isBordered = false
+        escape.attributedTitle = NSAttributedString(string: deferTitle, attributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.5),
+        ])
+        views.append(escape)
+        let row = NSStackView(views: views)
+        row.orientation = .horizontal
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.widthAnchor.constraint(equalToConstant: width).isActive = true
+        return row
     }
 
     // MARK: Free text (extension point: IslandOptionButton.freeTextRow)

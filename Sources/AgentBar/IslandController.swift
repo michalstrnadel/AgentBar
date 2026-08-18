@@ -181,9 +181,21 @@ final class IslandController: NSObject {
         self.sessions = sessions
         self.requests = requests
         // Half-made choices die with their request (answered in the terminal,
-        // timed out, hook gone) — a later request must start clean.
+        // timed out, hook gone) — a later request must start clean. A request
+        // REPLACED under the same file name (prompt ids repeat within a turn)
+        // counts as gone too: its ts changed, and choices made on the old shape
+        // must not answer the new one.
         let live = Set(requests.map(\.fileName))
+        for r in requests where requestTs[r.fileName] != r.ts {
+            requestTs[r.fileName] = r.ts
+            questionSelections[r.fileName] = nil
+            questionSteps[r.fileName] = nil
+            approvalCards[r.fileName] = nil
+        }
+        requestTs = requestTs.filter { live.contains($0.key) }
         questionSelections = questionSelections.filter { live.contains($0.key) }
+        questionSteps = questionSteps.filter { live.contains($0.key) }
+        approvalCards = approvalCards.filter { live.contains($0.key) }
         rebuild(animated: true)
     }
 
@@ -201,7 +213,11 @@ final class IslandController: NSObject {
 
     /// A Settings control changed something the island renders from
     /// (hide-when-empty, most likely) — re-evaluate now, not on the next tick.
-    func settingsChanged() { rebuild(animated: true) }
+    /// Cached approval cards bake shortcut hints in, so they rebuild too.
+    func settingsChanged() {
+        approvalCards = [:]
+        rebuild(animated: true)
+    }
 
     /// Opt-in: with nothing running, the pill slips away entirely. Only honored
     /// alongside the menu bar mark — in island-only mode the pill is the app's
@@ -248,6 +264,7 @@ final class IslandController: NSObject {
     private func layout(animated: Bool = false) {
         guard let screen = IslandGeometry.screen else { return }
         content.flushTop = IslandGeometry.notch(on: screen) != nil
+        let modeChanged = mode != lastLaidMode
         let target: NSRect
         switch mode {
         case .collapsed:
@@ -264,20 +281,18 @@ final class IslandController: NSObject {
                            count: flash == nil ? visibleSessions.count : 0,
                            height: Self.pillHeight,
                            width: w - IslandContentView.hPad * 2, tint: flash?.tint)
-            content.setRows([pill])
+            content.setRows([pill], resetScroll: true)
             target = IslandGeometry.frame(width: w, height: Self.pillHeight, on: screen)
         case .expanded:
             content.topInset = 10
-            content.setRows(rows())
-            // Failsafe, not a layout tool: an extreme card set (max-shape
-            // questions) must clip at the screen edge rather than run past it —
-            // the panel cannot scroll, and the terminal remains the way out.
+            content.setRows(rows(), resetScroll: modeChanged)
+            // The panel is sized to its content; when that outgrows the screen it
+            // clamps here and the content view scrolls the overflow into reach.
             let maxHeight = screen.visibleFrame.height - 24
             target = IslandGeometry.frame(width: Self.expandedWidth,
                                           height: min(content.contentHeight, maxHeight),
                                           on: screen)
         }
-        let modeChanged = mode != lastLaidMode
         lastLaidMode = mode
         if animated, panel.isVisible {
             // Slow enough to read as one shape inflating out of the notch, quick
@@ -344,6 +359,11 @@ final class IslandController: NSObject {
         s.entrypoint == "claude-desktop" ? "Answer in Claude" : "Answer in terminal"
     }
 
+    /// One approval card per request, cached for the request's lifetime: the
+    /// rows rebuild every store tick, and recreating a content-static card each
+    /// time reset the plan box's inner scroll mid-read.
+    private var approvalCards: [String: NSView] = [:]
+
     /// The pending request's own detail and buttons — same mini-diff the menu
     /// shows, Deny and Allow in front, the answer echoed in the pill on the way out.
     private func approvalViews(for s: Session) -> [NSView] {
@@ -351,7 +371,11 @@ final class IslandController: NSObject {
         let mine = requests.filter { $0.sessionId == s.id }
         var out: [NSView] = []
         for r in mine {
-            out.append(card(IslandApprovalView(
+            if let cached = approvalCards[r.fileName] {
+                out.append(cached)
+                continue
+            }
+            let view = card(IslandApprovalView(
                 request: r,
                 deferTitle: deferTitle(for: s),
                 width: Self.expandedWidth - IslandContentView.hPad * 2 - Self.cardIndent
@@ -360,16 +384,22 @@ final class IslandController: NSObject {
                 // request pending, and a "✓ Allowed" flash would be a lie.
                 guard AgentActions.answer(ApprovalAction(request: r, behavior: behavior, session: s))
                 else { return }
-                self?.flashAnswer(behavior)
-            }))
+                self?.flashAnswer(behavior, plan: r.isPlanRequest)
+            })
+            approvalCards[r.fileName] = view
+            out.append(view)
         }
         return out
     }
 
-    /// Toggle-mode selections per pending question request, keyed by the request
-    /// file name. They live here, not in the card: the island rebuilds its rows on
-    /// every store tick, so view state would be torn down mid-choice.
+    /// Selections and the wizard step per pending question request, keyed by the
+    /// request file name. They live here, not in the card: the island rebuilds its
+    /// rows on every store tick, so view state would be torn down mid-choice.
     private var questionSelections: [String: [Set<Int>]] = [:]
+    private var questionSteps: [String: Int] = [:]
+    /// The ts each keyed request had when its state was created — the tell that
+    /// a same-named file now holds a different request.
+    private var requestTs: [String: TimeInterval] = [:]
 
     /// The question card under a session that asked one. When the hook carried the
     /// options, the card is answerable in place; otherwise it names the question
@@ -381,19 +411,29 @@ final class IslandController: NSObject {
             return card(IslandQuestionCardView(
                 questions: qs,
                 selections: questionSelections[r.fileName] ?? [],
+                step: questionSteps[r.fileName] ?? 0,
                 deferTitle: deferTitle(for: s),
                 width: width,
                 onAnswer: { [weak self] labels in
                     guard AgentActions.answerQuestion(labels, request: r) else { return }
                     self?.questionSelections[r.fileName] = nil
+                    self?.questionSteps[r.fileName] = nil
                     self?.flashAnswer("answer")
                 },
                 onSelect: { [weak self] selections in
                     self?.questionSelections[r.fileName] = selections
                 },
+                onStep: { [weak self] step in
+                    guard let self else { return }
+                    self.questionSteps[r.fileName] = step
+                    // The next question replaces this one in place; the panel
+                    // resizes to fit it.
+                    self.layout(animated: true)
+                },
                 onDefer: { [weak self] in
                     guard let self else { return }
                     self.questionSelections[r.fileName] = nil
+                    self.questionSteps[r.fileName] = nil
                     AgentActions.focus(s, requests: self.requests)
                 }))
         }
@@ -412,15 +452,20 @@ final class IslandController: NSObject {
 
     /// Echo the choice in the pill — "✓ Allowed" — for a beat, then go back to
     /// reporting. Defer skips the flash: the hand-off itself is the feedback.
-    private func flashAnswer(_ behavior: String) {
+    private func flashAnswer(_ behavior: String, plan: Bool = false) {
         wantsExpanded = false
         collapseWork?.cancel()
         expandWork?.cancel()
         let green = NSColor(srgbRed: 0.35, green: 0.85, blue: 0.45, alpha: 1)
         switch behavior {
-        case "allow":  flash = ("✓ Allowed", green)
+        // Honest tense for plans: what went out is the dialog keystroke, and
+        // the session's own dialog has the last word.
+        case "allow":  flash = (plan ? "Approving plan…" : "✓ Allowed", green)
         case "always": flash = ("✓ Always allowed", green)
         case "answer": flash = ("✓ Answered", green)
+        case "deny" where plan:
+            // Sending a plan back is a neutral outcome, not a refusal.
+            flash = ("✎ Planning on", NSColor.white.withAlphaComponent(0.85))
         case "deny":   flash = ("✕ Denied", NSColor(srgbRed: 1, green: 0.45, blue: 0.42, alpha: 1))
         default:       flash = nil
         }
@@ -451,7 +496,8 @@ final class IslandController: NSObject {
     }
 
     /// In Island-only mode the menu bar mark is gone, so the panel carries the way
-    /// into Settings, updates and Quit itself.
+    /// into Settings, updates and Quit itself. The provider quota line rides
+    /// along on the left — a glance, not a dashboard.
     private func footer() -> NSView {
         let dots = NSButton(title: "⋯", target: self, action: #selector(showMenu(_:)))
         dots.isBordered = false
@@ -459,9 +505,26 @@ final class IslandController: NSObject {
         dots.contentTintColor = NSColor.white.withAlphaComponent(0.55)
         dots.toolTip = "AgentBar"
 
+        var views: [NSView] = []
+        let usage = UsageCenter.shared.readings
+        if !usage.isEmpty {
+            let text = usage.map { "\($0.provider) \($0.text)" }.joined(separator: "   ")
+            let l = NSTextField(labelWithString: text)
+            l.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+            l.textColor = NSColor.white.withAlphaComponent(0.38)
+            l.lineBreakMode = .byTruncatingTail
+            // The quota line truncates; it must never squeeze the ⋯ button out.
+            l.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            l.toolTip = usage.compactMap { r in
+                r.detail.map { "\(r.provider): \($0)" }
+            }.joined(separator: "\n")
+            views.append(l)
+        }
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let row = NSStackView(views: [spacer, dots])
+        views.append(spacer)
+        views.append(dots)
+        let row = NSStackView(views: views)
         row.orientation = .horizontal
         row.translatesAutoresizingMaskIntoConstraints = false
         row.widthAnchor.constraint(equalToConstant:

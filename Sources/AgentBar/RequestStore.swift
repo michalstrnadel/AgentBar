@@ -68,7 +68,11 @@ final class RequestStore {
         found.sort { $0.ts > $1.ts }
         pruneOrphanAnswers(liveNames: Set(found.map(\.fileName)))
 
-        let snapshot = found.map(\.fileName)
+        // Name AND timestamp: a request replaced under the same file name (the
+        // hook reuses session+prompt ids within a turn) is a different request,
+        // and frontends must see it — stale wizard state keyed to the old one
+        // has to reset.
+        let snapshot = found.map { "\($0.fileName):\($0.ts)" }
         guard snapshot != lastSnapshot else { return }
         lastSnapshot = snapshot
         requests = found
