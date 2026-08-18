@@ -91,6 +91,11 @@ final class MascotDriver {
         case .question:
             stopHop(); stopAnimation(); stopWords()
             image = IconRenderer.withPermissionDot(resting, color: IconRenderer.questionDot)
+        case .error:
+            // Marked, not celebrated: the same dot the waiting states use, in
+            // the failure colour, and never the finish hop.
+            stopHop(); stopAnimation(); stopWords()
+            image = IconRenderer.withPermissionDot(resting, color: .systemRed)
         default:
             stopAnimation()
             stopWords()

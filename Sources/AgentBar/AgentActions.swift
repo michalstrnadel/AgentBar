@@ -71,20 +71,38 @@ enum AgentActions {
         // session's exact tab and select "2. manually approve edits". The hook
         // notices the dialog was answered and retires the card on its own.
         if a.request.isPlanRequest, a.behavior == "allow" || a.behavior == "always" {
-            // Desktop sessions keep their dialog inside the Claude app — hand
-            // over instead of typing blind into a window we can't verify.
-            guard a.session.entrypoint != "claude-desktop" else {
+            // Typing "2" is only safe when the session's OWN tab is the one in
+            // front. A desktop session keeps its dialog inside the Claude app,
+            // and Warp/Ghostty/kitty expose no tab targeting — in both cases
+            // hand over rather than type blind into whatever is frontmost.
+            guard a.session.entrypoint != "claude-desktop",
+                  TerminalFocus.canTargetTab(termProgram: a.session.termProgram) else {
                 guard reportFailedAnswer(AnswerWriter.write(behavior: "defer", for: a.request))
                 else { return false }
-                open(Agent.byID(a.session.agentID))
+                if a.session.entrypoint == "claude-desktop" {
+                    open(Agent.byID(a.session.agentID))
+                } else {
+                    TerminalFocus.focus(session: a.session)
+                }
                 return true
             }
             guard KeystrokeApprover.trusted else {
                 KeystrokeApprover.requestAccess()
                 return false
             }
-            TerminalFocus.focus(session: a.session)
-            KeystrokeApprover.approve(session: a.session, keys: [19]) // "2"
+            // Only after the tab select actually reports a hit: the app comes
+            // forward in ~50ms while the AppleScript round-trip takes hundreds,
+            // so posting the key straight away landed it in the wrong tab.
+            TerminalFocus.focus(session: a.session) { targeted in
+                guard targeted else {
+                    // The tty didn't match any tab (session moved, tab closed):
+                    // the user is already looking at the terminal — let them
+                    // answer the dialog themselves rather than type into it.
+                    reportFailedAnswer(AnswerWriter.write(behavior: "defer", for: a.request))
+                    return
+                }
+                KeystrokeApprover.approve(session: a.session, keys: [19]) // "2"
+            }
             return ack(true)
         }
         switch a.behavior {

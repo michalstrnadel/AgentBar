@@ -44,6 +44,11 @@ struct ApprovalRequest {
     /// must not degrade into a generic Allow/Deny card that lies about Allow.
     var isPlanRequest: Bool { toolName == "ExitPlanMode" }
 
+    /// Which request this file currently holds. File names repeat across the
+    /// tools of one turn, and `ts` has one-second resolution, so the waiting
+    /// hook's pid is what actually separates two of them.
+    var identity: String { "\(ts):\(hookPid)" }
+
     /// The plan markdown when this request is an ExitPlanMode review.
     var planText: String? {
         if case .plan(let text) = context { return text }

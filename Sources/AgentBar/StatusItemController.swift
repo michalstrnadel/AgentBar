@@ -111,8 +111,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         lastHotkey = now
         guard let r = requestStore.requests.first(where: { $0.questions == nil })
         else { return }  // no-op when nothing answerable is pending
-        AgentActions.ack(AgentActions.reportFailedAnswer(
-            AnswerWriter.write(behavior: behavior, for: r)))
+        // Routed through the same path the buttons use, so a plan gets its
+        // keystroke approval instead of an allow the hook is obliged to
+        // swallow — the chord must never tick success over a no-op.
+        guard let session = sessions.first(where: { $0.id == r.sessionId }) else {
+            AgentActions.ack(AgentActions.reportFailedAnswer(
+                AnswerWriter.write(behavior: behavior, for: r)))
+            return
+        }
+        AgentActions.answer(ApprovalAction(request: r, behavior: behavior, session: session))
     }
 
     // MARK: - NSMenuDelegate

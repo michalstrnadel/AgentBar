@@ -33,11 +33,13 @@ struct Session {
     /// Sort/priority weight: what the menu bar should surface first.
     var priority: Int {
         switch state {
-        case .permission:      return 3
-        case .question:        return 2
-        // A failed turn ranks with the working ones: it is finished, but it is
-        // the row worth reading, so a pile of clean "Done"s can't bury it.
-        case .thinking, .tool, .error: return 1
+        case .permission:      return 4
+        case .question:        return 3
+        case .thinking, .tool: return 2
+        // Above the clean finishes so a failure can't be buried under them, but
+        // below live work: an errored session must never take the hero slot (or
+        // the mascot) from an agent that is still going.
+        case .error:           return 1
         case .idle, .done:     return 0
         }
     }

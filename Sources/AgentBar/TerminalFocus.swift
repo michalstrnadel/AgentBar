@@ -12,7 +12,17 @@ enum TerminalFocus {
     /// blocked thread per click.
     private static let queue = DispatchQueue(label: "agentbar.terminalfocus", qos: .userInitiated)
 
-    static func focus(session: Session) {
+    /// Whether this terminal can be asked to bring a specific tab forward. A
+    /// caller about to TYPE into the session has to know: posting a keystroke
+    /// at a terminal we can't aim would hit whatever tab happened to be open.
+    static func canTargetTab(termProgram: String) -> Bool {
+        ["iTerm.app", "Apple_Terminal", "WezTerm"].contains(termProgram)
+    }
+
+    /// `done` runs on the main queue once the tab select has finished (or
+    /// immediately, when there is nothing to select). It reports whether the
+    /// session's own tab is now the front one — only then is it safe to type.
+    static func focus(session: Session, done: ((Bool) -> Void)? = nil) {
         let term = session.termProgram
         let pid = session.pid
         // The floor first and instantly: the user clicked, so the app comes
@@ -20,18 +30,20 @@ enum TerminalFocus {
         // seconds later — first use waits on the Automation consent prompt.
         AgentActions.focusTerminal(named: term)
         queue.async {
+            var targeted = false
             switch term {
             case "iTerm.app":
-                if let tty = tty(of: pid) { selectITermSession(tty: tty) }
+                if let tty = tty(of: pid) { targeted = selectITermSession(tty: tty) }
             case "Apple_Terminal":
                 // "" deliberately doesn't match: an unknown terminal must not
                 // trigger a Terminal.app Automation prompt for nothing.
-                if let tty = tty(of: pid) { selectTerminalTab(tty: tty) }
+                if let tty = tty(of: pid) { targeted = selectTerminalTab(tty: tty) }
             case "WezTerm":
-                if let tty = tty(of: pid) { activateWezTermPane(tty: tty) }
+                if let tty = tty(of: pid) { targeted = activateWezTermPane(tty: tty) }
             default:
                 break // Warp, Ghostty, kitty, …: no per-tab targeting to offer
             }
+            if let done { DispatchQueue.main.async { done(targeted) } }
         }
     }
 
@@ -48,7 +60,9 @@ enum TerminalFocus {
     // MARK: - Per-terminal targeting
 
     /// iTerm2: windows ▸ tabs ▸ sessions, each with a `tty` — select all three.
-    private static func selectITermSession(tty: String) {
+    /// Prints "hit" when the tty was found, so the caller can tell a real
+    /// selection from a silent miss.
+    private static func selectITermSession(tty: String) -> Bool {
         let script = """
         on run argv
             set target to item 1 of argv
@@ -60,19 +74,21 @@ enum TerminalFocus {
                                 select s
                                 select t
                                 select w
-                                return
+                                return "hit"
                             end if
                         end repeat
                     end repeat
                 end repeat
             end tell
+            return "miss"
         end run
         """
-        _ = run("/usr/bin/osascript", ["-e", script, tty], timeout: 60)
+        return run("/usr/bin/osascript", ["-e", script, tty], timeout: 60)?
+            .contains("hit") == true
     }
 
     /// Terminal.app: tabs carry the tty directly.
-    private static func selectTerminalTab(tty: String) {
+    private static func selectTerminalTab(tty: String) -> Bool {
         let script = """
         on run argv
             set target to item 1 of argv
@@ -82,29 +98,31 @@ enum TerminalFocus {
                         if tty of t is target then
                             set selected of t to true
                             set frontmost of w to true
-                            return
+                            return "hit"
                         end if
                     end repeat
                 end repeat
             end tell
+            return "miss"
         end run
         """
-        _ = run("/usr/bin/osascript", ["-e", script, tty], timeout: 60)
+        return run("/usr/bin/osascript", ["-e", script, tty], timeout: 60)?
+            .contains("hit") == true
     }
 
     /// WezTerm: its own CLI lists panes with tty_name and can activate by id.
-    private static func activateWezTermPane(tty: String) {
+    private static func activateWezTermPane(tty: String) -> Bool {
         guard let wezterm = ["/opt/homebrew/bin/wezterm", "/usr/local/bin/wezterm",
                              "/Applications/WezTerm.app/Contents/MacOS/wezterm"]
             .first(where: { FileManager.default.isExecutableFile(atPath: $0) })
-        else { return }
+        else { return false }
         guard let json = run(wezterm, ["cli", "list", "--format", "json"]),
               let data = json.data(using: .utf8),
               let panes = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
               let pane = panes.first(where: { $0["tty_name"] as? String == tty }),
               let id = pane["pane_id"] as? Int
-        else { return }
-        _ = run(wezterm, ["cli", "activate-pane", "--pane-id", "\(id)"])
+        else { return false }
+        return run(wezterm, ["cli", "activate-pane", "--pane-id", "\(id)"]) != nil
     }
 
     // MARK: - Plumbing

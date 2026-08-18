@@ -61,8 +61,7 @@ function sessions() {
     s.id = f.slice(0, -".json".length);
     out.push(s);
   }
-  const prio = { permission: 3, question: 2, thinking: 1, tool: 1 };
-  out.sort((a, b) => ((prio[b.state] || 0) - (prio[a.state] || 0)) || ((b.ts || 0) - (a.ts || 0)));
+  out.sort((a, b) => ((PRIORITY[b.state] || 0) - (PRIORITY[a.state] || 0)) || ((b.ts || 0) - (a.ts || 0)));
   return out;
 }
 
@@ -120,6 +119,9 @@ function gitBranch(cwd) {
 // MARK: - Rendering
 
 const DOTS = { permission: yellow("●"), question: blue("●"), thinking: green("●"), tool: green("●"), error: red("●"), idle: dim("●"), done: dim("●") };
+// What to surface first — same weights the app sorts by. A failure ranks above
+// the clean finishes so it can't be buried, but below live work.
+const PRIORITY = { permission: 4, question: 3, thinking: 2, tool: 2, error: 1, idle: 0, done: 0 };
 
 // Optional per docs/protocol.md: absent started_at simply renders nothing.
 function elapsed(startedAt) {
