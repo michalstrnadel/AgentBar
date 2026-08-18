@@ -27,8 +27,8 @@ max 64 chars (fallback `"unknown"`). The file name is the session's identity;
 
 ```json
 {
-  "agent": "claude",           // agent id: claude | codex | copilot | antigravity | cursor | gemini
-  "state": "tool",             // idle | thinking | tool | permission | question | done
+  "agent": "claude",           // agent id: claude | codex | copilot | antigravity | cursor | gemini | qwen | opencode
+  "state": "tool",             // idle | thinking | tool | permission | question | done | error
   "label": "Running command",  // short human hint for the current state ("" ok)
   "project": "AgentBar",       // basename of cwd ("" ok)
   "cwd": "/path/to/project",
@@ -52,6 +52,11 @@ Rules:
 - Hooks read the previous file (if any) and merge (`{...prev, ...}`), so fields a
   later event doesn't know (e.g. `entrypoint`) survive.
 - `state: "end"` is not written — the session's file is **deleted** instead.
+- `error` means the turn ended badly (Qwen's `StopFailure`, OpenCode's
+  `session.error`). It is a *finished* state like `done`, but frontends MUST NOT
+  celebrate it: no green tick, no done sound. `label` carries the reason when the
+  agent gives one. Writers that can't tell success from failure keep using
+  `done`; frontends that predate `error` decode it as `idle`, which is harmless.
 - `started` stays `false` on SessionStart; the first real event flips it. Frontends
   MUST hide sessions with `started: false`.
 - The optional fields are additive: writers that don't know them simply omit
@@ -95,7 +100,19 @@ Request:
 ```
 
 `context` is one of: `{kind:"bash", command}`, `{kind:"diff", old, new, more}`,
-`{kind:"write", preview}`, `{kind:"question", questions}`, or absent.
+`{kind:"write", preview}`, `{kind:"question", questions}`, `{kind:"plan", plan}`,
+or absent.
+
+`kind:"plan"` marks a **plan review** (Claude's `ExitPlanMode`): `plan` is the
+plan markdown, capped at 8 000 chars. The plan dialog renders in the terminal
+alongside the hook's wait (like the question wizard). `deny` becomes a
+deny-with-message the model reads as "keep planning". `allow` **cannot** approve
+a plan — the approval also picks the next permission mode, which a hook decision
+can't express (verified on Claude Code 2.1.234) — so the hook swallows it and
+keeps waiting; frontends approve by answering the dialog itself (the macOS app
+focuses the session's tab and selects "manually approve edits"). Once the dialog
+is answered anywhere, the session's state leaves `permission` and the hook
+retires within ~2 s.
 
 `kind:"question"` marks an **answerable question** (Claude's `AskUserQuestion`):
 the hook blocks the same way it does for permissions, but the terminal wizard

@@ -44,6 +44,9 @@ final class ApprovalContextView: NSView {
             // Questions render their own answerable cards; this fallback only
             // shows if one ever lands here (e.g. a future menu path).
             return take(qs.map(\.question), max: 4, kind: .plain)
+        case .plan(let text):
+            // A taste of the plan; the island card renders the whole thing.
+            return take(splitNonEmpty(text), max: 8, kind: .plain)
         }
     }
 

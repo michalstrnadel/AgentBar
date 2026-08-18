@@ -59,7 +59,17 @@ const oneLine = (s, n = 60) => {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
 };
 
-const cap = (s, n) => { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n) + "…" : s; };
+const cap = (s, n) => {
+  s = String(s == null ? "" : s);
+  if (s.length <= n) return s;
+  let cut = s.slice(0, n);
+  // Never end on a lone high surrogate: JSON.stringify escapes it, but Swift's
+  // JSONSerialization refuses the file — and an unreadable request blocks the
+  // whole approval while the hook waits on an answer no frontend can give.
+  const last = cut.charCodeAt(cut.length - 1);
+  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
+  return cut + "…";
+};
 
 // Structured, per-field-capped detail so the menu can show a mini-diff / full command
 // inline (not just a hover tooltip). Null for tools where the one-line display is enough.
@@ -75,6 +85,9 @@ function buildContext(tool, input) {
   }
   if (t === "Write") return { kind: "write", preview: cap(i.content, 1200) };
   if (t === "AskUserQuestion") return { kind: "question", questions: cappedQuestions(i) };
+  // The plan is the whole point of an ExitPlanMode request — carry it, so the
+  // island can show the full text. Allow approves the plan; deny keeps planning.
+  if (t === "ExitPlanMode") return { kind: "plan", plan: cap(i.plan, 8000) };
   return null;
 }
 
@@ -139,6 +152,7 @@ function displaySummary(tool, input, cwd) {
   }
   if (t === "WebFetch") return "WebFetch: " + oneLine(i.url);
   if (t === "WebSearch") return "WebSearch: " + oneLine(i.query);
+  if (t === "ExitPlanMode") return "Plan ready for review";
   const m = t.match(/^mcp__(.+?)__(.+)$/);
   if (m) return m[1] + ": " + m[2];
   return t;
@@ -172,6 +186,14 @@ function run() {
     // Whoever answers first wins; the loser's decision is ignored upstream.
     const isQuestion = p.tool_name === "AskUserQuestion";
     const questions = isQuestion ? cappedQuestions(p.tool_input) : null;
+    // ExitPlanMode renders its own plan dialog alongside the hook the same way
+    // (verified on 2.1.234): a hook deny dismisses it, but a hook allow is
+    // IGNORED — approval picks the next permission mode, which a hook decision
+    // cannot express. So a frontend approves plans by answering the dialog
+    // itself (keystroke), and this hook's job is: carry the plan out, turn
+    // "deny" into an explicit keep-planning message (a bare denial reads as
+    // "stop" and ends the turn), and retire once the dialog is answered.
+    const isPlan = p.tool_name === "ExitPlanMode";
 
     // A question whose options didn't decode can't be answered remotely: mark the
     // session and get out of the way — PostToolUse flips the state back after the
@@ -247,14 +269,16 @@ function run() {
 
     const deadline = Date.now() + TIMEOUT_MS;
     const statePath = path.join(stateDir, safeId(p.session_id) + ".json");
-    // The wizard renders alongside a question wait, so the question can be
-    // answered there while this hook still polls. PostToolUse then moves the
-    // session off "question" — that's the retire signal: without it, the island
-    // card would stay up (and answerable, uselessly) for the rest of the wait.
+    // The wizard renders alongside a question wait — and the plan dialog
+    // alongside a plan wait — so both can be answered in the terminal while
+    // this hook still polls. The next event then moves the session off the
+    // waiting state — that's the retire signal: without it, the island card
+    // would stay up (and answerable, uselessly) for the rest of the wait.
+    const waitingState = isQuestion ? "question" : "permission";
     const answeredElsewhere = () => {
       try {
         const s = JSON.parse(fs.readFileSync(statePath, "utf8"));
-        return s.state !== "question";
+        return s.state !== waitingState;
       } catch { return false; }
     };
     let ticks = 0;
@@ -271,6 +295,14 @@ function run() {
             // a question. That's not an answer — swallow the stale verdict and
             // keep polling, so the question stays pending and answerable instead
             // of silently deferring under a frontend that just showed "allowed".
+            try { fs.rmSync(ansPath, { force: true }); } catch {}
+            return;
+          }
+          if (isPlan && (b === "allow" || b === "always")) {
+            // A hook allow cannot approve a plan (it carries no mode choice and
+            // Claude Code ignores it at the plan dialog) — swallow it and keep
+            // polling rather than pretending it worked. Frontends approve plans
+            // by answering the dialog directly.
             try { fs.rmSync(ansPath, { force: true }); } catch {}
             return;
           }
@@ -295,6 +327,14 @@ function run() {
             }
             process.exit(0);
           }
+          if (isPlan && b === "deny") {
+            // "Keep planning": without the message the model reads a bare tool
+            // denial as "stop" and ends the turn instead of refining the plan.
+            respond({ behavior: "deny", message:
+              "The user reviewed this plan and wants it refined before any " +
+              "changes are made. Stay in plan mode and keep planning." });
+            process.exit(0);
+          }
           if (b === "allow" || b === "always") {
             const decision = { behavior: "allow" };
             // Only pin a standing rule when it's structurally one Claude Code itself
@@ -311,9 +351,9 @@ function run() {
           }
           process.exit(0); // "defer"/junk: silent exit -> terminal prompt
         } else if (++ticks % 20 === 0 &&
-                   ((isQuestion && answeredElsewhere()) || !appRunning())) {
+                   (((isQuestion || isPlan) && answeredElsewhere()) || !appRunning())) {
           clearInterval(timer);
-          process.exit(0); // wizard answered it, or app quit mid-wait
+          process.exit(0); // wizard/plan dialog answered it, or app quit mid-wait
         } else if (Date.now() >= deadline) {
           clearInterval(timer);
           process.exit(0); // timeout -> terminal prompt

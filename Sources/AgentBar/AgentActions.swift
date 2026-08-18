@@ -57,7 +57,7 @@ enum AgentActions {
         switch s.entrypoint {
         case "claude-desktop":   open(Agent.byID("claude"))
         case "antigravity-app":  open(Agent.byID("antigravity"))
-        default:                 focusTerminal(named: s.termProgram)
+        default:                 TerminalFocus.focus(session: s)
         }
     }
 
@@ -65,6 +65,28 @@ enum AgentActions {
     /// answer never reached disk: the request is still pending and still answerable.
     @discardableResult
     static func answer(_ a: ApprovalAction) -> Bool {
+        // A plan cannot be approved through the hook — Claude Code ignores a
+        // hook allow at the plan dialog (the approval also picks the next
+        // permission mode). Approve by answering the dialog itself: focus the
+        // session's exact tab and select "2. manually approve edits". The hook
+        // notices the dialog was answered and retires the card on its own.
+        if a.request.isPlanRequest, a.behavior == "allow" || a.behavior == "always" {
+            // Desktop sessions keep their dialog inside the Claude app — hand
+            // over instead of typing blind into a window we can't verify.
+            guard a.session.entrypoint != "claude-desktop" else {
+                guard reportFailedAnswer(AnswerWriter.write(behavior: "defer", for: a.request))
+                else { return false }
+                open(Agent.byID(a.session.agentID))
+                return true
+            }
+            guard KeystrokeApprover.trusted else {
+                KeystrokeApprover.requestAccess()
+                return false
+            }
+            TerminalFocus.focus(session: a.session)
+            KeystrokeApprover.approve(session: a.session, keys: [19]) // "2"
+            return ack(true)
+        }
         switch a.behavior {
         case "always":
             return ack(reportFailedAnswer(
@@ -73,11 +95,12 @@ enum AgentActions {
             // Hand off only once the hook can actually see the answer, or the user
             // arrives at a prompt that never reappears.
             guard reportFailedAnswer(AnswerWriter.write(behavior: "defer", for: a.request)) else { return false }
-            // The prompt is about to reappear where the session lives: bring it forward.
+            // The prompt is about to reappear where the session lives: bring it
+            // forward — the exact tab when the terminal can be asked for it.
             if a.session.entrypoint == "claude-desktop" {
                 open(Agent.byID(a.session.agentID))
             } else {
-                focusTerminal(named: a.session.termProgram)
+                TerminalFocus.focus(session: a.session)
             }
             return true
         default:
@@ -124,7 +147,7 @@ enum AgentActions {
             if session.entrypoint == "antigravity-app" {
                 open(Agent.byID(session.agentID))
             } else {
-                focusTerminal(named: session.termProgram)
+                TerminalFocus.focus(session: session)
             }
         }
     }

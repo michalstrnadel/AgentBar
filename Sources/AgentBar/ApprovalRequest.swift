@@ -21,6 +21,7 @@ struct ApprovalRequest {
         case diff(old: String, new: String, more: Int) // Edit/MultiEdit (more = extra edits)
         case write(String)                             // Write content preview
         case question([Question])                      // AskUserQuestion — answerable in place
+        case plan(String)                              // ExitPlanMode — the plan markdown
 
         /// One AskUserQuestion entry, options included, so a frontend can offer
         /// the same choices the terminal wizard does.
@@ -35,6 +36,17 @@ struct ApprovalRequest {
     /// The decoded questions when this request is an answerable AskUserQuestion.
     var questions: [Context.Question]? {
         if case .question(let qs) = context { return qs }
+        return nil
+    }
+
+    /// A plan review has its own answer semantics (a hook allow can't approve
+    /// it), so the check keys on the tool — a plan whose text failed to decode
+    /// must not degrade into a generic Allow/Deny card that lies about Allow.
+    var isPlanRequest: Bool { toolName == "ExitPlanMode" }
+
+    /// The plan markdown when this request is an ExitPlanMode review.
+    var planText: String? {
+        if case .plan(let text) = context { return text }
         return nil
     }
 
@@ -75,6 +87,9 @@ struct ApprovalRequest {
                     multiSelect: q["multiSelect"] as? Bool ?? false)
             }.filter { !$0.question.isEmpty && !$0.options.isEmpty }
             return qs.isEmpty ? nil : .question(qs)
+        case "plan":
+            let text = c["plan"] as? String ?? ""
+            return text.isEmpty ? nil : .plan(text)
         default:      return nil
         }
     }

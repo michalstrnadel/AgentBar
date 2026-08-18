@@ -119,7 +119,7 @@ function gitBranch(cwd) {
 
 // MARK: - Rendering
 
-const DOTS = { permission: yellow("●"), question: blue("●"), thinking: green("●"), tool: green("●"), idle: dim("●"), done: dim("●") };
+const DOTS = { permission: yellow("●"), question: blue("●"), thinking: green("●"), tool: green("●"), error: red("●"), idle: dim("●"), done: dim("●") };
 
 // Optional per docs/protocol.md: absent started_at simply renders nothing.
 function elapsed(startedAt) {
@@ -137,6 +137,7 @@ function sessionLine(s) {
   const age = elapsed(s.started_at);
   const label = s.state === "permission" ? yellow("needs approval")
     : s.state === "question" ? blue(s.label || "waiting for your answer")
+    : s.state === "error" ? red("failed") + (s.label ? dim(" — " + s.label) : "")
     : (s.label ? dim(s.label) : dim(s.state));
   return `${DOTS[s.state] || dim("●")} ${bold(name)}${branch ? dim(" · " + branch) : ""}  ${label}${age ? dim("  " + age) : ""}  ${dim((s.agent || "?").toUpperCase())}`;
 }
@@ -159,6 +160,13 @@ function printRequests(json) {
     if (ctx.kind === "bash") lines(ctx.command, dim("$ "));
     if (ctx.kind === "diff") { lines(ctx.old, red("− ")); lines(ctx.new, green("+ ")); if (ctx.more) console.log(dim(`   +${ctx.more} more edit(s)`)); }
     if (ctx.kind === "write") lines(ctx.preview, dim("  "));
+    // The plan is the thing being approved — show more of it than a preview.
+    if (ctx.kind === "plan") {
+      const all = String(ctx.plan || "").split("\n");
+      all.slice(0, 20).forEach((l) => console.log(`   ${dim("│ ")}${l}`));
+      if (all.length > 20) console.log(dim(`   … +${all.length - 20} more lines (--json for all)`));
+      console.log(dim("   deny = keep planning · approve happens in the session's own dialog"));
+    }
     if (ctx.kind === "question") {
       for (const q of ctx.questions || []) {
         if ((ctx.questions || []).length > 1) console.log(`   ${bold(q.header || q.question)}`);
@@ -186,8 +194,17 @@ function decide(behavior, argv) {
     console.error("That's a question, not a permission — pick an option in `agentbar watch` (keys 1-9) or answer in the terminal wizard.");
     process.exit(1);
   }
+  if ((r.context || {}).kind === "plan" && behavior === "allow") {
+    // The hook cannot approve a plan (the approval also picks the next
+    // permission mode); pretending otherwise would print a lie.
+    console.error("Plans are approved in the session's own dialog — the hook can't carry the mode choice. Use `agentbar deny` to keep planning, or answer in the terminal.");
+    process.exit(1);
+  }
   answer(r, behavior === "allow" && always ? "always" : behavior);
-  console.log(`${behavior === "deny" ? red("✕ denied") : green("✓ " + (always ? "always allowed" : "allowed"))}  ${r.display || r.toolName}`);
+  const verb = behavior === "deny"
+    ? ((r.context || {}).kind === "plan" ? yellow("✎ keep planning") : red("✕ denied"))
+    : green("✓ " + (always ? "always allowed" : "allowed"));
+  console.log(`${verb}  ${r.display || r.toolName}`);
 }
 
 // A single single-select question's options, when request r is one — the shape

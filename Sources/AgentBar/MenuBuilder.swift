@@ -50,6 +50,20 @@ enum MenuBuilder {
                 menu.addItem(item)
             }
         }
+
+        // Provider quota, read from the CLIs' own local files — shown only while
+        // the data is fresh enough to be true.
+        for r in UsageCenter.shared.readings {
+            let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            item.toolTip = r.detail.map { "\(r.provider): \($0)" }
+            item.attributedTitle = NSAttributedString(string: "\(r.provider)  \(r.text)",
+                                                      attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+                .foregroundColor: NSColor.tertiaryLabelColor,
+            ])
+            menu.addItem(item)
+        }
         menu.addItem(.separator())
 
         // Open
@@ -213,6 +227,7 @@ enum MenuBuilder {
         case .permission:      dotColor = IconRenderer.amberDot
         case .question:        dotColor = IconRenderer.questionDot
         case .thinking, .tool: dotColor = agent.brand
+        case .error:           dotColor = .systemRed
         case .idle, .done:     dotColor = .tertiaryLabelColor
         }
 
@@ -226,7 +241,12 @@ enum MenuBuilder {
         title.append(NSAttributedString(string: name, attributes: [
             .font: NSFont.menuFont(ofSize: 0),
         ]))
-        var sub = s.state == .permission ? "  needs approval" : (s.label.isEmpty ? "" : "  \(s.label)")
+        var sub: String
+        switch s.state {
+        case .permission: sub = "  needs approval"
+        case .error:      sub = s.label.isEmpty ? "  failed" : "  failed — \(s.label)"
+        default:          sub = s.label.isEmpty ? "" : "  \(s.label)"
+        }
         // Done rows say WHAT finished. 60 chars keeps the menu from ballooning;
         // the tooltip carries the full line.
         if sub.isEmpty, s.state == .done || s.state == .idle, !s.recap.isEmpty {
@@ -338,13 +358,28 @@ enum MenuBuilder {
             }
 
             let buttons = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-            buttons.view = ApprovalButtonsRow(
-                hasRule: r.ruleDescription != nil,
-                ruleToolTip: r.ruleDescription.map { "Always allow \($0)" },
-                deferTitle: s.entrypoint == "claude-desktop" ? "⧉ Claude app" : "⌨ Terminal",
-                onChoose: { [weak controller] behavior in
-                    controller?.answer(ApprovalAction(request: r, behavior: behavior, session: s))
-                })
+            let deferTitle = s.entrypoint == "claude-desktop" ? "⧉ Claude app" : "⌨ Terminal"
+            let onChoose: (String) -> Void = { [weak controller] behavior in
+                controller?.answer(ApprovalAction(request: r, behavior: behavior, session: s))
+            }
+            if r.isPlanRequest {
+                // A plan is approved in the session's own dialog (the hook can't
+                // carry the mode choice), so Approve is a keystroke — labeled
+                // the way keystroke approvals are labeled everywhere else.
+                buttons.view = ApprovalButtonsRow(buttons: [
+                    ("✓ Approve plan", "allow",
+                     "Focuses the session and selects “manually approve edits” in the plan dialog"),
+                    ("✎ Keep planning", "deny",
+                     "Tells Claude to refine the plan before making changes"),
+                    (deferTitle, "defer", "Review in \(deferTitle.dropFirst(2)) instead"),
+                ], onChoose: onChoose)
+            } else {
+                buttons.view = ApprovalButtonsRow(
+                    hasRule: r.ruleDescription != nil,
+                    ruleToolTip: r.ruleDescription.map { "Always allow \($0)" },
+                    deferTitle: deferTitle,
+                    onChoose: onChoose)
+            }
             buttons.representedObject = tag
             menu.addItem(buttons)
         }
