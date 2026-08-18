@@ -426,6 +426,54 @@ check "opencode: plugin parses"     '"$NODE" --input-type=module --check < Scrip
 check "opencode: error not done"    'grep -q "state: \"error\"" Scripts/hooks/opencode/agentbar.js'
 check "opencode: retires finished"  'grep -q "retireLater" Scripts/hooks/opencode/agentbar.js'
 
+# 21. update.js must never park on a stdin that has no EOF — its whole job runs
+# in the stdin handler, so without a self-timeout a stalled pipe froze the tool
+# call until Claude Code's 60s hook timeout.
+fresh_home
+mkfifo "$HOME/stall"
+# A writer that holds the pipe open without ever sending EOF.
+( exec 3>"$HOME/stall"; sleep 8; exec 3>&- ) &
+stallpid=$!
+start=$(date +%s)
+"$NODE" Scripts/hooks/claude/update.js prompt < "$HOME/stall" >/dev/null 2>&1
+end=$(date +%s)
+kill "$stallpid" 2>/dev/null; wait "$stallpid" 2>/dev/null
+check "update: self-timeout on stalled stdin" '[ $((end-start)) -le 4 ]'
+
+# 22. a lingering hook must not delete (or answer) a SUCCESSOR request that took
+# its file name over — request names repeat across the tools of one turn.
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=20 "$NODE" "$HOOK" <<<"$PLAN_EVENT" >"$HOME/out.json" &
+lingering=$!
+wait_req
+# Simulate the next tool of the same turn rewriting the same path.
+python3 - "$HOME/.agentbar/requests.d/$REQ" <<'PYEOF'
+import json, sys
+p = sys.argv[1]
+r = json.load(open(p))
+r.update({"toolName": "Bash", "display": "Bash: echo successor", "hookPid": 999999,
+          "context": {"kind": "bash", "command": "echo successor"}})
+json.dump(r, open(p, "w"))
+PYEOF
+# The answer now belongs to the successor; the lingering hook must not eat it.
+printf '{"behavior":"allow"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$lingering"
+check "successor request survives"  '[ -e "$HOME/.agentbar/requests.d/$REQ" ]'
+check "successor answer survives"   '[ -e "$HOME/.agentbar/answers.d/$REQ" ]'
+check "lingering hook stays silent" '[ ! -s "$HOME/out.json" ]'
+
+# 23. lifecycle's stale sweep may only remove state files whose agent is gone
+fresh_home
+mkdir -p "$HOME/.agentbar/state.d"
+printf '{"agent":"codex","state":"tool","label":"x","pid":%d,"started":true,"ts":1}' $$ \
+  > "$HOME/.agentbar/state.d/livesess.json"
+printf '{"agent":"claude","state":"tool","label":"x","pid":999999,"started":true,"ts":1}' \
+  > "$HOME/.agentbar/state.d/deadsess.json"
+printf '{"session_id":"newsess","cwd":"/tmp/proj"}' \
+  | PATH="$TESTROOT/nobin:$PATH" AGENTBAR_FORCE_APP=0 "$NODE" Scripts/hooks/claude/lifecycle.js start
+check "sweep keeps live session"    '[ -e "$HOME/.agentbar/state.d/livesess.json" ]'
+check "sweep drops dead session"    '[ ! -e "$HOME/.agentbar/state.d/deadsess.json" ]'
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

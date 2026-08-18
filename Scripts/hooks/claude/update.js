@@ -28,8 +28,16 @@ const TOOL_LABELS = {
 };
 
 const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";
+// Never end a cut on a lone high surrogate: JSON.stringify escapes one happily,
+// but Swift's JSONSerialization rejects the whole file — and an unreadable state
+// file hides the session from every frontend for the rest of the turn.
+const sliceSafe = (s, n) => {
+  const cut = s.slice(0, n);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+};
 // One display line: the prompt names the task in a row, not a transcript.
-const oneLine = (s) => String(s).replace(/\s+/g, " ").trim().slice(0, 120);
+const oneLine = (s) => sliceSafe(String(s).replace(/\s+/g, " ").trim(), 120);
 
 // One line of what the agent last said, for done rows. The Stop payload's
 // last_assistant_message is the primary source (verified on 2.1.234 — the
@@ -48,7 +56,7 @@ const cleanRecapText = (text) => {
     .replace(/[`*_]/g, "")           // inline backticks / bold / italics
     .replace(/\s+/g, " ")
     .trim();
-  return cleaned.slice(0, RECAP_MAX);
+  return sliceSafe(cleaned, RECAP_MAX);
 };
 const recapFromTranscript = (file) => {
   try {
@@ -105,9 +113,18 @@ const warn = (what, err) => {
   try { console.error("[agentbar] " + what + " failed: " + ((err && err.message) || err)); } catch {}
 };
 
-let raw = "";
+// Same three guards its sibling hooks carry: EOF is the normal path, but a
+// stdin that errors or never closes must not park this process until Claude
+// Code's 60s hook timeout kills it — that would freeze a tool call for a
+// minute, which is precisely what "hooks never block the host" forbids.
+let raw = "", started = false;
 process.stdin.on("data", (d) => (raw += d));
-process.stdin.on("end", () => {
+process.stdin.on("end", run);
+process.stdin.on("error", run);
+setTimeout(run, 1000);
+
+function run() {
+  if (started) return; started = true;
   let p = {};
   try { p = JSON.parse(raw || "{}"); } catch {}
 
@@ -182,4 +199,5 @@ process.stdin.on("end", () => {
     fs.writeFileSync(tmp, JSON.stringify(out));
     fs.renameSync(tmp, statePath);
   } catch (e) { warn("state write " + statePath, e); }
-});
+  process.exit(0);
+}

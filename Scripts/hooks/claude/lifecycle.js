@@ -63,15 +63,31 @@ function run() {
 
   if (event === "start") {
     const appUp = running();
-    // App not running -> leftover files are stale (prior crash); start honest.
+    // App not running -> sweep leftovers from a prior crash, but only the ones
+    // whose agent process is actually gone. "The app is down" is the NORMAL
+    // path here (this hook is what launches it), and other agents' sessions
+    // outlive an AgentBar restart — deleting those made live work vanish.
     if (!appUp) {
       try {
-        const stale = fs.readdirSync(stateDir);
-        for (const f of stale) fs.rmSync(path.join(stateDir, f), { force: true });
+        let cleared = 0;
+        for (const f of fs.readdirSync(stateDir)) {
+          const p = path.join(stateDir, f);
+          let owner = 0;
+          try { owner = Number(JSON.parse(fs.readFileSync(p, "utf8")).pid) || 0; } catch {}
+          if (owner > 0) {
+            // Signal 0 probes without delivering: alive (or ours to leave alone)
+            // means keep. EPERM counts as alive — the pid exists.
+            try { process.kill(owner, 0); continue; } catch (e) {
+              if (e.code === "EPERM") continue;
+            }
+          }
+          fs.rmSync(p, { force: true });
+          cleared++;
+        }
         // Leave a trail: "my sessions vanished" must be explainable after the fact.
-        if (stale.length)
-          console.error("[agentbar] AgentBar not running: cleared " + stale.length +
-                        " stale state file(s) from " + stateDir);
+        if (cleared)
+          console.error("[agentbar] AgentBar not running: cleared " + cleared +
+                        " dead state file(s) from " + stateDir);
       } catch (e) { warn("stale state cleanup", e); }
     }
     // started:false — a merely-opened conversation stays out of the dropdown until real

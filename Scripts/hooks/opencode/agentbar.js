@@ -100,10 +100,15 @@ export const AgentBar = async ({ directory }) => {
   // Subagent child sessions ride inside their parent's work — a row per child
   // would triple the list every time OpenCode fans out.
   const children = new Set();
+  // OpenCode publishes session.error and then, for the same turn, session.idle.
+  // Taken at face value the idle overwrites the failure with a green "done"
+  // and a celebration cue, so the error claims the turn until real work starts.
+  const failed = new Set();
 
   return {
     "tool.execute.before": async (input) => {
       const id = input?.sessionID; if (!id || children.has(id)) return;
+      failed.delete(id); // real work: the last turn's failure is history
       write(id, { state: "tool", label: oneLine(input?.tool || "Using tool") });
     },
     "tool.execute.after": async (input) => {
@@ -124,7 +129,10 @@ export const AgentBar = async ({ directory }) => {
         case "message.updated":
           // A user message opens the turn — the row starts thinking even when
           // no tool ever runs, so text-only turns don't pop up already done.
-          if (id && p?.info?.role === "user") write(id, { state: "thinking", label: "Thinking…" });
+          if (id && p?.info?.role === "user") {
+            failed.delete(id);
+            write(id, { state: "thinking", label: "Thinking…" });
+          }
           break;
         case "session.updated": {
           // The session title is OpenCode's own one-line name for the task.
@@ -148,18 +156,23 @@ export const AgentBar = async ({ directory }) => {
           if (id) write(id, { state: "thinking", label: "Thinking…" });
           break;
         case "session.idle":
-          if (id) { write(id, { state: "done", label: "" }); retireLater(id); }
+          if (!id) break;
+          // The idle that trails a failure is bookkeeping, not a finish.
+          if (failed.has(id)) break;
+          write(id, { state: "done", label: "" });
+          retireLater(id);
           break;
         case "session.error":
           // A failed turn is its own state — reporting it as "done" would put a
           // green tick and a celebration cue on an error.
           if (id) {
+            failed.add(id);
             write(id, { state: "error", label: oneLine(errorText(p)) });
             retireLater(id);
           }
           break;
         case "session.deleted":
-          if (id) remove(id);
+          if (id) { children.delete(id); failed.delete(id); remove(id); }
           break;
         default:
           break;

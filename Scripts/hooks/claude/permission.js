@@ -54,21 +54,24 @@ const canonical = (v) => {
   return JSON.stringify(v);
 };
 
+// Never end a cut on a lone high surrogate. JSON.stringify happily escapes one,
+// but Swift's JSONSerialization refuses the whole file — and an unreadable
+// request blocks the approval while the hook waits for an answer no frontend
+// can give. Every truncation in this file goes through here.
+const sliceSafe = (s, n) => {
+  const cut = s.slice(0, n);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+};
+
 const oneLine = (s, n = 60) => {
   s = String(s || "").split("\n")[0].trim();
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+  return s.length > n ? sliceSafe(s, n - 1) + "…" : s;
 };
 
 const cap = (s, n) => {
   s = String(s == null ? "" : s);
-  if (s.length <= n) return s;
-  let cut = s.slice(0, n);
-  // Never end on a lone high surrogate: JSON.stringify escapes it, but Swift's
-  // JSONSerialization refuses the file — and an unreadable request blocks the
-  // whole approval while the hook waits on an answer no frontend can give.
-  const last = cut.charCodeAt(cut.length - 1);
-  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
-  return cut + "…";
+  return s.length > n ? sliceSafe(s, n) + "…" : s;
 };
 
 // Structured, per-field-capped detail so the menu can show a mini-diff / full command
@@ -256,7 +259,20 @@ function run() {
     // reuse) must not be mistaken for the user's decision on THIS request.
     try { fs.rmSync(ansPath, { force: true }); } catch {}
 
+    // Request files are named <session>-<prompt>, and prompt ids repeat across
+    // the tools of ONE turn — so a later tool's hook writes the same path we
+    // did. This hook can outlive its own answer (a question answered in the
+    // wizard, a plan approved in the dialog: both retire on a ~2s poll), so
+    // "is this file still mine?" has to gate every destructive move. Deleting
+    // a successor's request would strand its session on a prompt nobody can
+    // answer, and eating its answer would be just as bad.
+    const ownsRequest = () => {
+      try {
+        return JSON.parse(fs.readFileSync(reqPath, "utf8")).hookPid === process.pid;
+      } catch { return true; } // unreadable or gone: nobody else claimed it
+    };
     const cleanup = () => {
+      if (!ownsRequest()) return;
       try { fs.rmSync(reqPath, { force: true }); } catch {}
       try { fs.rmSync(ansPath, { force: true }); } catch {}
     };
@@ -285,6 +301,13 @@ function run() {
     const timer = setInterval(() => {
       try {
         if (fs.existsSync(ansPath)) {
+          // Checked here rather than every tick: an answer is the only thing
+          // worth reading the request file for, and consuming one addressed to
+          // a successor is exactly what the ownership guard exists to prevent.
+          if (!ownsRequest()) {
+            clearInterval(timer);
+            process.exit(0);
+          }
           let a = {};
           // Contract: the app writes answers atomically (tmp+rename), so a plain
           // read here never observes a partially written file.
@@ -351,9 +374,12 @@ function run() {
           }
           process.exit(0); // "defer"/junk: silent exit -> terminal prompt
         } else if (++ticks % 20 === 0 &&
-                   (((isQuestion || isPlan) && answeredElsewhere()) || !appRunning())) {
+                   (((isQuestion || isPlan) && answeredElsewhere()) || !ownsRequest() ||
+                    !appRunning())) {
           clearInterval(timer);
-          process.exit(0); // wizard/plan dialog answered it, or app quit mid-wait
+          // Wizard/plan dialog answered it, a later tool took the file name
+          // over, or the app quit mid-wait.
+          process.exit(0);
         } else if (Date.now() >= deadline) {
           clearInterval(timer);
           process.exit(0); // timeout -> terminal prompt
