@@ -38,6 +38,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>LSUIElement</key><true/>
+  <key>NSAppleEventsUsageDescription</key><string>AgentBar selects the exact terminal tab a session runs in when you jump to it.</string>
   <key>NSHumanReadableCopyright</key><string>© 2026 Michal Strnadel. MIT licensed.</string>
 </dict>
 </plist>
