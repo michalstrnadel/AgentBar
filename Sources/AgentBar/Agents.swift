@@ -65,6 +65,18 @@ struct Agent {
               artwork: .colorMark(geminiLogoPNG),
               open: .terminal,
               approveKeys: nil),
+        // Hook-driven live status: Qwen Code speaks Claude-style hooks
+        // (~/.qwen/settings.json), OpenCode loads a JS plugin.
+        Agent(id: "qwen", name: "Qwen",
+              brand: NSColor(srgbRed: 0.380, green: 0.361, blue: 0.929, alpha: 1), // #615CED
+              artwork: .tintedMark(qwenMarkPNG),
+              open: .terminal,
+              approveKeys: nil),
+        Agent(id: "opencode", name: "OpenCode",
+              brand: .labelColor, // monochrome brand; adapt to menu appearance
+              artwork: .appIconMark(opencodeMarkPNG),
+              open: .terminal,
+              approveKeys: nil),
     ]
 
     static func byID(_ id: String) -> Agent { all.first { $0.id == id } ?? all[0] }

@@ -9,6 +9,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
+// Claude by default; agents with Claude-compatible hooks (Qwen Code) register
+// this same script with AGENTBAR_AGENT set to their id.
+const AGENT = String(process.env.AGENTBAR_AGENT || "claude").replace(/[^a-z]/g, "") || "claude";
 const stateDir = path.join(os.homedir(), ".agentbar", "state.d");
 const event = process.argv[2] || "";
 
@@ -17,6 +20,11 @@ const TOOL_LABELS = {
   NotebookEdit: "Editing", Read: "Reading", Grep: "Searching", Glob: "Searching",
   WebFetch: "Browsing web", WebSearch: "Searching web", Task: "Delegating",
   TodoWrite: "Planning",
+  // Qwen Code tool ids (Gemini CLI heritage: lowercase snake_case).
+  run_shell_command: "Running command", write_file: "Writing", edit: "Editing",
+  replace: "Editing", read_file: "Reading", read_many_files: "Reading",
+  grep: "Searching", glob: "Searching", web_fetch: "Browsing web",
+  google_web_search: "Searching web", save_memory: "Noting",
 };
 
 const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";
@@ -121,11 +129,15 @@ process.stdin.on("end", () => {
     case "pre":    state = "tool"; label = TOOL_LABELS[p.tool_name] || "Using tool"; break;
     case "post":   state = "thinking"; label = "Thinking…"; break;
     case "stop":    state = "done"; label = ""; break;
+    // Agents that report a failed turn separately (Qwen's StopFailure). The
+    // turn is over, but it is not a success — a green tick and a celebration
+    // cue over an error would be a lie.
+    case "fail":    state = "error"; label = ""; break;
     default: return;
   }
 
   const out = {
-    agent: "claude",
+    agent: AGENT,
     state, label,
     project, cwd,
     sessionId: p.session_id || "",

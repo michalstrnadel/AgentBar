@@ -39,6 +39,8 @@ enum HookInstaller {
             _ = step("cursor", installCursor)
             _ = step("gemini", installGemini)
             _ = step("antigravity", installAntigravity)
+            _ = step("qwen", installQwen)
+            _ = step("opencode", installOpenCode)
             DispatchQueue.main.async { onFinish?() }
         }
     }
@@ -298,6 +300,79 @@ enum HookInstaller {
             try writeIfChanged(data, to: cfgURL)
             note("antigravity")
         }
+    }
+
+    // MARK: - Qwen Code (~/.qwen/settings.json)
+
+    /// Qwen Code speaks Claude-style hooks (same event names, same stdin JSON),
+    /// so the claude/ scripts serve it as-is — AGENTBAR_AGENT names the rows.
+    /// Observational events only: its PermissionRequest decision contract is
+    /// unverified against permission.js, and a blocking hook must never be wired
+    /// on faith. Timeouts here are milliseconds (Qwen), not seconds (Claude).
+    private static func installQwen() throws {
+        guard let node = nodePath else { NSLog("AgentBar: node not found, Qwen hooks skipped"); return }
+        let qwenDir = home.appendingPathComponent(".qwen")
+        guard FileManager.default.fileExists(atPath: qwenDir.path) else { return } // not a Qwen user
+        let cfgURL = qwenDir.appendingPathComponent("settings.json")
+        let dir = hooksDir.appendingPathComponent("claude").path
+
+        guard var root = readConfig(at: cfgURL) else { return }
+        var hooks = root["hooks"] as? [String: Any] ?? [:]
+        let marker = "/.agentbar/hooks/claude/"
+
+        // Drop earlier AgentBar entries from every event before re-adding.
+        for (event, value) in hooks {
+            guard var rules = value as? [[String: Any]] else { continue }
+            rules.removeAll { rule in
+                ((rule["hooks"] as? [[String: Any]]) ?? []).contains { cmd in
+                    (cmd["command"] as? String)?.contains(marker) == true
+                }
+            }
+            if rules.isEmpty { hooks.removeValue(forKey: event) } else { hooks[event] = rules }
+        }
+
+        let events: [(event: String, cmd: String, matcher: Bool)] = [
+            ("SessionStart",     "\"\(node)\" \"\(dir)/lifecycle.js\" start", false),
+            ("SessionEnd",       "\"\(node)\" \"\(dir)/lifecycle.js\" end", false),
+            ("UserPromptSubmit", "\"\(node)\" \"\(dir)/update.js\" prompt", false),
+            ("PreToolUse",       "\"\(node)\" \"\(dir)/update.js\" pre", true),
+            ("PostToolUse",      "\"\(node)\" \"\(dir)/update.js\" post", true),
+            // Qwen splits the failure paths into their own events; without them
+            // a turn that errors out keeps animating as if it were still working.
+            ("PostToolUseFailure", "\"\(node)\" \"\(dir)/update.js\" post", true),
+            ("Stop",             "\"\(node)\" \"\(dir)/update.js\" stop", false),
+            ("StopFailure",      "\"\(node)\" \"\(dir)/update.js\" fail", false),
+        ]
+        for e in events {
+            var rules = hooks[e.event] as? [[String: Any]] ?? []
+            let entry: [String: Any] = ["type": "command", "command": e.cmd,
+                                        "timeout": 5000,
+                                        "env": ["AGENTBAR_AGENT": "qwen"]]
+            var rule: [String: Any] = ["hooks": [entry]]
+            if e.matcher { rule["matcher"] = "*" }
+            rules.append(rule)
+            hooks[e.event] = rules
+        }
+        root["hooks"] = hooks
+        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
+        try writeIfChanged(data, to: cfgURL)
+        note("qwen")
+    }
+
+    // MARK: - OpenCode (~/.config/opencode/plugins/agentbar.js)
+
+    /// OpenCode loads JS plugins from its config dir; ours observes the event bus
+    /// and mirrors it into state files. The copy refreshes with the app version.
+    private static func installOpenCode() throws {
+        let configDir = home.appendingPathComponent(".config/opencode")
+        guard FileManager.default.fileExists(atPath: configDir.path) else { return } // not an OpenCode user
+        let pluginsDir = configDir.appendingPathComponent("plugins", isDirectory: true)
+        try FileManager.default.createDirectory(at: pluginsDir, withIntermediateDirectories: true)
+        let src = hooksDir.appendingPathComponent("opencode/agentbar.js")
+        let dest = pluginsDir.appendingPathComponent("agentbar.js")
+        let data = try Data(contentsOf: src)
+        try writeIfChanged(data, to: dest)
+        note("opencode")
     }
 
     // MARK: - Gemini CLI (~/.gemini/settings.json)

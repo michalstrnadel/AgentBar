@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Claude Code SessionStart/SessionEnd -> seed/remove this session's state file.
 // Usage: node lifecycle.js <start|end>   (hook JSON on stdin)
+// Also serves agents with Claude-compatible hooks (Qwen Code): the installer
+// registers the same script with AGENTBAR_AGENT set to the agent's id.
 
 const fs = require("fs");
 const os = require("os");
@@ -9,6 +11,7 @@ const cp = require("child_process");
 
 const BUNDLE_ID = "com.michalstrnadel.agentbar";
 const EXEC = "AgentBar";
+const AGENT = String(process.env.AGENTBAR_AGENT || "claude").replace(/[^a-z]/g, "") || "claude";
 const stateDir = path.join(os.homedir(), ".agentbar", "state.d");
 const event = process.argv[2];
 
@@ -82,7 +85,7 @@ function run() {
         model = typeof j.model === "string" ? j.model : (j.model && j.model.display_name) || "";
       } catch {}
       writeAtomic(statePath, {
-        agent: "claude", state: "idle", label: "",
+        agent: AGENT, state: "idle", label: "",
         project: cwd ? path.basename(cwd) : "", cwd, sessionId: id || "",
         entrypoint: process.env.CLAUDE_CODE_ENTRYPOINT || "",
         term_program: process.env.TERM_PROGRAM || "",
