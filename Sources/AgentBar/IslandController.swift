@@ -35,6 +35,8 @@ final class IslandController: NSObject {
     /// collapsed the panel is click-through (no events at all), and a Space switch
     /// slides the panel under a pointer without ever crossing an edge.
     private var pointerTimer: Timer?
+    /// Slow refresh of an open panel so elapsed labels keep counting.
+    private var elapsedTimer: Timer?
     /// Last moment the pointer was seen away from the island. Opening requires a
     /// fresh *arrival* — a pointer parked at the top of the screen to be out of
     /// the way must not open anything, no matter how long it sits there. Starts
@@ -89,6 +91,14 @@ final class IslandController: NSObject {
         pointerTimer = Timer.scheduledTimer(withTimeInterval: 0.12, repeats: true) {
             [weak self] _ in self?.checkPointer()
         }
+        // Elapsed labels ("28m") are computed at row build; with the panel held
+        // open over quiet sessions nothing else would rebuild them, so a slow
+        // tick keeps the numbers honest. Collapsed panels skip it — the pill
+        // carries no elapsed and the store's own ticks cover everything else.
+        elapsedTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            guard let self, self.mode == .expanded, self.flash == nil else { return }
+            self.layout(animated: false)
+        }
         mascot.sink("island") { [weak self] image, word in
             guard let self else { return }
             let textChanged = word != self.word
@@ -128,6 +138,8 @@ final class IslandController: NSObject {
         NotificationCenter.default.removeObserver(self)
         pointerTimer?.invalidate()
         pointerTimer = nil
+        elapsedTimer?.invalidate()
+        elapsedTimer = nil
         mascot.sink("island", nil)
         expandWork?.cancel()
         collapseWork?.cancel()

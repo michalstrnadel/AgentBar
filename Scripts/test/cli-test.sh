@@ -59,6 +59,36 @@ rm -f "$HOME/.agentbar/answers.d/r1.json"
 check "deny writes deny answer"        'grep -q "\"behavior\":\"deny\"" "$HOME/.agentbar/answers.d/r1.json"'
 check "dead-hook request pruned"       'seed_request dead 999999; "$CLI" requests >/dev/null; [ ! -f "$HOME/.agentbar/requests.d/dead.json" ]'
 
+# --- questions: rendering, queue priority, the answer command
+seed_question() { # $1 name, $2 ts, $3 multiSelect
+  printf '{"sessionId":"s2","agent":"claude","toolName":"AskUserQuestion","display":"Question: Which color?","toolInputPretty":"{}","context":{"kind":"question","questions":[{"question":"Which color?","header":"Color","multiSelect":%s,"options":[{"label":"Red","description":"warm"},{"label":"Blue","description":"cool"}]}]},"pid":%s,"hookPid":%s,"ts":%s}' \
+    "$3" $$ $$ "$2" > "$HOME/.agentbar/requests.d/$1.json"
+}
+fresh_home
+NOW=$(date +%s)
+seed_request perm $$; python3 - "$HOME/.agentbar/requests.d/perm.json" $((NOW-5)) <<'PY'
+import json, sys
+f, ts = sys.argv[1], int(sys.argv[2])
+j = json.load(open(f)); j["ts"] = ts; json.dump(j, open(f, "w"))
+PY
+seed_question quest "$NOW" false
+check "requests renders question options" '"$CLI" requests | grep -q "1) Red"'
+"$CLI" approve >/dev/null 2>&1
+check "bare approve skips the question"   'grep -q "\"behavior\":\"allow\"" "$HOME/.agentbar/answers.d/perm.json" && [ ! -f "$HOME/.agentbar/answers.d/quest.json" ]'
+rm -f "$HOME/.agentbar/answers.d/perm.json"
+check "explicit index on question errors" '! "$CLI" approve 1 >/dev/null 2>&1'
+"$CLI" answer Blue >/dev/null
+check "answer by label"                   'grep -q "\"answers\":\[\[\"Blue\"\]\]" "$HOME/.agentbar/answers.d/quest.json"'
+rm -f "$HOME/.agentbar/answers.d/quest.json"
+"$CLI" answer 1 Red >/dev/null   # explicit request index 1 (the question), option by name
+check "answer with explicit index"        'grep -q "\"answers\":\[\[\"Red\"\]\]" "$HOME/.agentbar/answers.d/quest.json"'
+rm -f "$HOME/.agentbar/answers.d/quest.json"
+check "answer rejects unknown label"      '! "$CLI" answer Green >/dev/null 2>&1'
+check "answer rejects two on single-select" '! "$CLI" answer Red Blue >/dev/null 2>&1'
+seed_question multi "$((NOW+1))" true
+"$CLI" answer Red Blue >/dev/null
+check "multiSelect takes several labels"  'grep -q "\"answers\":\[\[\"Red\",\"Blue\"\]\]" "$HOME/.agentbar/answers.d/multi.json"'
+
 # --- waybar: heartbeat + JSON shape
 fresh_home
 seed_session live permission $$

@@ -103,7 +103,8 @@ final class CoworkWatcher {
                 state = "thinking"
             }
 
-            upsert(dir: dir, state: state, label: label, ts: ts, pid: pid)
+            upsert(dir: dir, state: state, label: label, ts: ts, pid: pid,
+                   recap: state == "done" ? read.recap : "")
             published[dir.path] = (ts, state)
         }
     }
@@ -164,7 +165,7 @@ final class CoworkWatcher {
     /// single line longer than the whole window leaves no complete line to parse,
     /// and the session must still be reported (it is plainly active — something
     /// just wrote megabytes into it) rather than dropped from the menu.
-    private static func inspect(_ url: URL) -> (finished: Bool, pending: [String: Any]?)? {
+    private static func inspect(_ url: URL) -> (finished: Bool, pending: [String: Any]?, recap: String)? {
         guard let lines = tail(url) else { return nil }
 
         // One slot per line, so `events.last` really is the last line: an unparsed
@@ -186,7 +187,27 @@ final class CoworkWatcher {
             }
             if !answered { pending = events[i] }
         }
-        return (events.last?["type"] as? String == "result", pending)
+        let finished = events.last?["type"] as? String == "result"
+        // The result event carries the turn's closing words — the same recap the
+        // Claude hook reads from its transcript, from the only signal Cowork has.
+        let recap = finished ? cleanRecap(events.last?["result"] as? String ?? "") : ""
+        return (finished, pending, recap)
+    }
+
+    /// One quiet line out of a markdown result: fences and list furniture out,
+    /// link text kept (Cowork results end with a `computer://` link whose text is
+    /// the deliverable's name), whitespace collapsed, capped at 160.
+    private static func cleanRecap(_ s: String) -> String {
+        var t = s
+        t = t.replacingOccurrences(of: "```[\\s\\S]*?```", with: " ", options: .regularExpression)
+        t = t.replacingOccurrences(of: "\\[([^\\]]*)\\]\\([^)]*\\)", with: "$1", options: .regularExpression)
+        t = t.replacingOccurrences(of: "(?m)^#{1,6}\\s+", with: "", options: .regularExpression)
+        t = t.replacingOccurrences(of: "(?m)^\\s*[-*+]\\s+", with: "", options: .regularExpression)
+        t = t.replacingOccurrences(of: "(?m)^\\s*\\d+[.)]\\s+", with: "", options: .regularExpression)
+        t = t.replacingOccurrences(of: "[`*_]", with: "", options: .regularExpression)
+        t = t.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+        return String(t.prefix(160))
     }
 
     /// Complete lines at the end of the file, oldest first. Walks backwards in
@@ -240,7 +261,8 @@ final class CoworkWatcher {
 
     // MARK: - State file
 
-    private func upsert(dir: URL, state: String, label: String, ts: TimeInterval, pid: Int32) {
+    private func upsert(dir: URL, state: String, label: String, ts: TimeInterval, pid: Int32,
+                        recap: String = "") {
         let id = String(dir.lastPathComponent.filter { $0.isLetter || $0.isNumber || "-_.".contains($0) }
             .prefix(64))
         guard !id.isEmpty else { return }
@@ -263,6 +285,9 @@ final class CoworkWatcher {
         o["sessionId"] = id
         // Set once; elapsed in the frontends depends on it never moving.
         if o["started_at"] == nil { o["started_at"] = Int(ts) }
+        // Protocol rule: recap is the LATEST turn's result — a working state must
+        // drop the previous turn's line, never carry it forward.
+        if state == "done", !recap.isEmpty { o["recap"] = recap } else { o.removeValue(forKey: "recap") }
         o["ts"] = Int(ts)
         guard let data = try? JSONSerialization.data(withJSONObject: o) else { return }
         try? FileManager.default.createDirectory(at: SessionStore.stateDir,

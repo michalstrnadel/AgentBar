@@ -200,6 +200,33 @@ function simpleQuestion(r) {
   return (qs[0].options || []).map((o) => o.label);
 }
 
+// `agentbar answer [n] <label...>` — answer a pending question by option label
+// (or 1-based option number). Multi-question calls need per-question toggles a
+// one-liner can't express; those answer in the app or the wizard.
+function answerCmd(argv) {
+  const rs = requests();
+  const explicit = /^\d+$/.test(argv[0] || "") && argv.length > 1 ? argv.shift() : null;
+  const r = explicit ? rs[parseInt(explicit, 10) - 1]
+                     : rs.find((x) => (x.context || {}).kind === "question");
+  if (!r) { console.error(explicit ? `No request #${explicit}.` : "No pending question."); process.exit(1); }
+  const ctx = r.context || {};
+  if (ctx.kind !== "question") { console.error(`Request #${explicit || 1} is a permission — use approve/deny.`); process.exit(1); }
+  const qs = ctx.questions || [];
+  if (qs.length !== 1) { console.error("Multi-question call — answer it in the AgentBar app or the terminal wizard."); process.exit(1); }
+  const q = qs[0];
+  const labels = (q.options || []).map((o) => o.label);
+  const picked = argv.map((a) =>
+    /^\d+$/.test(a) ? labels[parseInt(a, 10) - 1] : labels.find((l) => l.toLowerCase() === a.toLowerCase()));
+  if (!argv.length || picked.some((l) => !l)) {
+    console.error("Pick from: " + labels.map((l, i) => `${i + 1}) ${l}`).join("  "));
+    process.exit(1);
+  }
+  const unique = [...new Set(picked)];
+  if (!q.multiSelect && unique.length !== 1) { console.error("Single-select question — pick exactly one option."); process.exit(1); }
+  answerQuestion(r, [unique]);
+  console.log(`${green("✓ answered")}  ${unique.join(", ")}  ${dim("— " + (q.question || ""))}`);
+}
+
 // MARK: - Presence (what makes hooks block for remote approval on Linux)
 
 function heartbeat() {
@@ -447,6 +474,7 @@ switch (cmd) {
   case "requests": printRequests(json); break;
   case "approve": case "allow": decide("allow", argv); break;
   case "deny": decide("deny", argv); break;
+  case "answer": answerCmd(argv.filter((a) => a !== "--json")); break;
   case "watch": watch(argv); break;
   case "waybar": waybar(); break;
   case "install-hooks": installHooks(); break;
@@ -455,9 +483,10 @@ switch (cmd) {
 
   agentbar [status] [--json]      live sessions
   agentbar requests [--json]      pending approvals with detail
-  agentbar approve [n] [--always] answer newest (or n-th) request
+  agentbar approve [n] [--always] answer newest (or n-th) permission
   agentbar deny [n]
-  agentbar watch [-i SEC]         live view + keys (a allow/A always/d deny/f defer/q quit);
+  agentbar answer [n] <label|num>... answer a pending question by option
+  agentbar watch [-i SEC]         live view + keys (a allow/A always/d deny/f defer/1-9 answer/q quit);
                                   enables remote approval
   agentbar waybar                 JSON for waybar/polybar (poll <= 30s)
   agentbar install-hooks          wire Claude/Codex/Cursor/Antigravity/Gemini hooks (Linux installer)`);

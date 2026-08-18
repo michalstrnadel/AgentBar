@@ -207,6 +207,33 @@ printf '{"behavior":"defer"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 check "question defer: silent"       '[ ! -s "$HOME/out.json" ]'
 
+# 12g. a pre-question frontend pressing allow at a question -> the verdict is
+# swallowed and the hook KEEPS WAITING; a proper answer afterwards still lands
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=10 "$NODE" "$HOOK" <<<"$QO_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"behavior":"allow"}' > "$HOME/.agentbar/answers.d/$REQ"
+sleep 1
+check "legacy verb: swallowed"        '[ ! -e "$HOME/.agentbar/answers.d/$REQ" ]'
+check "legacy verb: still waiting"    'kill -0 "$hookpid" 2>/dev/null && [ -e "$HOME/.agentbar/requests.d/$REQ" ]'
+printf '{"behavior":"answer","answers":[["Red"]]}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "legacy verb: real answer lands" 'grep -q "User answered \\\\\"Red\\\\\"" "$HOME/out.json"'
+
+# 12h. a stale answer file left under the same name must not be mistaken for
+# the user's decision on a fresh request
+fresh_home
+printf '{"behavior":"allow"}' > "$HOME/.agentbar/answers.d/testsess-p4.json"
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$QO_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+sleep 1
+check "stale answer: not consumed"    'kill -0 "$hookpid" 2>/dev/null && [ ! -s "$HOME/out.json" ]'
+printf '{"behavior":"answer","answers":[["Blue"]]}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "stale answer: fresh one lands" 'grep -q "User answered \\\\\"Blue\\\\\"" "$HOME/out.json"'
+
 # 12f. question answered in the terminal wizard (PostToolUse moves the state off
 # "question") -> the waiting hook retires its request within ~2s, silently
 fresh_home
