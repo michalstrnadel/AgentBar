@@ -55,8 +55,14 @@ all reversible (see [Uninstall](#uninstall)):
 - Merges AgentBar hook entries into your Claude Code settings — `~/.claude/settings.json`,
   and your `CLAUDE_CONFIG_DIR` if you set one. Existing hooks are preserved.
 - Adds a `notify` line to `~/.codex/config.toml` **only if you use Codex and have none**;
-  merges into `~/.cursor/hooks.json` / `~/.gemini/settings.json` **only if those exist**.
+  merges into `~/.cursor/hooks.json` / `~/.gemini/settings.json` / `~/.qwen/settings.json`
+  **only if those exist**.
+- Copies a plugin to `~/.config/opencode/plugins/agentbar.js` **only if you use OpenCode**.
 - The SessionStart hook launches AgentBar in the background when an agent session begins.
+- Nothing else is granted automatically: the exact-tab jump-back asks for
+  **Automation** access the first time you click a row, and approving a plan
+  (or a Codex/Copilot prompt) asks for **Accessibility**. Decline either and
+  AgentBar falls back to bringing the app forward and letting you answer there.
 
 The installer prints this summary before doing anything, and never modifies a tool you
 don't use. Hooks are snapshotted per session — start a new agent session afterward.
@@ -85,12 +91,15 @@ don't use. Hooks are snapshotted per session — start a new agent session after
   island: each tap records and slides to the next, with Back and a 2/4 mark.
 - **Plan review** — when Claude finishes planning, the full plan renders on the
   island as formatted Markdown (scrollable when long). **Keep planning** sends
-  Claude back to refine it without touching the terminal; **⌨ Approve plan**
-  jumps to the session's exact tab and answers the plan dialog for you.
-- **Usage at a glance** — provider quota lines read from the CLIs' own local
-  files (no network, no keychain): Codex's exact 5-hour / weekly window
-  percentages and reset times, plus Claude's token count for the current
-  5-hour block. Shown in the island footer and the menu while fresh.
+  Claude back to refine it without touching the terminal; **Approve plan** jumps
+  to the session's exact tab and answers the plan dialog for you.
+- **Usage at a glance** — provider quota read from the CLIs' own local files (no
+  network, no keychain). Codex reports the exact percentage of its 5-hour and
+  weekly windows with real reset times; Claude publishes no quota locally, so
+  its line is the honest half-measure — the tokens its transcripts record for
+  the current 5-hour block. Shown while the data is fresh, hidden when it isn't.
+- **A failure looks like one** — a turn that errors out shows red and named
+  instead of a green "Done", and never plays the finish chime.
 - **Precise jump-back** — clicking a session row selects the exact terminal tab
   or split pane the session runs in (iTerm2, Terminal.app, WezTerm — by tty),
   not just the app.
@@ -202,6 +211,8 @@ rm -rf ~/.agentbar
 #   ~/.codex/config.toml       — delete the notify line referencing "/.agentbar/hooks/"
 #   ~/.cursor/hooks.json       — delete entries whose command references "/.agentbar/hooks/cursor/"
 #   ~/.gemini/settings.json    — delete hook groups whose command references "/.agentbar/hooks/gemini/"
+#   ~/.qwen/settings.json      — delete hook groups whose command references "/.agentbar/hooks/claude/"
+rm -f ~/.config/opencode/plugins/agentbar.js
 ```
 
 ## Agent support
@@ -214,8 +225,8 @@ rm -rf ~/.agentbar
 | Cursor CLI | working / done | yes | pointer | hooks in `~/.cursor/hooks.json` (auto-wired if Cursor is installed) |
 | Gemini CLI | working / done | yes | spark | hooks in `~/.gemini/settings.json` (auto-wired if Gemini is installed) |
 | GitHub Copilot | — | yes | pixel head + dot-matrix | no public event API yet; everything else is wired and waiting |
-| Qwen Code | working / done | yes | Q ring | Claude-style hooks in `~/.qwen/settings.json` (auto-wired if Qwen is installed) |
-| OpenCode | working / approval / done | yes | prompt chevron | plugin in `~/.config/opencode/plugins/` (auto-installed if OpenCode is installed) |
+| Qwen Code | working / done / failed | yes | Q ring | Claude-style hooks in `~/.qwen/settings.json` (auto-wired if Qwen is installed); remote approval waits until its decision contract is verified |
+| OpenCode | working / approval / done / failed | yes | prompt chevron | plugin in `~/.config/opencode/plugins/` (auto-installed if OpenCode is installed); observe-only |
 | Google Antigravity | working / done | yes | pixel rainbow arch + dot-matrix | hooks in `~/.gemini/antigravity{,-cli}/hooks.json` (auto-wired); desktop 2.3.x only honors per-workspace `.agents/hooks.json`, and only `PostToolUse` fires — quiet sessions decay to done |
 
 Hook readiness: Claude Code, Codex (`notify`), Cursor (`hooks.json`), Gemini
@@ -245,14 +256,20 @@ the notch:
   card: the tool and its target, the mini-diff with **+3 −1** counts, **Allow** /
   **Deny** in front and *Always allow* / *Answer in terminal* quiet beside them.
   Your answer flashes back in the pill — **✓ Allowed** — as the panel folds away.
-  An **AskUserQuestion** shows as a *Claude asks* card naming the question (the
-  options stay in the agent's own UI for now).
+  An **AskUserQuestion** shows the actual options as tappable cards; several
+  questions become a wizard, one at a time, with a **2/4** mark and **‹ Back**.
+  An **ExitPlanMode** shows the whole plan as formatted Markdown with
+  **Keep planning** / **Approve plan**. A failed turn says *failed* in red and
+  stays silent — no green tick, no chime.
+- **It scrolls when it must** — the panel is sized to its content, and past the
+  screen limit the rows scroll while the **⋯** menu and the quota line stay
+  pinned along the bottom.
 - **No notch, or an external display?** Same panel, centred at the top of whichever
   screen your pointer is on. It steps aside for fullscreen windows, and it never
   takes focus — you can keep typing in your editor with the panel open.
 
 In Island-only mode the menu bar item is hidden, so the panel's **⋯** button carries
-Appearance, the global Allow/Deny shortcut, Check for Updates and Quit.
+Appearance, Color, the Sounds toggle, Settings, Check for Updates and Quit.
 
 ## Remote Allow/Deny
 
@@ -275,6 +292,15 @@ Codex and Copilot have no decision hooks, so their rows offer *Approve in termin
 (sends keystroke)* — AgentBar focuses the session's terminal and presses the approval
 key. Best-effort by design, and it needs the Accessibility permission (the menu item
 offers to open System Settings until it's granted).
+
+**Approving a plan** works the same way, for a different reason: Claude Code
+ignores a hook's *allow* at the plan dialog, because approving a plan also
+picks the next permission mode — something a hook decision can't express. So
+**Approve plan** selects the session's exact tab and answers the dialog there.
+It needs Accessibility, and a terminal AgentBar can aim (iTerm2, Terminal.app,
+WezTerm); anywhere else the button hands you the dialog instead of typing into
+a tab it cannot verify. **Keep planning** needs none of that — it goes through
+the hook as an explicit "refine this first".
 
 ## How it works
 

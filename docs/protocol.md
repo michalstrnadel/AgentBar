@@ -33,7 +33,7 @@ max 64 chars (fallback `"unknown"`). The file name is the session's identity;
   "project": "AgentBar",       // basename of cwd ("" ok)
   "cwd": "/path/to/project",
   "sessionId": "abc-123",
-  "entrypoint": "cli",         // "cli" | "claude-desktop" | "" — which surface hosts it
+  "entrypoint": "cli",         // "cli" | "claude-desktop" | "antigravity-app" | "" — which surface hosts it
                                // "claude-desktop" also covers Cowork: the row opens the app, not a terminal
   "term_program": "WarpTerminal", // $TERM_PROGRAM of the hosting terminal ("" ok)
   "pid": 12345,                // the agent process (hook's ppid) — liveness handle
@@ -143,7 +143,10 @@ degrades to a one-shot allow. `answer` only for `kind:"question"` requests:
 `answers` is one array of chosen option **labels** per question (exactly one
 unless that question's `multiSelect`); labels the request never offered, wrong
 counts, or duplicates degrade to `defer` — an answer can only say things the
-request itself offered. `defer` (or junk) makes the hook exit silently, falling
+request itself offered. `allow` / `always` / `deny` at a `kind:"question"`
+request are **swallowed** (deleted, wait continues), the same way `allow` is at
+a `kind:"plan"` one: a frontend that speaks only the older verbs must leave the
+question answerable rather than silently deferring it while showing "allowed". `defer` (or junk) makes the hook exit silently, falling
 back to the agent's normal terminal prompt (for questions: the wizard, which is
 already on screen).
 

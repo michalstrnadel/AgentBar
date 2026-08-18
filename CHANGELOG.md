@@ -74,9 +74,11 @@ All notable changes to AgentBar are documented here. This project follows
   (verified both directions on Claude Code 2.1.234). A remote answer can only
   say things the request itself offered: forged labels degrade to the terminal
   wizard, never to a made-up answer.
-- **Done rows say what finished.** The Stop hook reads the tail of the session
-  transcript (one bounded 64 KB read, best-effort) and stores one line of the
-  agent's closing words in the state file. The island hero shows it under the
+- **Done rows say what finished.** The Stop hook stores one line of the agent's
+  closing words in the state file, taken from the Stop payload's
+  `last_assistant_message` (the transcript flushes the final text only at
+  session end, far too late to read back); a bounded 64 KB transcript tail
+  stays as the fallback for versions that don't carry the field. The island hero shows it under the
   green "Done" — "You: …" asks, "Claude: …" answers — menu rows carry a
   60-char snippet plus the full line in the tooltip, and a new prompt clears
   it so a working session never advertises the previous turn's result.
