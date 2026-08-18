@@ -5,6 +5,8 @@ All notable changes to AgentBar are documented here. This project follows
 
 ## Unreleased
 
+## 1.12.0 - 2026-08-18
+
 ### Added
 - **Plan review on the island.** When Claude finishes planning (`ExitPlanMode`),
   the request card now carries the whole plan, rendered as formatted Markdown —
@@ -45,8 +47,9 @@ All notable changes to AgentBar are documented here. This project follows
 - **A failed turn now says so.** The protocol gained an `error` state beside
   `done`: same "the turn is over" meaning, but rendered red and named ("failed
   — provider returned 429") instead of a green tick, and it never plays the
-  done chime. It also outranks clean "Done" rows in the list, so a failure
-  can't get buried under them. Qwen's `StopFailure` and OpenCode's
+  done chime. It sorts above the clean "Done" rows so a failure can't be buried
+  under them, and below live work so it can never take the mascot from an agent
+  that is still going. Qwen's `StopFailure` and OpenCode's
   `session.error` report through it; writers that can't tell success from
   failure keep using `done`, and frontends that predate `error` read it as
   idle.
@@ -58,6 +61,43 @@ All notable changes to AgentBar are documented here. This project follows
   session title as the row's task line. Both install automatically when the
   tool is present, and both get original marks drawn for AgentBar — a Q ring
   with a tail, and a terminal chevron with a block cursor.
+
+### Fixed
+
+Everything below was found by adversarial review passes over this release's
+own work and reproduced before being fixed.
+
+- **A lingering hook could delete the next request of the same turn.** Request
+  files are named `<session>-<prompt>`, and prompt ids repeat across the tools
+  of one turn. That was harmless while every hook exited the moment it got an
+  answer — but the plan and question hooks now outlive theirs by up to ~2s, and
+  in that window Claude's next tool writes the same path. The old hook's exit
+  deleted it, stranding the session on a prompt nobody could answer. Every
+  destructive move now checks the file is still the hook's own.
+- **A stalled stdin could freeze a tool call for a minute.** `update.js` did all
+  its work in the stdin `end` handler with no error listener and no self-timeout,
+  so a pipe that never reached EOF parked it until Claude Code's 60s hook
+  timeout. Its sibling hooks have carried those guards all along.
+- **SessionStart deleted other agents' live sessions.** With AgentBar down it
+  wiped `state.d` wholesale as "stale from a prior crash" — but the app being
+  down is the normal path there (that hook is what launches it), and a Codex or
+  OpenCode session outlives an AgentBar restart. It now probes each file's pid.
+- **Approving a plan could answer the wrong one.** The keystroke was posted as
+  soon as the terminal came forward (~50ms), while the tab select takes
+  hundreds — so it landed in whatever tab was already open, which in the worst
+  case was a second Claude session at its own plan dialog. The keystroke now
+  waits for the tab select to confirm it found the session, and terminals with
+  no tab targeting hand the dialog over instead.
+- **The quota line was wrong twice over.** Split configs are commonly symlinked
+  to one another, so transcripts were enumerated twice and every token counted
+  twice; meanwhile a 2 MB tail read never reached the start of a long block.
+  Reads are now incremental over append-only transcripts, and the figure matches
+  an independent full-file count exactly.
+- Truncation never ends on a lone surrogate any more: `JSON.stringify` escapes
+  one happily, but Swift's `JSONSerialization` rejects the whole file, which hid
+  the session from every frontend for the rest of the turn.
+- The global Allow shortcut routes plans through the same path the buttons use,
+  instead of writing an allow the hook must swallow and ticking success anyway.
 
 ## 1.11.0 - 2026-08-18
 
