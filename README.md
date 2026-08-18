@@ -20,7 +20,7 @@
 
 AgentBar is a lightweight, native macOS app that shows the live state of your
 AI coding sessions — Claude Code and Claude Cowork, Codex, Cursor CLI, Gemini CLI,
-plus GitHub Copilot and Google Antigravity in one place. Each agent gets its own mark built from its
+Qwen Code, OpenCode, plus GitHub Copilot and Google Antigravity in one place. Each agent gets its own mark built from its
 real identity — Clawd the crab for Claude, the OpenAI knot with a braille dot-matrix
 for Codex, the official pixel-art head for Copilot, the pixel rainbow arch for
 Antigravity — and it always surfaces the session that needs you most.
@@ -81,7 +81,19 @@ don't use. Hooks are snapshotted per session — start a new agent session after
 - **Answer questions too** — when Claude asks a multiple-choice question, the island
   and the menu show the actual options: tap one and the session continues, no
   terminal switch. The terminal wizard stays live the whole time — whoever answers
-  first wins. multiSelect and multi-question calls get toggles and an Answer button.
+  first wins. Multi-question calls become a one-question-at-a-time wizard on the
+  island: each tap records and slides to the next, with Back and a 2/4 mark.
+- **Plan review** — when Claude finishes planning, the full plan renders on the
+  island as formatted Markdown (scrollable when long). **Keep planning** sends
+  Claude back to refine it without touching the terminal; **⌨ Approve plan**
+  jumps to the session's exact tab and answers the plan dialog for you.
+- **Usage at a glance** — provider quota lines read from the CLIs' own local
+  files (no network, no keychain): Codex's exact 5-hour / weekly window
+  percentages and reset times, plus Claude's token count for the current
+  5-hour block. Shown in the island footer and the menu while fresh.
+- **Precise jump-back** — clicking a session row selects the exact terminal tab
+  or split pane the session runs in (iTerm2, Terminal.app, WezTerm — by tty),
+  not just the app.
 - **Turn recaps** — a finished session's row says *what* finished: one line of the
   agent's closing words under "Done", not just a green dot.
 - **Sound cues (opt-in)** — four tiny synthesized retro-console motifs: needs
@@ -202,10 +214,13 @@ rm -rf ~/.agentbar
 | Cursor CLI | working / done | yes | pointer | hooks in `~/.cursor/hooks.json` (auto-wired if Cursor is installed) |
 | Gemini CLI | working / done | yes | spark | hooks in `~/.gemini/settings.json` (auto-wired if Gemini is installed) |
 | GitHub Copilot | — | yes | pixel head + dot-matrix | no public event API yet; everything else is wired and waiting |
+| Qwen Code | working / done | yes | Q ring | Claude-style hooks in `~/.qwen/settings.json` (auto-wired if Qwen is installed) |
+| OpenCode | working / approval / done | yes | prompt chevron | plugin in `~/.config/opencode/plugins/` (auto-installed if OpenCode is installed) |
 | Google Antigravity | working / done | yes | pixel rainbow arch + dot-matrix | hooks in `~/.gemini/antigravity{,-cli}/hooks.json` (auto-wired); desktop 2.3.x only honors per-workspace `.agents/hooks.json`, and only `PostToolUse` fires — quiet sessions decay to done |
 
 Hook readiness: Claude Code, Codex (`notify`), Cursor (`hooks.json`), Gemini
-(`settings.json`), and Antigravity (`hooks.json`) hooks all install automatically at launch (idempotently — every
+(`settings.json`), Antigravity (`hooks.json`), Qwen Code (`settings.json`), and
+OpenCode (plugin) hooks all install automatically at launch (idempotently — every
 launch re-checks, nothing is duplicated) for the tools you have. Copilot ships with its mascot, menu entry, and
 the keystroke-approval backend already in place — the moment it exposes session
 events, support is one small hook script away.

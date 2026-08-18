@@ -5,6 +5,60 @@ All notable changes to AgentBar are documented here. This project follows
 
 ## Unreleased
 
+### Added
+- **Plan review on the island.** When Claude finishes planning (`ExitPlanMode`),
+  the request card now carries the whole plan, rendered as formatted Markdown —
+  headings, bullets, inline and fenced code — in a box that scrolls when the
+  plan is long. **Keep planning** answers through the hook as an explicit
+  keep-planning message (a bare denial reads as "stop" and ends the turn —
+  found out the hard way, live). **⌨ Approve plan** is honest about its
+  mechanics: Claude Code ignores a hook allow at the plan dialog (the approval
+  also picks the next permission mode), so the button focuses the session's
+  exact tab and selects "manually approve edits" in the dialog itself, the way
+  Codex approvals already work. Answering the dialog in the terminal retires
+  the card within ~2 s. The menu gets the same buttons plus an 8-line preview,
+  and the CLI prints the plan under `agentbar requests`.
+- **Multi-question calls became a wizard.** A 4-question card used to stack
+  everything at once and run past the screen edge. The island now shows one
+  question at a time with a quiet "2/4" mark: tapping a single-select answer
+  records it and slides to the next question, the last answer submits the whole
+  set (four questions = four taps), multiSelect steps toggle and move on with
+  **Next**, and **‹ Back** revisits earlier steps — recorded choices stay
+  checked. Option descriptions are always visible now, since one question at a
+  time has the room.
+- **The island scrolls when it must.** Content taller than the screen used to
+  clip at the bottom edge; the panel now sizes to its content as before, but
+  past the screen limit the rows scroll (overlay scroller, wheel and trackpad).
+- **Usage at a glance.** A quiet line in the island footer and the menu shows
+  provider quota, read from the CLIs' own local files — no network, no
+  keychain, nothing leaves the machine. Codex rollouts carry exact
+  `used_percent` for the 5-hour and weekly windows plus reset times; Claude
+  transcripts yield the token count of the current 5-hour block. Stale data
+  (agent not run for a day) silently disappears rather than showing a
+  months-old window as current.
+- **Precise jump-back.** Clicking a session row now selects the exact terminal
+  tab or split pane the session runs in — iTerm2 (window ▸ tab ▸ pane),
+  Terminal.app (tab), and WezTerm (pane), matched by the session's tty. The
+  app-level focus still fires instantly; the tab selection follows as soon as
+  the terminal answers (first use asks for Automation permission). Warp,
+  Ghostty, and kitty stay app-level — they expose no tab targeting.
+- **A failed turn now says so.** The protocol gained an `error` state beside
+  `done`: same "the turn is over" meaning, but rendered red and named ("failed
+  — provider returned 429") instead of a green tick, and it never plays the
+  done chime. It also outranks clean "Done" rows in the list, so a failure
+  can't get buried under them. Qwen's `StopFailure` and OpenCode's
+  `session.error` report through it; writers that can't tell success from
+  failure keep using `done`, and frontends that predate `error` read it as
+  idle.
+- **Two new agents: Qwen Code and OpenCode.** Qwen Code speaks Claude-style
+  hooks, so AgentBar wires its existing scripts into `~/.qwen/settings.json`
+  (status only for now — remote approval waits until Qwen's decision contract
+  is verified). OpenCode gets a native plugin in `~/.config/opencode/plugins/`
+  that mirrors its event bus: working, waiting for approval, done, and the
+  session title as the row's task line. Both install automatically when the
+  tool is present, and both get original marks drawn for AgentBar — a Q ring
+  with a tail, and a terminal chevron with a block cursor.
+
 ## 1.11.0 - 2026-08-18
 
 ### Added

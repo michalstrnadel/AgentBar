@@ -350,6 +350,82 @@ check "permission: task fields survive" \
 printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 
+# 18. ExitPlanMode -> plan context carried whole; deny = keep-planning message.
+# (Verified live on 2.1.234: the plan dialog renders alongside the hook; deny
+# dismisses it, a bare denial ends the turn — hence the explicit message.)
+fresh_home
+PLAN_EVENT='{"session_id":"testsess","prompt_id":"p9","tool_name":"ExitPlanMode","tool_input":{"plan":"## Plan\n1. Edit `auth.ts`\n2. Run tests"}}'
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" <<<"$PLAN_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+check "plan: request written"       '[ -n "$REQ" ]'
+check "plan: context kind"          'grep -q "\"kind\":\"plan\"" "$HOME/.agentbar/requests.d/$REQ"'
+check "plan: markdown carried"      'grep -q "Edit \`auth.ts\`" "$HOME/.agentbar/requests.d/$REQ"'
+check "plan: display line"          'grep -q "Plan ready for review" "$HOME/.agentbar/requests.d/$REQ"'
+check "plan: state is permission"   'grep -q "\"state\":\"permission\"" "$HOME/.agentbar/state.d/testsess.json"'
+printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "plan: deny -> deny decision" 'grep -q "\"behavior\":\"deny\"" "$HOME/out.json"'
+check "plan: keep-planning message" 'grep -q "keep planning" "$HOME/out.json"'
+
+# 18a. a hook allow cannot approve a plan -> swallowed, hook keeps waiting and
+# times out silently instead of pretending it worked
+fresh_home
+start=$(date +%s)
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=3 "$NODE" "$HOOK" <<<"$PLAN_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"behavior":"allow"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"; end=$(date +%s)
+check "plan: allow swallowed"       '[ ! -s "$HOME/out.json" ]'
+check "plan: waited out the clock"  '[ $((end-start)) -ge 2 ]'
+check "plan: request cleaned"       '[ ! -e "$HOME/.agentbar/requests.d/$REQ" ]'
+
+# 18b. dialog answered in the terminal -> state leaves "permission" and the
+# hook retires on its own (same elsewhere-retire questions have)
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=30 "$NODE" "$HOOK" <<<"$PLAN_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+python3 - "$HOME/.agentbar/state.d/testsess.json" <<'PYEOF'
+import json, sys
+p = sys.argv[1]
+s = json.load(open(p))
+s["state"] = "tool"
+json.dump(s, open(p, "w"))
+PYEOF
+start=$(date +%s)
+wait "$hookpid"; end=$(date +%s)
+check "plan: retires when answered elsewhere" '[ $((end-start)) -le 10 ] && [ ! -s "$HOME/out.json" ]'
+check "plan: elsewhere-retire cleans request" '[ ! -e "$HOME/.agentbar/requests.d/$REQ" ]'
+
+# 19. Qwen identity: AGENTBAR_AGENT renames the state writer's agent field
+fresh_home
+printf '{"session_id":"qwsess","cwd":"/tmp/proj","prompt":"add tests"}' \
+  | AGENTBAR_AGENT=qwen "$NODE" Scripts/hooks/claude/update.js prompt
+check "qwen: agent id in state"     'grep -q "\"agent\":\"qwen\"" "$HOME/.agentbar/state.d/qwsess.json"'
+check "qwen: state thinking"        'grep -q "\"state\":\"thinking\"" "$HOME/.agentbar/state.d/qwsess.json"'
+printf '{"session_id":"qwsess","tool_name":"run_shell_command"}' \
+  | AGENTBAR_AGENT=qwen "$NODE" Scripts/hooks/claude/update.js pre
+check "qwen: tool label mapped"     'grep -q "\"label\":\"Running command\"" "$HOME/.agentbar/state.d/qwsess.json"'
+# junk in the env var must not fabricate an agent id the app never heard of
+printf '{"session_id":"qwsess"}' \
+  | AGENTBAR_AGENT='Qw3n!/..' "$NODE" Scripts/hooks/claude/update.js post
+check "qwen: junk env sanitized"    'grep -q "\"agent\":\"wn\"" "$HOME/.agentbar/state.d/qwsess.json"'
+
+# 19a. a failed turn is its own state — never a green "done"
+fresh_home
+printf '{"session_id":"failsess","cwd":"/tmp/proj"}' \
+  | AGENTBAR_AGENT=qwen "$NODE" Scripts/hooks/claude/update.js fail
+check "fail: error state"           'grep -q "\"state\":\"error\"" "$HOME/.agentbar/state.d/failsess.json"'
+check "fail: not done"              '! grep -q "\"state\":\"done\"" "$HOME/.agentbar/state.d/failsess.json"'
+
+# 20. the OpenCode plugin is loadable and maps the bus to protocol states
+fresh_home
+check "opencode: plugin parses"     '"$NODE" --input-type=module --check < Scripts/hooks/opencode/agentbar.js'
+check "opencode: error not done"    'grep -q "state: \"error\"" Scripts/hooks/opencode/agentbar.js'
+check "opencode: retires finished"  'grep -q "retireLater" Scripts/hooks/opencode/agentbar.js'
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
