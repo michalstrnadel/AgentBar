@@ -39,10 +39,13 @@ final class UsageCenter {
         timer = nil
     }
 
-    /// Parsed token entries per transcript file, valid while the file's
-    /// (mtime, size) hold. Without it every tick re-read and re-parsed the same
-    /// unchanged megabytes; only the queue touches it.
-    private var transcriptCache: [String: (mtime: Date, size: Int, entries: [(Date, Int)])] = [:]
+    /// Parsed token entries per transcript, plus how far into the file they
+    /// account for. Transcripts are append-only, so a tick reads only the bytes
+    /// added since the last one — a tail cut would miss the start of a long
+    /// block (this machine keeps 120 MB of transcripts inside the window, one
+    /// of them 23 MB), and re-reading all of it every minute is not an option
+    /// either. Only the serial queue touches this.
+    private var transcriptCache: [String: (offset: UInt64, entries: [(Date, Int)])] = [:]
 
     func refresh() {
         queue.async { [weak self] in
@@ -155,7 +158,6 @@ final class UsageCenter {
     /// gap that started today's chain, even after a long unbroken session.
     /// Same 24h stance as the Codex staleness guard.
     private static let scanWindow: TimeInterval = maxAge
-    private static let tailBytes = 2 * 1024 * 1024
 
     private func claudeReading() -> Reading? {
         let fm = FileManager.default
@@ -163,15 +165,23 @@ final class UsageCenter {
         // Split-config layouts (~/.claude-work, ~/.claude-personal) coexist with
         // the default; whichever exist contribute. Merged into one line — this
         // is "what this machine spent", not per-account bookkeeping.
+        // Resolved and deduped: these directories are commonly symlinked to one
+        // another (a split config pointing at a shared projects dir), and
+        // enumerating the same transcripts under two path strings counted every
+        // token twice.
+        var seenRoots = Set<String>()
         let roots = [".claude", ".claude-work", ".claude-personal"]
             .map { home.appendingPathComponent($0).appendingPathComponent("projects") }
             .filter { fm.fileExists(atPath: $0.path) }
+            .map { $0.resolvingSymlinksInPath() }
+            .filter { seenRoots.insert($0.path).inserted }
         guard !roots.isEmpty else { return nil }
 
         // Only files touched inside the scan window can contribute; everything
         // older is settled history.
         let horizon = Date().addingTimeInterval(-Self.scanWindow)
         var files: [(url: URL, mtime: Date, size: Int)] = []
+        var seenFiles = Set<String>()
         for root in roots {
             guard let dirs = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil,
                                                          options: .skipsHiddenFiles)
@@ -185,28 +195,36 @@ final class UsageCenter {
                     let values = try? f.resourceValues(forKeys: [.contentModificationDateKey,
                                                                  .fileSizeKey])
                     let mtime = values?.contentModificationDate ?? .distantPast
-                    if mtime > horizon {
-                        files.append((f, mtime, values?.fileSize ?? 0))
-                    }
+                    guard mtime > horizon else { continue }
+                    // Belt and braces: a symlink deeper than the root would
+                    // otherwise reintroduce the double count.
+                    let resolved = f.resolvingSymlinksInPath()
+                    guard seenFiles.insert(resolved.path).inserted else { continue }
+                    files.append((resolved, mtime, values?.fileSize ?? 0))
                 }
             }
         }
         guard !files.isEmpty else { return nil }
 
-        // Re-read only what changed; an unchanged file's entries are already
-        // parsed. Everything outside the window drops out of the cache with it.
+        // Read only what was appended since last time. A file that shrank was
+        // replaced, so it starts over. Files that fell out of the window take
+        // their cache with them.
         var entries: [(Date, Int)] = []
-        var nextCache: [String: (mtime: Date, size: Int, entries: [(Date, Int)])] = [:]
+        var nextCache: [String: (offset: UInt64, entries: [(Date, Int)])] = [:]
         for f in files {
             let key = f.url.path
-            if let hit = transcriptCache[key], hit.mtime == f.mtime, hit.size == f.size {
-                nextCache[key] = hit
-                entries.append(contentsOf: hit.entries)
-                continue
+            var known = transcriptCache[key] ?? (offset: 0, entries: [])
+            if known.offset > UInt64(f.size) { known = (offset: 0, entries: []) }
+            if known.offset < UInt64(f.size) {
+                let (fresh, consumed) = Self.tokenEntries(in: f.url, from: known.offset)
+                known.entries.append(contentsOf: fresh)
+                known.offset += consumed
             }
-            let parsed = Self.tokenEntries(in: f.url)
-            nextCache[key] = (f.mtime, f.size, parsed)
-            entries.append(contentsOf: parsed)
+            // Old entries can never re-enter the window; drop them so a
+            // long-lived process doesn't accumulate a day's worth forever.
+            known.entries.removeAll { $0.0 <= horizon }
+            nextCache[key] = known
+            entries.append(contentsOf: known.entries)
         }
         transcriptCache = nextCache
 
@@ -233,18 +251,34 @@ final class UsageCenter {
                        detail: nil)
     }
 
-    /// (timestamp, tokens) for every assistant message in one transcript's tail.
-    /// A single message spans several transcript lines — one per content block,
-    /// each repeating the same usage object — so message ids are deduped here or
-    /// the totals come out several times too high.
-    private static func tokenEntries(in file: URL) -> [(Date, Int)] {
-        guard let text = tail(of: file, bytes: tailBytes) else { return [] }
+    /// (timestamp, tokens) for the assistant messages in the bytes a transcript
+    /// gained since `offset`, plus how many bytes were actually consumed —
+    /// always up to a line boundary, so the next read resumes cleanly even if
+    /// this one caught a half-written final line.
+    ///
+    /// A single message spans several transcript lines (one per content block),
+    /// each repeating the same usage object, so message ids are deduped or the
+    /// totals come out several times too high. The dedupe is per read; a
+    /// message's blocks are written together, so a boundary can't split them in
+    /// practice, and one duplicate would be a rounding error in a "~" figure.
+    private static func tokenEntries(in file: URL, from offset: UInt64) -> ([(Date, Int)], UInt64) {
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return ([], 0) }
+        defer { try? handle.close() }
+        try? handle.seek(toOffset: offset)
+        guard let data = try? handle.readToEnd(), !data.isEmpty else { return ([], 0) }
+        // Everything after the last newline is a line still being written.
+        guard let lastBreak = data.lastIndex(of: UInt8(ascii: "\n")) else { return ([], 0) }
+        let complete = data[data.startIndex...lastBreak]
+        let consumed = UInt64(complete.count)
+
         var out: [(Date, Int)] = []
         var seen = Set<String>()
-        for line in text.split(separator: "\n") {
+        // Lossy decode: a transcript can carry anything, and one bad byte must
+        // not cost the whole read.
+        for line in String(decoding: complete, as: UTF8.self).split(separator: "\n") {
             guard line.contains("\"usage\""), line.contains("\"assistant\""),
-                  let data = line.data(using: .utf8),
-                  let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let lineData = line.data(using: .utf8),
+                  let o = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
                   o["type"] as? String == "assistant",
                   let stamp = o["timestamp"] as? String, let t = parseISO(stamp),
                   let message = o["message"] as? [String: Any],
@@ -257,7 +291,7 @@ final class UsageCenter {
                 + (usage["output_tokens"] as? Int ?? 0)
                 + (usage["cache_creation_input_tokens"] as? Int ?? 0)))
         }
-        return out
+        return (out, consumed)
     }
 
     // MARK: - Small helpers

@@ -129,6 +129,7 @@ final class IslandController: NSObject {
         switch visibleSessions.first?.state {
         case .permission: return "approve?"
         case .question:   return "answer?"
+        case .error:      return "failed"
         default:          return word.isEmpty ? "" : "\(word)…"
         }
     }
@@ -186,13 +187,13 @@ final class IslandController: NSObject {
         // counts as gone too: its ts changed, and choices made on the old shape
         // must not answer the new one.
         let live = Set(requests.map(\.fileName))
-        for r in requests where requestTs[r.fileName] != r.ts {
-            requestTs[r.fileName] = r.ts
+        for r in requests where requestIdentity[r.fileName] != r.identity {
+            requestIdentity[r.fileName] = r.identity
             questionSelections[r.fileName] = nil
             questionSteps[r.fileName] = nil
             approvalCards[r.fileName] = nil
         }
-        requestTs = requestTs.filter { live.contains($0.key) }
+        requestIdentity = requestIdentity.filter { live.contains($0.key) }
         questionSelections = questionSelections.filter { live.contains($0.key) }
         questionSteps = questionSteps.filter { live.contains($0.key) }
         approvalCards = approvalCards.filter { live.contains($0.key) }
@@ -218,6 +219,12 @@ final class IslandController: NSObject {
         approvalCards = [:]
         rebuild(animated: true)
     }
+
+    /// The quota line moved. It is read fresh on every layout, so this only
+    /// needs a re-render — emphatically NOT a card rebuild: the token count
+    /// ticks up every minute, and dropping the cards with it would reset a
+    /// plan the user is halfway through reading.
+    func usageChanged() { rebuild(animated: false) }
 
     /// Opt-in: with nothing running, the pill slips away entirely. Only honored
     /// alongside the menu bar mark — in island-only mode the pill is the app's
@@ -401,9 +408,9 @@ final class IslandController: NSObject {
     /// rows on every store tick, so view state would be torn down mid-choice.
     private var questionSelections: [String: [Set<Int>]] = [:]
     private var questionSteps: [String: Int] = [:]
-    /// The ts each keyed request had when its state was created — the tell that
-    /// a same-named file now holds a different request.
-    private var requestTs: [String: TimeInterval] = [:]
+    /// What each keyed request WAS when its state was created — the tell that a
+    /// same-named file now holds a different request.
+    private var requestIdentity: [String: String] = [:]
 
     /// The question card under a session that asked one. When the hook carried the
     /// options, the card is answerable in place; otherwise it names the question

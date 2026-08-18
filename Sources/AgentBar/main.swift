@@ -51,7 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         SoundCenter.shared.start()
         UsageCenter.shared.onChange = { [weak self] in
             guard let self, self.islandRunning else { return }
-            self.island.settingsChanged() // re-render the footer's usage line
+            self.island.usageChanged() // re-render the footer's usage line
         }
         UsageCenter.shared.start()
 
