@@ -49,6 +49,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.start()
         requestStore.start()
         SoundCenter.shared.start()
+        UsageCenter.shared.onChange = { [weak self] in
+            guard let self, self.islandRunning else { return }
+            self.island.settingsChanged() // re-render the footer's usage line
+        }
+        UsageCenter.shared.start()
 
         // Settings changes fan out from here — the surfaces never reach into
         // each other. (One closure, single-assignment: this is the only owner.)
