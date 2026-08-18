@@ -268,6 +268,45 @@ enum RenderPreview {
             renderSlab([sized(hero, rowW), sized(c1, rowW)], name: "03d-error-row")
         }
 
+        // Scene 3e: the real IslandContentView, clamped short, with more rows
+        // than fit — the pinned footer must stay put and the rest must scroll.
+        do {
+            let view = IslandContentView(frame: NSRect(x: 0, y: 0, width: 460, height: 300))
+            view.topInset = 10
+            var rows: [NSView] = []
+            for i in 0..<6 {
+                let s = makeSession("overflow\(i)", [
+                    "agent": ["claude", "codex", "opencode", "qwen", "gemini", "cursor"][i],
+                    "state": "thinking", "label": "Thinking…",
+                    "project": "service-\(i + 1)", "cwd": "/tmp", "sessionId": "overflow\(i)",
+                    "pid": 1, "started": true, "ts": now, "started_at": now - 120 * (i + 1),
+                    "prompt": "migrate the \(["users", "orders", "billing", "audit", "search", "cache"][i]) table",
+                    "term_program": "WarpTerminal",
+                ])
+                let row = IslandRowView(session: s, mark: mark(for: s.agentID),
+                                        style: i == 0 ? .hero : .compact, onClick: { _ in })
+                rows.append(sized(row, rowW))
+            }
+            let usage = NSTextField(labelWithString: "Claude ~958k tok this 5h block · resets 15:00")
+            usage.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
+            usage.textColor = NSColor.white.withAlphaComponent(0.38)
+            let dots = NSTextField(labelWithString: "⋯")
+            dots.font = .systemFont(ofSize: 15, weight: .semibold)
+            dots.textColor = NSColor.white.withAlphaComponent(0.55)
+            let spacer = NSView()
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            let footer = NSStackView(views: [usage, spacer, dots])
+            footer.orientation = .horizontal
+            footer.translatesAutoresizingMaskIntoConstraints = false
+            footer.widthAnchor.constraint(equalToConstant: rowW).isActive = true
+            view.appearance = NSAppearance(named: .darkAqua)
+            view.setFooter(footer)
+            view.setRows(rows)
+            // Deliberately SHORTER than the content needs: this is the clamped
+            // case, where the footer must hold its place and the rows scroll.
+            render(view, name: "03e-pinned-footer", size: NSSize(width: 460, height: 220))
+        }
+
         // Scene 4: done hero with a recap — "You: …" asks, "Claude: …" answers.
         do {
             let doneSession = makeSession("done-recap", [

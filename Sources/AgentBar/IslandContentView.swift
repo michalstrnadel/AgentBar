@@ -11,6 +11,11 @@ final class IslandContentView: NSView {
     private let stack = NSStackView()
     private let scroll = NSScrollView()
     private let doc = FlippedView()
+    /// Pinned strip along the bottom edge — the way into Settings and Quit must
+    /// not scroll away under a panel full of cards.
+    private let footerHost = NSView()
+    private let footerHairline = NSView()
+    private var footerHeight: NSLayoutConstraint!
     private var stackTop: NSLayoutConstraint!
     private var tracking: NSTrackingArea?
 
@@ -52,12 +57,32 @@ final class IslandContentView: NSView {
         doc.addSubview(stack)
         scroll.documentView = doc
         addSubview(scroll)
+
+        footerHost.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(footerHost)
+        footerHeight = footerHost.heightAnchor.constraint(equalToConstant: 0)
+        // Only drawn once the rows actually overflow — with everything on
+        // screen there is nothing for the strip to separate itself from.
+        footerHairline.wantsLayer = true
+        footerHairline.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        footerHairline.alphaValue = 0
+        footerHairline.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(footerHairline)
+
         stackTop = stack.topAnchor.constraint(equalTo: doc.topAnchor, constant: 0)
         NSLayoutConstraint.activate([
             scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
             scroll.topAnchor.constraint(equalTo: topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scroll.bottomAnchor.constraint(equalTo: footerHost.topAnchor),
+            footerHost.leadingAnchor.constraint(equalTo: leadingAnchor),
+            footerHost.trailingAnchor.constraint(equalTo: trailingAnchor),
+            footerHost.bottomAnchor.constraint(equalTo: bottomAnchor),
+            footerHeight,
+            footerHairline.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.hPad),
+            footerHairline.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.hPad),
+            footerHairline.bottomAnchor.constraint(equalTo: footerHost.topAnchor),
+            footerHairline.heightAnchor.constraint(equalToConstant: 1),
             doc.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
             doc.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
             doc.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
@@ -96,9 +121,30 @@ final class IslandContentView: NSView {
         }
     }
 
-    /// Height the panel needs for the current rows. Measured from the stack rather
-    /// than the view: the view's own size is whatever the panel last gave it.
-    var contentHeight: CGFloat { topInset + stack.fittingSize.height + 12 }
+    /// Height the panel needs for the current rows plus the pinned footer.
+    /// Measured from the stack rather than the view: the view's own size is
+    /// whatever the panel last gave it.
+    var contentHeight: CGFloat { topInset + stack.fittingSize.height + 12 + footerHeight.constant }
+
+    /// The strip pinned along the bottom edge (nil while collapsed). It lives
+    /// outside the scroll view, so a panel full of cards still shows the way
+    /// into Settings and Quit.
+    func setFooter(_ view: NSView?) {
+        for v in footerHost.subviews { v.removeFromSuperview() }
+        guard let view else {
+            footerHeight.constant = 0
+            footerHairline.alphaValue = 0
+            return
+        }
+        view.translatesAutoresizingMaskIntoConstraints = false
+        footerHost.addSubview(view)
+        NSLayoutConstraint.activate([
+            view.centerXAnchor.constraint(equalTo: footerHost.centerXAnchor),
+            view.topAnchor.constraint(equalTo: footerHost.topAnchor, constant: 6),
+        ])
+        footerHost.layoutSubtreeIfNeeded()
+        footerHeight.constant = view.fittingSize.height + 12
+    }
 
     /// `resetScroll` on shape changes (collapsed↔expanded) only: the store ticks
     /// rebuild these rows about once a second while an agent works, and yanking
@@ -121,6 +167,13 @@ final class IslandContentView: NSView {
             ctx.duration = duration
             stack.animator().alphaValue = 1
         }
+    }
+
+    override func layout() {
+        super.layout()
+        // The hairline earns its keep only when rows pass under the strip.
+        let overflowing = stack.fittingSize.height + topInset > scroll.contentView.bounds.height
+        footerHairline.alphaValue = (overflowing && footerHeight.constant > 0) ? 1 : 0
     }
 
     override func updateTrackingAreas() {

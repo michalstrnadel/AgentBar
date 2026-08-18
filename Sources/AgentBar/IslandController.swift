@@ -281,10 +281,14 @@ final class IslandController: NSObject {
                            count: flash == nil ? visibleSessions.count : 0,
                            height: Self.pillHeight,
                            width: w - IslandContentView.hPad * 2, tint: flash?.tint)
+            content.setFooter(nil)
             content.setRows([pill], resetScroll: true)
             target = IslandGeometry.frame(width: w, height: Self.pillHeight, on: screen)
         case .expanded:
             content.topInset = 10
+            // The footer is pinned, not stacked: with the panel clamped at the
+            // screen edge the way into Settings and Quit has to stay reachable.
+            content.setFooter(footer())
             content.setRows(rows(), resetScroll: modeChanged)
             // The panel is sized to its content; when that outgrows the screen it
             // clamps here and the content view scrolls the overflow into reach.
@@ -340,7 +344,6 @@ final class IslandController: NSObject {
             out.append(more(visible.count - Self.maxRows))
         }
         if visible.isEmpty { out.append(emptyRow()) }
-        out.append(footer())
         return out
     }
 
@@ -355,8 +358,9 @@ final class IslandController: NSObject {
         return wrapper
     }
 
-    private func deferTitle(for s: Session) -> String {
-        s.entrypoint == "claude-desktop" ? "Answer in Claude" : "Answer in terminal"
+    private func deferTitle(for s: Session, plan: Bool = false) -> String {
+        let verb = plan ? "Review" : "Answer"
+        return s.entrypoint == "claude-desktop" ? "\(verb) in Claude" : "\(verb) in terminal"
     }
 
     /// One approval card per request, cached for the request's lifetime: the
@@ -377,7 +381,7 @@ final class IslandController: NSObject {
             }
             let view = card(IslandApprovalView(
                 request: r,
-                deferTitle: deferTitle(for: s),
+                deferTitle: deferTitle(for: s, plan: r.isPlanRequest),
                 width: Self.expandedWidth - IslandContentView.hPad * 2 - Self.cardIndent
             ) { [weak self] behavior in
                 // Only confirm what actually reached disk: a dropped answer leaves the
