@@ -4,9 +4,11 @@ import Foundation
 /// written by the hook scripts in `Scripts/hooks/`.
 struct Session {
     enum State: String {
-        case idle, thinking, tool, permission, question, done
+        case idle, thinking, tool, permission, question, done, error
 
         var isWorking: Bool { self == .thinking || self == .tool }
+        /// The turn is over either way; only `done` earned the celebration.
+        var isFinished: Bool { self == .done || self == .error || self == .idle }
     }
 
     let id: String
@@ -33,7 +35,9 @@ struct Session {
         switch state {
         case .permission:      return 3
         case .question:        return 2
-        case .thinking, .tool: return 1
+        // A failed turn ranks with the working ones: it is finished, but it is
+        // the row worth reading, so a pile of clean "Done"s can't bury it.
+        case .thinking, .tool, .error: return 1
         case .idle, .done:     return 0
         }
     }

@@ -133,6 +133,8 @@ final class SoundCenter {
             if state == .done, prev?.isWorking == true, !decayed.contains(id) {
                 fired.insert(.done)
             }
+            // A failed turn is finished, but it is not a "ta-da" — no cue at
+            // all rather than a celebration over an error.
         }
         // One tick, one sound — most urgent wins.
         for cue in [Cue.permission, .question, .done] where fired.contains(cue) {
