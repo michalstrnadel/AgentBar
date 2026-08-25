@@ -21,7 +21,10 @@ enum MenuBuilder {
                 item.attributedTitle = rowTitle(s)
                 item.toolTip = rowToolTip(s)
                 let sessionRequests = requests.filter { $0.sessionId == s.id }
-                if s.state == .permission {
+                // Cloud rows get no approval affordances: there is no local hook a
+                // keystroke or answer file could reach — the plain row (which opens
+                // the session's URL) is the whole offer.
+                if s.state == .permission, s.entrypoint != "cloud" {
                     if !sessionRequests.isEmpty {
                         // Row click defers to the session's own UI; actions live right below.
                         menu.addItem(item)

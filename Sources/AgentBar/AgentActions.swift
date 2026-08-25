@@ -24,6 +24,8 @@ enum AgentActions {
             // CLI-only agents open into the user's terminal (chosen in Open ▸ Terminal,
             // or auto-detected from the most recent session).
             TerminalApp.preferred(sessions: currentSessions()).open()
+        case .url(let s):
+            if let url = URL(string: s) { ws.open(url) }
         }
     }
 
@@ -50,6 +52,17 @@ enum AgentActions {
     /// with the hook still blocked. (A question's wizard is already on screen, but
     /// deferring still retires the island card — answered where the user is going.)
     static func focus(_ s: Session, requests: [ApprovalRequest]) {
+        // A cloud session lives at a URL, not in anything local: open it and stop —
+        // there is no tty to resolve and no blocked hook to release. Checked first
+        // so no local-only path can ever run for a row the poller wrote.
+        if s.entrypoint == "cloud" {
+            if let url = URL(string: s.url), url.scheme != nil {
+                NSWorkspace.shared.open(url)
+            } else {
+                NSSound.beep() // writer forgot the url — the row has nowhere to go
+            }
+            return
+        }
         if s.state == .permission || s.state == .question,
            let r = requests.first(where: { $0.sessionId == s.id }) {
             reportFailedAnswer(AnswerWriter.write(behavior: "defer", for: r))
