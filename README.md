@@ -228,6 +228,7 @@ rm -f ~/.config/opencode/plugins/agentbar.js
 | Qwen Code | working / done / failed | yes | Q ring | Claude-style hooks in `~/.qwen/settings.json` (auto-wired if Qwen is installed); remote approval waits until its decision contract is verified |
 | OpenCode | working / approval / done / failed | yes | prompt chevron | plugin in `~/.config/opencode/plugins/` (auto-installed if OpenCode is installed); observe-only |
 | Google Antigravity | working / done | yes | pixel rainbow arch + dot-matrix | hooks in `~/.gemini/antigravity{,-cli}/hooks.json` (auto-wired); desktop 2.3.x only honors per-workspace `.agents/hooks.json`, and only `PostToolUse` fires — quiet sessions decay to done |
+| Devin (cloud) | working / blocked / finished / suspended | yes | D letterform | no local process at all — rows come from the [cloud poller](Scripts/cloud/), clicking opens the exact thread in Devin Desktop (or the web) |
 
 Hook readiness: Claude Code, Codex (`notify`), Cursor (`hooks.json`), Gemini
 (`settings.json`), Antigravity (`hooks.json`), Qwen Code (`settings.json`), and
@@ -235,6 +236,26 @@ OpenCode (plugin) hooks all install automatically at launch (idempotently — ev
 launch re-checks, nothing is duplicated) for the tools you have. Copilot ships with its mascot, menu entry, and
 the keystroke-approval backend already in place — the moment it exposes session
 events, support is one small hook script away.
+
+## Cloud agents
+
+Runs that live on a vendor's infrastructure — **Cursor cloud agents**, **Devin
+sessions**, **Codex cloud tasks** — have no local pid, tty, or hook, but they are
+sessions all the same. The optional [`Scripts/cloud/`](Scripts/cloud/) poller
+mirrors them into the bar as protocol rows (`entrypoint: "cloud"` plus a `url`);
+a row click opens the run where it actually lives: the `cursor://` run deep
+link, the exact thread in Devin Desktop (via its ACP URL handler, with the web
+thread as the handler's own fallback), or the task on chatgpt.com. Cloud rows
+never grow approval affordances — there is no local hook an answer could reach.
+
+```bash
+./Scripts/cloud/install.sh    # launchd agent + a starter ~/.agentbar/cloud.json
+```
+
+Cursor and Devin poll their REST APIs with keys from their dashboards; Codex
+rides the `codex` CLI's existing login. Vendors fail independently — one expired
+key collapses that vendor to a single clickable "check API key" row and never
+touches the others. Setup, config, and lifecycle rules: [Scripts/cloud/README.md](Scripts/cloud/README.md).
 
 ## Dynamic Island
 
