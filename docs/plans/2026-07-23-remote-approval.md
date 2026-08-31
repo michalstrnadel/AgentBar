@@ -1,7 +1,10 @@
 # Remote Allow/Deny Implementation Plan
 
 > Historical working plan, kept as-is for reference — task-runner directives and
-> machine-specific paths reflect the original development session.
+> machine-specific paths reflect the original development session. Details have
+> since been superseded by shipped work (e.g. Task 4's `approveKeys: nil` for
+> Antigravity — it approves via Return since 1.9.0); the normative contract is
+> [`docs/protocol.md`](../protocol.md).
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

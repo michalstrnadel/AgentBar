@@ -29,7 +29,7 @@ the authoritative map of what AgentBar consumes and why. Sources:
 | `Notification` (`permission_prompt`, `idle_prompt`, …) | Removed in 1.2.1: notifications can arrive *late* (after the upstream dialog-flash race, claude-code #12176) and overwrite newer state — sessions got stuck on "needs approval". `permission.js` is the sole owner of the permission signal. |
 | `SubagentStart` / `SubagentStop` | Subagent activity is already reflected through the parent session's tool events. |
 | `PreCompact` / `PostCompact` | Compaction is brief and self-resolving; a dedicated state would flicker. Candidate for a future "compacting…" label. |
-| `PostToolUseFailure`, `ConfigChange`, `FileChanged`, … | No user-facing signal AgentBar needs — a failed tool call is followed by more of the same turn. (Qwen Code, which reuses these scripts, *does* register its `StopFailure`: there the turn itself ended badly, which is the `error` state.) |
+| `PostToolUseFailure`, `ConfigChange`, `FileChanged`, … | No user-facing signal AgentBar needs — a failed tool call is followed by more of the same turn. (Qwen Code, which reuses these scripts, *does* register `PostToolUseFailure` — mapped to the same "thinking" as a successful `PostToolUse`, so an errored tool keeps animating the turn — and its `StopFailure`, where the turn itself ended badly: the `error` state.) |
 
 ## Known upstream quirks the design accounts for
 

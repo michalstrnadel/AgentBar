@@ -7,8 +7,10 @@
 > - **State protocol.** `state` also has `question`, and three optional additive
 >   fields exist (`started_at`, `prompt`, `model`). Normative source:
 >   [`docs/protocol.md`](../protocol.md) — not the section below.
-> - **Agents.** Cursor and Gemini CLI ship hooks too; Cowork and Antigravity are
->   watched rather than hooked (`CoworkWatcher`, `AntigravityWatcher`).
+> - **Agents.** Cursor, Gemini CLI, Qwen Code and OpenCode ship hooks (or a
+>   plugin) too; Cowork and Antigravity are watched rather than hooked
+>   (`CoworkWatcher`, `AntigravityWatcher`) — so the "Antigravity live status
+>   waits on upstream" line under *Agent event support* below is obsolete.
 > - **Units.** The unit list omits everything added after 1.0.0 — the island and
 >   its welcome window (`Presentation`, `MascotDriver`, `AgentActions`,
 >   `WelcomeWindow`, `IslandPanel`, `IslandContentView`, `IslandController`), the
@@ -17,8 +19,9 @@
 >   the watchers above, `SettingsWindow`, `Terminals`, `IconColor` and
 >   `UpdateChecker`. Island work:
 >   [`docs/plans/2026-07-28-presentation-modes-and-island.md`](../plans/2026-07-28-presentation-modes-and-island.md).
-> - **Non-goals.** The update checker listed as a v1 non-goal now exists
->   (`Sources/AgentBar/UpdateChecker.swift`).
+> - **Non-goals.** Two v1 non-goals now exist: the update checker
+>   (`Sources/AgentBar/UpdateChecker.swift`) and sounds
+>   (`Sources/AgentBar/SoundCenter.swift` — opt-in, synthesized, 1.11.0).
 
 ## Goal
 A from-scratch, best-practices rewrite of AI Status Notifier as a multi-agent macOS
