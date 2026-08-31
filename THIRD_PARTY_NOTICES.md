@@ -1,8 +1,8 @@
 # Third-Party Notices
 
-AgentBar identifies third-party AI coding tools in its menu bar. The marks below are
-used nominatively — to indicate which tool a session belongs to — and remain the
-property of their respective owners.
+AgentBar identifies third-party AI coding tools in its menu bar and its Dynamic
+Island panel. The marks and names below are used nominatively — to indicate which
+tool a session belongs to — and remain the property of their respective owners.
 
 - **OpenAI logo** (shown for Codex sessions) — trademark of OpenAI. Vector sourced from
   the public simple-icons collection (icons released under CC0; the trademark itself is not).
@@ -20,6 +20,14 @@ property of their respective owners.
   to identify the tool.
 - **Clawd crab sprite** (shown for Claude sessions) — pixel-art frames derived from
   `Clawd-CrabWalking.gif`; Clawd is the community mascot of Anthropic's Claude.
+- **Qwen name** (shown for Qwen Code sessions) — "Qwen" is a trademark of Alibaba
+  Group. The Q-ring mark AgentBar shows is original artwork drawn for this project,
+  not Alibaba's logo; the name is used nominatively to identify the tool.
+- **OpenCode name** (shown for OpenCode sessions) — OpenCode is an open-source
+  project; its name remains with its maintainers. The terminal-chevron mark
+  AgentBar shows is original artwork drawn for this project; the name is used
+  nominatively to identify the tool.
 
 AgentBar is an independent project and is not affiliated with, endorsed by, or
-sponsored by Anthropic, OpenAI, GitHub, or Google.
+sponsored by Anthropic, OpenAI, GitHub, Google, Anysphere, Alibaba, or the
+OpenCode maintainers.

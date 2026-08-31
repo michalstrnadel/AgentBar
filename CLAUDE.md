@@ -4,7 +4,8 @@ Context for AI coding assistants working on this repository.
 
 ## Project
 AgentBar is a native macOS status app (Swift, AppKit, SPM) showing live status of
-AI coding agents (Claude Code, Codex, Cursor, Gemini, Copilot, Antigravity). Node.js hook scripts in
+AI coding agents (Claude Code & Cowork, Codex, Cursor, Gemini, Copilot,
+Antigravity, Qwen Code, OpenCode). Node.js hook scripts in
 `Scripts/hooks/` write per-session JSON to `~/.agentbar/state.d/`; the app watches
 that folder. It presents itself as a menu bar item, a Dynamic Island panel under the
 notch, or both — the user picks in the welcome window. State file protocol (normative):
@@ -32,6 +33,7 @@ open "build/AgentBar.app"
    the human, and must always time out silently to the normal terminal prompt.
 4. Adding an agent: entry in `Agents.swift`, sprite in `Sources/AgentBar/Sprites/`,
    optional hook dir in `Scripts/hooks/<agent>/` plus its installer step in
-   `HookInstaller.swift`, and the agent id in the `docs/protocol.md` list and the
-   README agent table. Nothing else should need touching.
+   `HookInstaller.swift` AND the Linux CLI's `install-hooks`, and the agent id in
+   the `docs/protocol.md` list, the README agent table, and the agent list above.
+   Nothing else should need touching.
 5. Third-party marks stay listed in `THIRD_PARTY_NOTICES.md`.
