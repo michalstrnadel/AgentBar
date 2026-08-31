@@ -337,6 +337,27 @@ sleep 1
 check "lifecycle: no relaunch when up" '[ ! -e "$FAKEOPEN_MARK" ]'
 unset FAKEOPEN_MARK
 
+# 16b. SessionStart also fires mid-life (resume, /clear, auto-compact) on the
+# SAME session id — it must MERGE, not reset: started_at is load-bearing for
+# elapsed time, prompt/model name the task, and a compact mid-turn must not
+# hide (started:false) or idle a session that is still working.
+fresh_home
+LC_STATE="$HOME/.agentbar/state.d/mgsess.json"
+printf '{"session_id":"mgsess","cwd":"/tmp/proj","prompt":"fix the auth bug","model":"claude-opus-5"}' | "$NODE" Scripts/hooks/claude/update.js prompt
+"$NODE" -e 'const fs=require("fs");const f=process.argv[1];const j=JSON.parse(fs.readFileSync(f));j.started_at=4444;fs.writeFileSync(f,JSON.stringify(j))' "$LC_STATE"
+printf '{"session_id":"mgsess","cwd":"/tmp/proj","source":"compact"}' | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/claude/lifecycle.js start
+check "compact: started_at preserved" 'grep -q "\"started_at\":4444" "$LC_STATE"'
+check "compact: prompt survives"      'grep -q "\"prompt\":\"fix the auth bug\"" "$LC_STATE"'
+check "compact: model survives"       'grep -q "\"model\":\"claude-opus-5\"" "$LC_STATE"'
+check "compact: stays visible"        'grep -q "\"started\":true" "$LC_STATE"'
+check "compact: state preserved"      'grep -q "\"state\":\"thinking\"" "$LC_STATE"'
+printf '{"session_id":"mgsess","cwd":"/tmp/proj","source":"resume"}' | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/claude/lifecycle.js start
+check "resume: back at the prompt"    'grep -q "\"state\":\"idle\"" "$LC_STATE"'
+check "resume: history stays visible" 'grep -q "\"started\":true" "$LC_STATE"'
+check "resume: started_at preserved"  'grep -q "\"started_at\":4444" "$LC_STATE"'
+printf '{"session_id":"mgsess","cwd":"/tmp/proj","source":"clear"}' | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/claude/lifecycle.js start
+check "clear: hidden until activity"  'grep -q "\"started\":false" "$LC_STATE"'
+
 # 17. the permission hook's own state write must carry the optional task fields
 # through — its {...prev} merge is exactly what the protocol relies on
 fresh_home
@@ -462,6 +483,21 @@ check "successor request survives"  '[ -e "$HOME/.agentbar/requests.d/$REQ" ]'
 check "successor answer survives"   '[ -e "$HOME/.agentbar/answers.d/$REQ" ]'
 check "lingering hook stays silent" '[ ! -s "$HOME/out.json" ]'
 
+# 22a. the mirror image: an answer that NAMES a different hook (frontends stamp
+# the hookPid from the request they displayed) was aimed at a predecessor of
+# this request — swallowed, the wait continues; one naming this hook lands.
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=10 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"behavior":"allow","hookPid":999999}' > "$HOME/.agentbar/answers.d/$REQ"
+sleep 1
+check "foreign hookPid: swallowed, still waiting" \
+  '[ ! -e "$HOME/.agentbar/answers.d/$REQ" ] && kill -0 "$hookpid" 2>/dev/null'
+printf '{"behavior":"allow","hookPid":%s}' "$hookpid" > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "own hookPid: answer lands"   'grep -q "\"behavior\":\"allow\"" "$HOME/out.json"'
+
 # 23. lifecycle's stale sweep may only remove state files whose agent is gone
 fresh_home
 mkdir -p "$HOME/.agentbar/state.d"
@@ -473,6 +509,20 @@ printf '{"session_id":"newsess","cwd":"/tmp/proj"}' \
   | PATH="$TESTROOT/nobin:$PATH" AGENTBAR_FORCE_APP=0 "$NODE" Scripts/hooks/claude/lifecycle.js start
 check "sweep keeps live session"    '[ -e "$HOME/.agentbar/state.d/livesess.json" ]'
 check "sweep drops dead session"    '[ ! -e "$HOME/.agentbar/state.d/deadsess.json" ]'
+
+# 24. the 4KB toolInputPretty cut must never split a surrogate pair: Swift's
+# JSONSerialization rejects the whole file over one lone half, which blocks the
+# approval while the hook waits for an answer no frontend can render. The
+# payload is sized so the cut lands exactly on an emoji's high surrogate.
+fresh_home
+"$NODE" -e 'const e={session_id:"testsess",prompt_id:"p9",tool_name:"Bash",tool_input:{command:"a".repeat(3999)+"\u{1F41B}".repeat(100)}};process.stdout.write(JSON.stringify(e))' \
+  | AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=5 "$NODE" "$HOOK" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+check "pretty cut: utf16-clean" \
+  'python3 -c "import json,sys;json.load(open(sys.argv[1]))[\"toolInputPretty\"].encode(\"utf-8\")" "$HOME/.agentbar/requests.d/$REQ"'
+printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
 
 echo "---"
 echo "$pass passed, $fail failed"

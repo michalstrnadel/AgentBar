@@ -133,8 +133,8 @@ is ignored upstream. `questions` carries what the wizard shows (≤ 4 questions,
 
 Answer (frontend → hook):
 ```json
-{ "behavior": "allow", "rule": { } }
-{ "behavior": "answer", "answers": [["JWT"]] }
+{ "behavior": "allow", "rule": { }, "hookPid": 12399 }
+{ "behavior": "answer", "answers": [["JWT"]], "hookPid": 12399 }
 ```
 `behavior`: `allow` | `always` | `deny` | `defer` | `answer`. `rule` only with
 `always`, and the hook accepts it **only** if it structurally equals one of the
@@ -149,6 +149,13 @@ a `kind:"plan"` one: a frontend that speaks only the older verbs must leave the
 question answerable rather than silently deferring it while showing "allowed". `defer` (or junk) makes the hook exit silently, falling
 back to the agent's normal terminal prompt (for questions: the wizard, which is
 already on screen).
+
+`hookPid` SHOULD echo the request's own `hookPid`. Request names repeat across
+the tools of one turn, so a successor hook can be polling the same file name the
+frontend answered — the hook **swallows** (deletes, keeps waiting) an answer
+naming a hook other than itself, so a frontend that stamps it can never answer a
+request it wasn't displaying. Answers without `hookPid` (older frontends) are
+accepted as before.
 
 Lifecycle: the hook polls `answers.d` (100 ms), times out after 600 s (env
 `AGENTBAR_APPROVAL_TIMEOUT`), and deletes both files on exit (including SIGTERM/
