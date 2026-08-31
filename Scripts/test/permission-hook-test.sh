@@ -316,6 +316,25 @@ printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"ty
 printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"%s","last_assistant_message":"fresh payload text"}' "$FIXTURE" | "$NODE" "$UPDATE" stop
 check "recap: payload beats transcript"  'grep -q "\"recap\":\"fresh payload text\"" "$STATE"'
 
+# 15h. the activity ring: tool steps accumulate oldest → newest, consecutive
+# duplicates collapse, the ring caps at 5, it rides through post/stop — and a
+# new prompt starts it clean, same reset rule the recap follows
+ACT="$HOME/.agentbar/state.d/actsess.json"
+printf '{"session_id":"actsess","prompt":"task"}' | "$NODE" "$UPDATE" prompt
+check "activity: none before tools"     '! grep -q "\"activity\"" "$ACT"'
+printf '{"session_id":"actsess","tool_name":"Read"}' | "$NODE" "$UPDATE" pre
+printf '{"session_id":"actsess","tool_name":"Read"}' | "$NODE" "$UPDATE" pre
+printf '{"session_id":"actsess","tool_name":"Grep"}' | "$NODE" "$UPDATE" pre
+check "activity: accumulates, deduped"  'grep -q "\"activity\":\[\"Reading\",\"Searching\"\]" "$ACT"'
+printf '{"session_id":"actsess","tool_name":"Grep"}' | "$NODE" "$UPDATE" post
+check "activity: survives post"         'grep -q "\"activity\":\[\"Reading\",\"Searching\"\]" "$ACT"'
+for t in Bash Edit Write WebFetch; do
+  printf '{"session_id":"actsess","tool_name":"%s"}' "$t" | "$NODE" "$UPDATE" pre
+done
+check "activity: ring capped at 5"      'grep -q "\"activity\":\[\"Searching\",\"Running command\",\"Editing\",\"Writing\",\"Browsing web\"\]" "$ACT"'
+printf '{"session_id":"actsess","prompt":"next"}' | "$NODE" "$UPDATE" prompt
+check "activity: cleared on new prompt" '! grep -q "\"activity\"" "$ACT"'
+
 # 16. lifecycle start seeds started_at (fake `open` first in PATH so the test
 # can't launch a real AgentBar out of nowhere)
 fresh_home

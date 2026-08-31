@@ -1,12 +1,14 @@
 # Plan — presentation modes: menu bar, notch island, and a first-run chooser
 
 Status: **delivered 2026-07-29**, annotations refreshed 2026-08-31 — Phases 0–2
-shipped with the plan. Phase 3 (content parity) has since shipped item 1
-(elapsed time), item 3 (answerable questions, 1.11.0) and item 4 (plan preview,
-1.12.0); only item 2, the activity feed, remains open. Of Phase 4 (polish),
-sounds (1.11.0) and the precise terminal jump (1.12.0) shipped; the menu-bar
-visual pass remains open. The usage/quota entry under *Explicitly not doing*
-was re-opened on different terms and shipped in 1.12.0 — see the note there.
+shipped with the plan, and Phase 3 (content parity) is now complete: item 1
+(elapsed time), item 3 (answerable questions, 1.11.0), item 4 (plan preview,
+1.12.0) and item 2 (the activity feed — the `activity` ring in
+`docs/protocol.md`, rendered on the island hero). Of Phase 4 (polish), sounds
+(1.11.0) and the precise terminal jump (1.12.0) shipped, and the menu rows
+carry agent marks and elapsed time now; the full custom-NSView row pass is the
+one item still open. The usage/quota entry under *Explicitly not doing* was
+re-opened on different terms and shipped in 1.12.0 — see the note there.
 See *As built* for where the shipped app differs from this draft; everything
 below the fold is the original 2026-07-28 draft, kept because its survey of the
 codebase is what the work was costed from.
@@ -237,10 +239,11 @@ Ordered by value per unit of work.
    decoded in `Session.swift` (`elapsed`) and rendered on the island rows
    (`IslandContentView`). Absent field → no elapsed shown, so old sessions and
    third-party writers stay valid; covered by `Scripts/test/permission-hook-test.sh`.
-2. **Activity feed.** — still open. A short ring of recent tool events per
-   session. Cheapest honest version: the Claude `update.js` hook keeps the last N
-   `label` values in the state file. Bounded size, no new files, no new protocol
-   surface.
+2. **Activity feed.** — **done**: exactly the cheapest honest version proposed
+   here. `update.js` keeps the last 5 `label` values (consecutive duplicates
+   collapsed) as the optional `activity` field, reset on each new prompt like
+   `recap`; the island hero renders it as a quiet breadcrumb while the session
+   works. Covered by `Scripts/test/permission-hook-test.sh`.
 3. **Answerable questions.** — **done** (1.11.0): `permission.js` blocks on
    `AskUserQuestion` the way it blocks on permission requests, emits the options
    as `kind:"question"` into `requests.d` (`docs/protocol.md`), and the menu,
@@ -259,10 +262,12 @@ Ordered by value per unit of work.
 - **Precise terminal jump.** — **done** (1.12.0, `TerminalFocus.swift`): iTerm2,
   Terminal.app and WezTerm land on the exact tab/pane by tty; Warp, Ghostty and
   kitty stay app-level, as scoped here.
-- **Menu-bar mode visual pass.** — still open. Custom `NSView` session rows
-  (typography, elapsed, inline mark) instead of attributed strings. Caveat: this
-  interacts with the never-shrink `updateInPlace` logic — budget time for it, or
-  accept full repopulate for view rows.
+- **Menu-bar mode visual pass.** — partly done: session rows carry the agent's
+  menu mark (`item.image`, same glyphs as the Open submenu) and elapsed time in
+  the dimmed suffix — inside the attributed-string rows, so the never-shrink
+  `updateInPlace` logic is untouched. The full custom-`NSView` row rewrite this
+  item proposed remains open, with the same caveat: it interacts with
+  `updateInPlace` — budget time for it, or accept full repopulate for view rows.
 
 ## Explicitly not doing
 

@@ -6,6 +6,14 @@ All notable changes to AgentBar are documented here. This project follows
 ## Unreleased
 
 ### Added
+- **Activity feed.** The island hero shows the turn's recent tool steps as a
+  quiet breadcrumb ("Reading · Searching · Editing") while the session works —
+  the last item of the island plan's content-parity phase. Carried as the
+  optional, additive `activity` field in the state protocol (≤ 5 short labels,
+  consecutive duplicates collapsed, reset on each new prompt like `recap`).
+- **Menu rows say who and how long.** Each session row in the dropdown carries
+  its agent's mark (the same glyphs the Open submenu uses) and the session's
+  elapsed time next to the state text.
 - **The Linux CLI wires Qwen Code and OpenCode.** `agentbar install-hooks` now
   covers the same seven tools the macOS installer does: Qwen's Claude-style
   hooks land in `~/.qwen/settings.json` (failure events included) and the
@@ -64,6 +72,15 @@ is covered by a test that fails on the old code.
   actually installed (Antigravity/Qwen/OpenCode included);
   `THIRD_PARTY_NOTICES.md` covers all eight agents; and the design docs'
   status notes match the shipped app instead of contradicting it.
+- **A dropped folder watch comes back.** If re-opening `state.d`/`requests.d`
+  failed at the moment the directory was replaced, fs-event responsiveness
+  silently degraded to the 2 s poll forever; the poll now re-arms the watch.
+- **The global Allow chord can't tick success over a plan.** With the session
+  gone from the store, a hotkey "allow" on an `ExitPlanMode` request used to
+  play the confirm tick while the hook (per protocol) swallowed the answer.
+- **Update fallback URL respects the release's real tag.** The downloader no
+  longer hardcodes a `v` prefix when a release lacks the `AgentBar.app.zip`
+  asset — a release tagged without one used to 404 as "Download failed".
 
 ## 1.12.0 - 2026-08-18
 
