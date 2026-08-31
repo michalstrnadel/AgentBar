@@ -176,7 +176,7 @@ and the hooks are plain Node — so on Linux, the `agentbar` CLI is the frontend
 
 ```bash
 git clone https://github.com/michalstrnadel/AgentBar.git && cd AgentBar
-./Scripts/cli/agentbar install-hooks   # wires Claude/Codex/Cursor/Gemini hooks
+./Scripts/cli/agentbar install-hooks   # wires Claude/Codex/Cursor/Antigravity/Gemini/Qwen/OpenCode hooks
 sudo ln -s "$PWD/Scripts/cli/agentbar" /usr/local/bin/agentbar   # optional
 
 agentbar                 # session list (same rows as the macOS menu)
