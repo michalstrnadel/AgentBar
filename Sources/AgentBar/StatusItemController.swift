@@ -115,6 +115,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // keystroke approval instead of an allow the hook is obliged to
         // swallow — the chord must never tick success over a no-op.
         guard let session = sessions.first(where: { $0.id == r.sessionId }) else {
+            // Without the session a plan can't take its keystroke approval, and a
+            // raw "allow" is swallowed by the hook (docs/protocol.md) — acking it
+            // would tick success over a no-op, the exact thing the comment above
+            // promises never happens. Deny still works: it's a real hook decision.
+            if r.isPlanRequest, behavior == "allow" { return }
             AgentActions.ack(AgentActions.reportFailedAnswer(
                 AnswerWriter.write(behavior: behavior, for: r)))
             return
