@@ -1,11 +1,15 @@
 # Plan — presentation modes: menu bar, notch island, and a first-run chooser
 
-Status: **delivered 2026-07-29** — Phases 0–2 shipped; of Phase 3 (content
-parity) only item 3.1, elapsed time, has since shipped, and Phase 4 (polish) is
-deliberately not started. See *As built* for where the
-shipped app differs from this draft; everything below the fold is the original
-2026-07-28 draft, kept because its survey of the codebase is what the work was
-costed from.
+Status: **delivered 2026-07-29**, annotations refreshed 2026-08-31 — Phases 0–2
+shipped with the plan. Phase 3 (content parity) has since shipped item 1
+(elapsed time), item 3 (answerable questions, 1.11.0) and item 4 (plan preview,
+1.12.0); only item 2, the activity feed, remains open. Of Phase 4 (polish),
+sounds (1.11.0) and the precise terminal jump (1.12.0) shipped; the menu-bar
+visual pass remains open. The usage/quota entry under *Explicitly not doing*
+was re-opened on different terms and shipped in 1.12.0 — see the note there.
+See *As built* for where the shipped app differs from this draft; everything
+below the fold is the original 2026-07-28 draft, kept because its survey of the
+codebase is what the work was costed from.
 
 ## As built (2026-07-29)
 
@@ -54,7 +58,10 @@ no sprite is ever resized and `fit`'s `.high` interpolation never runs on them.
 Shipped files: `Presentation.swift`, `MascotDriver.swift`, `AgentActions.swift`,
 `WelcomeWindow.swift`, `IslandPanel.swift`, `IslandContentView.swift`,
 `IslandController.swift`. `StatusItemController.swift` shrank to the status item
-and the menu; `HookInstaller` reports which agents it wired.
+and the menu; `HookInstaller` reports which agents it wired. One planned unit
+never materialized: Phase 0's `SessionsViewModel.swift` — the split that shipped
+is `MascotDriver` (shared rendering) + `AgentActions` (shared behavior), same
+job, two smaller files.
 
 Not done at 2026-07-29, and not regretted then: elapsed time, the task name and
 the model chip that comparable panels show. All three need new `state.d` fields
@@ -230,38 +237,41 @@ Ordered by value per unit of work.
    decoded in `Session.swift` (`elapsed`) and rendered on the island rows
    (`IslandContentView`). Absent field → no elapsed shown, so old sessions and
    third-party writers stay valid; covered by `Scripts/test/permission-hook-test.sh`.
-2. **Activity feed.** A short ring of recent tool events per session. Cheapest
-   honest version: the Claude `update.js` hook keeps the last N `label` values in
-   the state file. Bounded size, no new files, no new protocol surface.
-3. **Answerable questions.** Make `permission.js` block on `AskUserQuestion` the
-   way it blocks on permission requests, emit the options into `requests.d`, and
-   render them as a numbered list. This changes hook behaviour for every Claude
-   user — it needs the same care and the same timeout-to-terminal fallback the
-   permission path has (repo rule 3), plus tests in
-   `Scripts/test/permission-hook-test.sh`.
-4. **Plan preview.** Hook ExitPlanMode, carry the markdown into `requests.d`,
-   render it. Nice, but the largest new surface for the least frequent event —
-   last.
+2. **Activity feed.** — still open. A short ring of recent tool events per
+   session. Cheapest honest version: the Claude `update.js` hook keeps the last N
+   `label` values in the state file. Bounded size, no new files, no new protocol
+   surface.
+3. **Answerable questions.** — **done** (1.11.0): `permission.js` blocks on
+   `AskUserQuestion` the way it blocks on permission requests, emits the options
+   as `kind:"question"` into `requests.d` (`docs/protocol.md`), and the menu,
+   island and CLI all answer them; multi-question calls became the island wizard
+   in 1.12.0. Covered by `Scripts/test/permission-hook-test.sh`.
+4. **Plan preview.** — **done** (1.12.0): ExitPlanMode carries the markdown as
+   `kind:"plan"`, rendered by `MarkdownLite` on the island with Keep planning /
+   Approve plan (the approve is a keystroke into the session's own dialog — a
+   hook allow can't carry the mode choice).
 
 ## Phase 4 — polish
 
-- **Sounds.** Distinct cues for needs-approval / done / failed. Synthesised, no
-  asset bloat, off by default, one toggle. Sound on *approval needed* is the one
-  that actually earns its keep.
-- **Precise terminal jump.** Today a row click focuses the terminal *app*.
-  Landing on the exact tab/split is per-terminal work (iTerm2 has scripting;
-  Warp, Ghostty and Kitty each differ). Scope to iTerm2 + Terminal.app first,
-  behind the existing `term_program` field, and only if the plumbing stays small.
-- **Menu-bar mode visual pass.** Custom `NSView` session rows (typography,
-  elapsed, inline mark) instead of attributed strings. Caveat: this interacts
-  with the never-shrink `updateInPlace` logic — budget time for it, or accept
-  full repopulate for view rows.
+- **Sounds.** — **done** (1.11.0, `SoundCenter.swift`): needs-approval /
+  question / done cues plus an answer tick, synthesised in code, off by default,
+  one toggle.
+- **Precise terminal jump.** — **done** (1.12.0, `TerminalFocus.swift`): iTerm2,
+  Terminal.app and WezTerm land on the exact tab/pane by tty; Warp, Ghostty and
+  kitty stay app-level, as scoped here.
+- **Menu-bar mode visual pass.** — still open. Custom `NSView` session rows
+  (typography, elapsed, inline mark) instead of attributed strings. Caveat: this
+  interacts with the never-shrink `updateInPlace` logic — budget time for it, or
+  accept full repopulate for view rows.
 
 ## Explicitly not doing
 
 - **Usage / quota display.** Already tried and thrown away: the
   `/api/oauth/usage` endpoint is chronically 429 rate-limited, and a local
-  estimate was rejected. Do not re-open this.
+  estimate was rejected. Do not re-open this. *(Re-opened after all in 1.12.0,
+  on terms this entry didn't foresee: `UsageCenter` reads the CLIs' own local
+  files — no network, no endpoint, no estimate — which sidesteps both reasons
+  for the original rejection.)*
 - **SSH / remote agents.** Large, separate concern; the file protocol has no
   transport story yet.
 - **Chasing an agent count.** Support follows real usage, not a number on a
