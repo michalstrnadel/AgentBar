@@ -20,6 +20,9 @@ enum MenuBuilder {
                 item.representedObject = s
                 item.attributedTitle = rowTitle(s)
                 item.toolTip = rowToolTip(s)
+                // The same mark the Open submenu uses — every row says WHO at a
+                // glance, and the section keeps one consistent icon gutter.
+                item.image = menuMark(for: Agent.byID(s.agentID))
                 let sessionRequests = requests.filter { $0.sessionId == s.id }
                 if s.state == .permission {
                     if !sessionRequests.isEmpty {
@@ -256,6 +259,14 @@ enum MenuBuilder {
             title.append(NSAttributedString(string: sub, attributes: [
                 .foregroundColor: NSColor.secondaryLabelColor,
                 .font: NSFont.menuFont(ofSize: 11),
+            ]))
+        }
+        // How long the session has been going — same signal the island chips carry.
+        // Accurate as of the render; a menu stays open too briefly to need ticking.
+        if let e = s.elapsed {
+            title.append(NSAttributedString(string: "  \(e)", attributes: [
+                .foregroundColor: NSColor.tertiaryLabelColor,
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular),
             ]))
         }
         title.append(NSAttributedString(string: "   \(agent.name.uppercased())", attributes: [

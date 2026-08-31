@@ -29,6 +29,7 @@ struct Session {
     let prompt: String       // latest user prompt — names the task ("" ok)
     let model: String        // model name when the agent reports one ("" ok)
     let recap: String        // what the agent last said at turn end ("" ok)
+    let activity: [String]   // the turn's recent tool steps, oldest → newest ([] ok)
 
     /// Sort/priority weight: what the menu bar should surface first.
     var priority: Int {
@@ -67,6 +68,7 @@ struct Session {
         prompt      = o["prompt"] as? String ?? ""
         model       = o["model"] as? String ?? ""
         recap       = o["recap"] as? String ?? ""
+        activity    = (o["activity"] as? [String] ?? []).prefix(5).map { String($0.prefix(40)) }
     }
 
     /// "‹1m" / "28m" / "3h" / "2d" — how long the session has been going.
@@ -111,6 +113,7 @@ struct Session {
         prompt = ""
         model = ""
         recap = ""
+        activity = []
         decayed = false
     }
 

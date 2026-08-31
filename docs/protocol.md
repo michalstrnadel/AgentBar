@@ -43,8 +43,11 @@ max 64 chars (fallback `"unknown"`). The file name is the session's identity;
   "started_at": 1784844700,    // OPTIONAL: unix seconds the session began
   "prompt": "fix the auth bug",// OPTIONAL: latest user prompt, one line, <= 120 chars
   "model": "claude-opus-5",    // OPTIONAL: model name, when the agent reports one
-  "recap": "Fixed the auth bug and added 3 regression tests"
+  "recap": "Fixed the auth bug and added 3 regression tests",
                                // OPTIONAL: what the agent last said, one line, <= 160 chars
+  "activity": ["Reading", "Searching", "Editing"]
+                               // OPTIONAL: the turn's recent tool steps, oldest → newest,
+                               // <= 5 short labels, consecutive duplicates collapsed
 }
 ```
 
@@ -69,7 +72,9 @@ Rules:
   written by the agent's turn-end hook (Claude's Stop) and replaced on each turn
   end. Writers MUST drop it (omit, not carry forward) when a new prompt starts, so
   a working session never advertises the previous turn's result. Absent = the
-  writer doesn't know what was said.
+  writer doesn't know what was said. `activity` follows the same reset rule: it is
+  the ring of the *current* task's tool steps (≤ 5 short labels, oldest → newest,
+  consecutive duplicates collapsed), and a new prompt starts it clean.
 
 Frontend pruning (each refresh):
 - delete when `pid > 0` and the process no longer exists (`kill(pid, 0)` → ESRCH);
