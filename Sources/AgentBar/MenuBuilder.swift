@@ -338,7 +338,7 @@ enum MenuBuilder {
                                           requests: [ApprovalRequest],
                                           controller: StatusItemController) {
         for r in requests {
-            let tag = "req:\(r.fileName)" // lets updateInPlace find a strip's rows
+            let tag = "req:\(requestKey(r))" // lets updateInPlace find a strip's rows
             let what = NSMenuItem(title: "", action: nil, keyEquivalent: "")
             what.isEnabled = false
             what.toolTip = r.toolInputPretty
@@ -393,7 +393,7 @@ enum MenuBuilder {
                                           request r: ApprovalRequest,
                                           questions qs: [ApprovalRequest.Context.Question],
                                           controller: StatusItemController) {
-        let tag = "req:\(r.fileName)"
+        let tag = "req:\(requestKey(r))"
         let simple = qs.count == 1 && !qs[0].multiSelect
 
         let what = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -478,6 +478,15 @@ enum MenuBuilder {
         return nil
     }
 
+    /// What a strip's tag identifies. The file name alone is NOT enough: names
+    /// repeat across the tools of one turn (`RequestStore` keys its snapshots the
+    /// same way), and a strip left keyed to the old request would answer the new
+    /// one while showing the old command — `updateInPlace` must see a replaced
+    /// request as a row it isn't displaying, so the menu rebuilds.
+    private static func requestKey(_ r: ApprovalRequest) -> String {
+        "\(r.fileName)|\(r.identity)"
+    }
+
     static func updateInPlace(_ menu: NSMenu, sessions: [Session], requests: [ApprovalRequest],
                               controller: StatusItemController) -> Bool {
         var displayedSessions = Set<String>()
@@ -487,10 +496,10 @@ enum MenuBuilder {
             if let s = item.representedObject as? Session { displayedSessions.insert(s.id) }
         }
         guard Set(sessions.map(\.id)).isSubset(of: displayedSessions),
-              Set(requests.map(\.fileName)).isSubset(of: displayedRequests) else { return false }
+              Set(requests.map(requestKey)).isSubset(of: displayedRequests) else { return false }
 
         let live = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
-        let liveRequests = Set(requests.map(\.fileName))
+        let liveRequests = Set(requests.map(requestKey))
         for item in menu.items {
             // Request-tagged rows first: a question's escape item also carries a
             // Session and must not be rewritten into a second session row.

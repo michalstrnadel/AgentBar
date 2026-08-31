@@ -56,7 +56,11 @@ struct Session {
         cwd         = o["cwd"] as? String ?? ""
         entrypoint  = o["entrypoint"] as? String ?? ""
         termProgram = o["term_program"] as? String ?? ""
-        pid         = Int32(o["pid"] as? Int ?? 0)
+        // Third-party writers reach state.d too (the protocol invites them): an
+        // out-of-range or negative pid must degrade to "no liveness handle",
+        // never trap — the poisoned file survives on disk, so a trap here is a
+        // crash loop that outlives every relaunch.
+        pid         = max(0, Int32(exactly: o["pid"] as? Int ?? 0) ?? 0)
         started     = o["started"] as? Bool ?? true
         ts          = o["ts"] as? TimeInterval ?? 0
         startedAt   = o["started_at"] as? TimeInterval ?? 0

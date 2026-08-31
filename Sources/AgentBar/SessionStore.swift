@@ -88,9 +88,12 @@ final class SessionStore {
 
         // Only notify when something visible changed, so the menu bar isn't rebuilt every
         // poll. Branch is part of the row, so a checkout must count as a visible change;
-        // recap too — a second Stop can rewrite it while the state stays "done".
+        // recap too — a second Stop can rewrite it while the state stays "done". Prompt
+        // and model as well: the island titles rows by prompt and shows a model chip,
+        // and both can change while state and label stay put (a queued prompt lands
+        // while the session is already "Thinking…").
         let snapshot = sessions.map {
-            "\($0.id):\($0.state.rawValue):\($0.label):\($0.project):\($0.gitBranch ?? ""):\($0.recap)"
+            "\($0.id):\($0.state.rawValue):\($0.label):\($0.project):\($0.gitBranch ?? ""):\($0.recap):\($0.prompt):\($0.model)"
         }
         guard snapshot != lastSnapshot else { return }
         lastSnapshot = snapshot
