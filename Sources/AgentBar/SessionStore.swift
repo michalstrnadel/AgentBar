@@ -23,18 +23,22 @@ final class SessionStore {
     func start() {
         try? FileManager.default.createDirectory(at: Self.stateDir, withIntermediateDirectories: true)
         watchDirectory()
-        // Fallback poll: catches editor-less writes, pid deaths, and a rebuilt watch after
-        // the directory itself is replaced.
+        // Fallback poll: catches editor-less writes and pid deaths — and re-arms a
+        // dropped watch (the directory can be gone at the moment the re-open runs;
+        // without a retry, fs-event responsiveness would silently stay dead).
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.refresh()
+            guard let self else { return }
+            if self.dirSource == nil { self.watchDirectory() }
+            self.refresh()
         }
         refresh()
     }
 
     private func watchDirectory() {
         dirSource?.cancel()
+        dirSource = nil
         let fd = open(Self.stateDir.path, O_EVTONLY)
-        guard fd >= 0 else { return }
+        guard fd >= 0 else { return } // dir missing right now; the poll retries
         let src = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd, eventMask: [.write, .delete, .rename], queue: .main)
         src.setEventHandler { [weak self] in

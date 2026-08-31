@@ -25,17 +25,21 @@ final class RequestStore {
         try? FileManager.default.createDirectory(at: Self.answersDir, withIntermediateDirectories: true)
         watchDirectory()
         // Fallback poll, same as SessionStore: dead-hook pruning, maxAge expiry, and
-        // orphan-answer GC are time-based and must run without a directory event.
+        // orphan-answer GC are time-based and must run without a directory event —
+        // and it re-arms a dropped watch (see SessionStore).
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.refresh()
+            guard let self else { return }
+            if self.dirSource == nil { self.watchDirectory() }
+            self.refresh()
         }
         refresh()
     }
 
     private func watchDirectory() {
         dirSource?.cancel()
+        dirSource = nil
         let fd = open(Self.requestsDir.path, O_EVTONLY)
-        guard fd >= 0 else { return }
+        guard fd >= 0 else { return } // dir missing right now; the poll retries
         let src = DispatchSource.makeFileSystemObjectSource(
             fileDescriptor: fd, eventMask: [.write, .delete, .rename], queue: .main)
         src.setEventHandler { [weak self] in
