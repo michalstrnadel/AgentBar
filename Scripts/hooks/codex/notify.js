@@ -19,8 +19,17 @@ const type = p.type || "";
 if (!type.includes("complete")) process.exit(0);
 
 const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";
-const oneLine = (s) => String(s).replace(/\s+/g, " ").trim().slice(0, 120);
-const id = "codex-" + safeId(p["thread-id"] || p["turn-id"] || String(process.ppid));
+// Never end a cut on a lone high surrogate: JSON.stringify escapes one happily,
+// but Swift's JSONSerialization rejects the whole file — and an unreadable state
+// file hides the session from every frontend until the next clean write.
+const sliceSafe = (s, n) => {
+  const cut = s.slice(0, n);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+};
+const oneLine = (s) => sliceSafe(String(s).replace(/\s+/g, " ").trim(), 120);
+// Prefix INSIDE the cap: the protocol limits session ids (= file names) to 64 chars.
+const id = safeId("codex-" + (p["thread-id"] || p["turn-id"] || String(process.ppid)));
 const cwd = p.cwd || p["working-directory"] || process.cwd() || "";
 const file = path.join(stateDir, id + ".json");
 
