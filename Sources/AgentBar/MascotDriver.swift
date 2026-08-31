@@ -100,7 +100,10 @@ final class MascotDriver {
             stopAnimation()
             stopWords()
             // A task just finished → a brief celebratory hop, then settle to calm.
-            if state == .some(.done), previousTopState?.isWorking == true {
+            // decayed = a watchdog's guess, not a reported finish — no celebration
+            // (SoundCenter skips its done cue on the same condition).
+            if state == .some(.done), previousTopState?.isWorking == true,
+               topSession?.decayed != true {
                 playHop(resting: resting)
             } else if hopTimer == nil {
                 image = resting

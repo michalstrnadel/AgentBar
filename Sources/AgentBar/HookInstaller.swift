@@ -15,13 +15,18 @@ enum HookInstaller {
     /// Agent ids whose hooks this launch actually wired — the tools the user has,
     /// minus any whose config we refused to touch. The welcome window reports it, so
     /// an otherwise invisible side effect becomes something the user can check.
-    /// Written on the install queue, read on the main queue once it reports done.
+    /// Mutated and read on the MAIN queue only: the install pass runs on a utility
+    /// queue and hands each note to main, so a welcome window shown mid-pass reads
+    /// a consistent (possibly still growing) list instead of racing the append.
+    /// `onFinish` is enqueued after every note, so "done" really is complete.
     private(set) static var wired: [String] = []
     /// Called on the main queue when the install pass finishes.
     static var onFinish: (() -> Void)?
 
     private static func note(_ agentID: String) {
-        if !wired.contains(agentID) { wired.append(agentID) }
+        DispatchQueue.main.async {
+            if !wired.contains(agentID) { wired.append(agentID) }
+        }
     }
 
     static func installIfNeeded() {

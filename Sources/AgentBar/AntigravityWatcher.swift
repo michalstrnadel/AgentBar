@@ -1,4 +1,4 @@
-import Foundation
+import Cocoa
 
 /// Liveness for Google Antigravity beyond its sparse hooks: the desktop engine
 /// (2.3.x) fires only PostToolUse, and the `agy` CLI (2.x) loads hooks.json but
@@ -44,6 +44,10 @@ final class AntigravityWatcher {
     /// conversation id -> hosting `agy` process, resolved once per session.
     private var hosts: [String: (pid: Int32, term: String)] = [:]
     private var resolving: Set<String> = []
+    /// The desktop app's pid, refreshed each tick — the liveness handle for
+    /// `antigravity-app` sessions (the protocol asks watchers to stamp a pid
+    /// that dies with the session, the way CoworkWatcher stamps Claude's).
+    private var appPid: Int32?
 
     func start() {
         let fm = FileManager.default
@@ -56,6 +60,11 @@ final class AntigravityWatcher {
     private func scan() {
         let fm = FileManager.default
         let now = Date().timeIntervalSince1970
+        // Matched by the same name `AgentActions.open` targets (`Agents.swift`,
+        // `open -a "Antigravity"`). Nil when the app isn't running — rows then
+        // keep falling back to the 24h ts prune, same as before pids existed.
+        appPid = NSWorkspace.shared.runningApplications
+            .first { $0.localizedName == "Antigravity" }?.processIdentifier
         for r in Self.roots {
             loadHistory(r)
             let dirs = (try? fm.contentsOfDirectory(at: r.brain, includingPropertiesForKeys: nil)) ?? []
@@ -217,6 +226,10 @@ final class AntigravityWatcher {
             // Desktop sessions belong to the app — row clicks must focus it, not a
             // terminal (an early bridge version misdetected "cli" here).
             o["term_program"] = ""
+            // Liveness: without a pid the row only dies via the 24h ts prune, long
+            // after the app quit. Fill the gap only — a hook write's pid (the app's
+            // language server, equally mortal) stays authoritative.
+            if o["pid"] == nil, let appPid { o["pid"] = Int(appPid) }
         }
         guard let data = try? JSONSerialization.data(withJSONObject: o) else { return }
         try? FileManager.default.createDirectory(at: SessionStore.stateDir,

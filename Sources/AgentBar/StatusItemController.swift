@@ -184,7 +184,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let rows = sessions.map {
             "\($0.id)|\($0.state.rawValue)|\($0.label)|\($0.project)|\($0.gitBranch ?? "")|\($0.termProgram)|\($0.recap)"
         }
-        let pending = requestStore.requests.map(\.fileName)
+        // Name AND identity (ts:hookPid): a request replaced under the same file
+        // name (names repeat across the tools of one turn) must not read as "no
+        // change" — the strip would stay bound to the old request and answer the
+        // new one while showing the old command.
+        let pending = requestStore.requests.map { "\($0.fileName)|\($0.identity)" }
         return (rows + ["req:"] + pending
                 + ["upd:\(UpdateChecker.shared.status)",
                    "hk:\(approvalShortcutEnabled):\(KeyCombo.allow.display)\(KeyCombo.deny.display)",

@@ -238,6 +238,10 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
     /// The preview's timer has no reason to run against a closed window.
     func windowWillClose(_ notification: Notification) {
         mascot.sink("welcome", nil)
+        // Idle the driver too: fed a permanent "thinking" session, its animation
+        // timer would keep ticking at 12.5 fps forever, rendering frames for zero
+        // sinks. An empty session set stops every timer; show() re-seeds it.
+        mascot.update(sessions: [], systemColor: IconColor.system)
     }
 }
 
