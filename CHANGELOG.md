@@ -14,6 +14,11 @@ All notable changes to AgentBar are documented here. This project follows
 - **Menu rows say who and how long.** Each session row in the dropdown carries
   its agent's mark (the same glyphs the Open submenu uses) and the session's
   elapsed time next to the state text.
+- **Test coverage and a testing guide.** A new `opencode-plugin-test.sh` drives
+  the OpenCode plugin through its event bus (23 checks); the bridge, CLI and
+  permission suites gained lifecycle, plan, waybar and hookPid coverage —
+  227 checks in all, on Linux and macOS in CI. `docs/testing.md` explains what
+  each suite covers, the env knobs, and how to add a test.
 - **The Linux CLI wires Qwen Code and OpenCode.** `agentbar install-hooks` now
   covers the same seven tools the macOS installer does: Qwen's Claude-style
   hooks land in `~/.qwen/settings.json` (failure events included) and the
@@ -78,6 +83,10 @@ is covered by a test that fails on the old code.
 - **The global Allow chord can't tick success over a plan.** With the session
   gone from the store, a hotkey "allow" on an `ExitPlanMode` request used to
   play the confirm tick while the hook (per protocol) swallowed the answer.
+- **Bridge hooks keep the project across events.** An Antigravity, Cursor or
+  Gemini event that carries no workspace/cwd (PostToolUse, Stop, AfterAgent)
+  used to blank the row's project; they merge the previous value now, per the
+  protocol's merge rule. Found by the new bridge lifecycle tests.
 - **Update fallback URL respects the release's real tag.** The downloader no
   longer hardcodes a `v` prefix when a release lacks the `AgentBar.app.zip`
   asset — a release tagged without one used to 404 as "Download failed".
