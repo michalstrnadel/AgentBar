@@ -145,6 +145,42 @@ check "unparseable config untouched"   '[ "$(cat "$HOME/.gemini/settings.json")"
 CLAUDE_CONFIG_DIR="$HOME/.claude-custom" "$CLI" install-hooks >/dev/null 2>&1
 check "CLAUDE_CONFIG_DIR wired (contained)" 'grep -q PermissionRequest "$HOME/.claude-custom/settings.json"'
 
+
+# --- plan requests: the hook can't carry a plan approval, so the CLI must say so
+seed_plan() { # $1 name
+  printf '{"sessionId":"s3","agent":"claude","toolName":"ExitPlanMode","display":"Plan ready for review","toolInputPretty":"{}","context":{"kind":"plan","plan":"## Plan\\n1. Edit auth.ts\\n2. Run tests"},"pid":%s,"hookPid":%s,"ts":%s}' \
+    $$ $$ "$(date +%s)" > "$HOME/.agentbar/requests.d/$1.json"
+}
+fresh_home
+seed_plan plan1
+check "requests renders the plan"          '"$CLI" requests | grep -q "Edit auth.ts"'
+check "requests explains plan semantics"   '"$CLI" requests | grep -q "keep planning"'
+check "approve on a plan refuses"          '! "$CLI" approve >/dev/null 2>&1 && [ ! -f "$HOME/.agentbar/answers.d/plan1.json" ]'
+"$CLI" deny >/dev/null
+check "deny on a plan = keep planning"     'grep -q "\"behavior\":\"deny\"" "$HOME/.agentbar/answers.d/plan1.json"'
+
+# --- answer: multi-question calls can't be answered from a one-liner
+fresh_home
+printf '{"sessionId":"s4","agent":"claude","toolName":"AskUserQuestion","display":"Question: Which?","toolInputPretty":"{}","context":{"kind":"question","questions":[{"question":"Which layers?","header":"Layers","multiSelect":true,"options":[{"label":"API"},{"label":"UI"}]},{"question":"Ship?","header":"","multiSelect":false,"options":[{"label":"Yes"},{"label":"No"}]}]},"pid":%s,"hookPid":%s,"ts":%s}' \
+  $$ $$ "$(date +%s)" > "$HOME/.agentbar/requests.d/multiq.json"
+check "answer refuses multi-question calls" '! "$CLI" answer API >/dev/null 2>&1 && [ ! -f "$HOME/.agentbar/answers.d/multiq.json" ]'
+
+# --- waybar: the remaining classes
+fresh_home
+OUT="$("$CLI" waybar)"
+check "waybar empty class with no sessions" 'echo "$OUT" | grep -q "\"class\":\"empty\""'
+seed_session busy tool $$
+OUT="$("$CLI" waybar)"
+check "waybar working class"                'echo "$OUT" | grep -q "\"class\":\"working\"" && echo "$OUT" | grep -q "● 1"'
+seed_session waiting permission $$
+OUT="$("$CLI" waybar)"
+check "waybar permission outranks working"  'echo "$OUT" | grep -q "\"class\":\"permission\""'
+
+# --- status text: a failed turn reads as failed, a question as waiting
+fresh_home
+printf '{"agent":"claude","state":"error","label":"provider returned 429","project":"proj","pid":%s,"started":true,"ts":%s}' $$ "$(date +%s)" > "$HOME/.agentbar/state.d/err.json"
+check "status shows failed + reason"        '"$CLI" status | grep -q "failed" && "$CLI" status | grep -q "provider returned 429"'
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

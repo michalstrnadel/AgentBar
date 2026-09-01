@@ -104,7 +104,9 @@ function run() {
     writeAtomic(statePath, {
       ...prev, agent: AGENT, state,
       label: j.tool_name ? String(j.tool_name) : (state === "done" ? "Done" : ""),
-      project: cwd ? path.basename(cwd) : "", cwd, sessionId: id,
+      // An event without cwd must not erase the project an earlier one knew.
+      project: (cwd || prev.cwd) ? path.basename(cwd || prev.cwd) : (prev.project || ""),
+      cwd: cwd || prev.cwd || "", sessionId: id,
       entrypoint: "cli", term_program: process.env.TERM_PROGRAM || "",
       // The shell running Gemini's command string execs the single command, so ppid
       // is the gemini process itself, not a dead intermediate sh (verified on macOS).

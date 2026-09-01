@@ -144,6 +144,88 @@ check "codex file name within cap"      '[ "${#CODEX_FILE}" -le 69 ]'  # 64 + ".
 check "codex id keeps its prefix"       'case "$CODEX_FILE" in codex-*) true;; *) false;; esac'
 check "codex prompt cut utf16-clean"    'utf16_clean "$HOME/.agentbar/state.d/$CODEX_FILE" prompt'
 
+
+# --- lifecycle & state mapping across the bridges -----------------------------
+
+# Cursor: sessionEnd deletes the row (state "end" is never written); stop and
+# afterAgentResponse are the turn-finished signals and read as "Done".
+fresh_home
+printf '{"hook_event_name":"sessionStart","conversation_id":"cur9"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/cursor/cursor.js
+printf '{"hook_event_name":"preToolUse","conversation_id":"cur9","tool_name":"Shell"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/cursor/cursor.js
+check "cursor preToolUse → tool + label" 'grep -q "\"state\":\"tool\"" "$HOME/.agentbar/state.d/cur9.json" && grep -q "\"label\":\"Shell\"" "$HOME/.agentbar/state.d/cur9.json"'
+check "cursor tool event flips started" 'grep -q "\"started\":true" "$HOME/.agentbar/state.d/cur9.json"'
+printf '{"hook_event_name":"sessionStart","conversation_id":"cur8","cwd":"/tmp/proj"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/cursor/cursor.js
+printf '{"hook_event_name":"preToolUse","conversation_id":"cur8","tool_name":"Shell"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/cursor/cursor.js
+check "cursor event w/o cwd keeps project" 'grep -q "\"project\":\"proj\"" "$HOME/.agentbar/state.d/cur8.json"'
+printf '{"hook_event_name":"stop","conversation_id":"cur9"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/cursor/cursor.js
+check "cursor stop → done"               'grep -q "\"state\":\"done\"" "$HOME/.agentbar/state.d/cur9.json" && grep -q "\"label\":\"Done\"" "$HOME/.agentbar/state.d/cur9.json"'
+printf '{"hook_event_name":"sessionEnd","conversation_id":"cur9"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/cursor/cursor.js
+check "cursor sessionEnd removes row"    '[ ! -e "$HOME/.agentbar/state.d/cur9.json" ]'
+printf '{"hook_event_name":"somethingElse","conversation_id":"cur9"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/cursor/cursor.js
+check "cursor unknown event writes nothing" '[ ! -e "$HOME/.agentbar/state.d/cur9.json" ]'
+
+# Gemini: BeforeAgent is the turn start (life on text-only turns), BeforeTool
+# names the step, AfterAgent finishes, SessionEnd removes.
+fresh_home
+printf '{"hook_event_name":"BeforeAgent","session_id":"gem9","cwd":"/tmp/proj","prompt":"add  tests"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/gemini/gemini.js
+check "gemini BeforeAgent → thinking"    'grep -q "\"state\":\"thinking\"" "$HOME/.agentbar/state.d/gem9.json"'
+check "gemini prompt one-lined"          'grep -q "\"prompt\":\"add tests\"" "$HOME/.agentbar/state.d/gem9.json"'
+printf '{"hook_event_name":"BeforeTool","session_id":"gem9","tool_name":"run_shell_command"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/gemini/gemini.js
+check "gemini BeforeTool → tool + label" 'grep -q "\"state\":\"tool\"" "$HOME/.agentbar/state.d/gem9.json" && grep -q "\"label\":\"run_shell_command\"" "$HOME/.agentbar/state.d/gem9.json"'
+check "gemini prompt survives tool event" 'grep -q "\"prompt\":\"add tests\"" "$HOME/.agentbar/state.d/gem9.json"'
+check "gemini event w/o cwd keeps project" 'grep -q "\"project\":\"proj\"" "$HOME/.agentbar/state.d/gem9.json"'
+"$NODE" -e 'const fs=require("fs");const f=process.argv[1];const j=JSON.parse(fs.readFileSync(f));j.started_at=5555;fs.writeFileSync(f,JSON.stringify(j))' "$HOME/.agentbar/state.d/gem9.json"
+printf '{"hook_event_name":"AfterAgent","session_id":"gem9"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/gemini/gemini.js
+check "gemini AfterAgent → done"         'grep -q "\"state\":\"done\"" "$HOME/.agentbar/state.d/gem9.json"'
+check "gemini started_at preserved"      'grep -q "\"started_at\":5555" "$HOME/.agentbar/state.d/gem9.json"'
+printf '{"hook_event_name":"SessionEnd","session_id":"gem9"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/gemini/gemini.js
+check "gemini SessionEnd removes row"    '[ ! -e "$HOME/.agentbar/state.d/gem9.json" ]'
+
+# Antigravity: PreInvocation/PostInvocation/PostToolUse are all "thinking"
+# (more model calls may follow), Stop ends the loop as done; the payload's own
+# hook_event_name is honored when argv carries none; unknown events write
+# nothing; a hook write with the CLI payload shape (session_id/cwd) maps too.
+fresh_home
+printf '{"conversationId":"anti9","workspacePaths":["/tmp/proj"]}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/antigravity/antigravity.js PreInvocation
+check "antigravity PreInvocation → thinking" 'grep -q "\"state\":\"thinking\"" "$HOME/.agentbar/state.d/anti9.json"'
+printf '{"conversationId":"anti9"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/antigravity/antigravity.js PostToolUse
+check "antigravity PostToolUse → thinking"   'grep -q "\"state\":\"thinking\"" "$HOME/.agentbar/state.d/anti9.json"'
+check "antigravity project preserved"        'grep -q "\"project\":\"proj\"" "$HOME/.agentbar/state.d/anti9.json"'
+printf '{"conversationId":"anti9"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/antigravity/antigravity.js Stop
+check "antigravity Stop → done"              'grep -q "\"state\":\"done\"" "$HOME/.agentbar/state.d/anti9.json" && grep -q "\"label\":\"Done\"" "$HOME/.agentbar/state.d/anti9.json"'
+printf '{"conversationId":"anti9"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/antigravity/antigravity.js Bogus
+check "antigravity unknown event ignored"    'grep -q "\"state\":\"done\"" "$HOME/.agentbar/state.d/anti9.json"'
+printf '{"session_id":"anti-cli","cwd":"/tmp/other","hook_event_name":"PreToolUse","tool_name":"read_file"}' \
+  | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/antigravity/antigravity.js
+check "antigravity CLI payload shape maps"   'grep -q "\"label\":\"read_file\"" "$HOME/.agentbar/state.d/anti-cli.json" && grep -q "\"project\":\"other\"" "$HOME/.agentbar/state.d/anti-cli.json"'
+
+# Codex: only completion-type events count; a second notify keeps started_at
+# and the previous prompt when the new payload carries no messages.
+fresh_home
+"$NODE" Scripts/hooks/codex/notify.js '{"type":"agent-turn-started","thread-id":"t1"}'
+check "codex non-complete event ignored" '[ -z "$(ls "$HOME/.agentbar/state.d/")" ]'
+"$NODE" Scripts/hooks/codex/notify.js '{"type":"agent-turn-complete","thread-id":"t1","input_messages":["first task"],"cwd":"/tmp/proj"}'
+check "codex complete → done row"        'grep -q "\"state\":\"done\"" "$HOME/.agentbar/state.d/codex-t1.json" && grep -q "\"prompt\":\"first task\"" "$HOME/.agentbar/state.d/codex-t1.json"'
+"$NODE" -e 'const fs=require("fs");const f=process.argv[1];const j=JSON.parse(fs.readFileSync(f));j.started_at=7777;fs.writeFileSync(f,JSON.stringify(j))' "$HOME/.agentbar/state.d/codex-t1.json"
+"$NODE" Scripts/hooks/codex/notify.js '{"type":"agent-turn-complete","thread-id":"t1","cwd":"/tmp/proj"}'
+check "codex second turn keeps started_at" 'grep -q "\"started_at\":7777" "$HOME/.agentbar/state.d/codex-t1.json"'
+check "codex second turn keeps prompt"     'grep -q "\"prompt\":\"first task\"" "$HOME/.agentbar/state.d/codex-t1.json"'
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

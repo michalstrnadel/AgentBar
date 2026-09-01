@@ -71,11 +71,14 @@ function run() {
 
   try { fs.mkdirSync(stateDir, { recursive: true }); } catch {}
   let prev = {}; try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
+  // Not every event carries the workspace (PostToolUse/Stop often don't): a
+  // blank must not erase what an earlier event knew — protocol merge rule.
+  const dir = cwd || prev.cwd || "";
   try {
     writeAtomic(statePath, {
       ...prev, agent: AGENT, state,
       label: state === "tool" && tool ? String(tool) : (state === "done" ? "Done" : ""),
-      project: cwd ? path.basename(cwd) : "", cwd, sessionId: id,
+      project: dir ? path.basename(dir) : (prev.project || ""), cwd: dir, sessionId: id,
       // Desktop sessions come from the app's language_server; TERM_PROGRAM can't
       // be trusted (the app inherits it when launched from a terminal via `open`).
       entrypoint: isApp() ? "antigravity-app" : "cli",
