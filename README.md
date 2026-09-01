@@ -80,8 +80,8 @@ don't use. Hooks are snapshotted per session — start a new agent session after
   *codex* (Codex), the pixel mascot head + dots spelling *copilot* (Copilot), and the
   animated pixel rainbow arch (Antigravity).
 - **Permission alerts** — an amber dot the moment an agent waits for your approval.
-- **Multi-session** — every running session listed with project, git branch, and state;
-  click a row to jump to its app or terminal.
+- **Multi-session** — every running session listed with its agent's mark, project, git
+  branch, state and elapsed time; click a row to jump to its app or terminal.
 - **Open anything** — launch any supported agent (Claude, Codex, Copilot,
   Antigravity, Cursor, Gemini, Qwen, OpenCode) straight from the menu.
 - **Two looks** — full-color mascots, or a monochrome System mode that matches the menu bar.
@@ -108,6 +108,9 @@ don't use. Hooks are snapshotted per session — start a new agent session after
   not just the app.
 - **Turn recaps** — a finished session's row says *what* finished: one line of the
   agent's closing words under "Done", not just a green dot.
+- **Activity breadcrumb** — while a session works, the island hero shows its last
+  few tool steps ("Reading · Searching · Editing"), so you can tell a session
+  that is grinding through files from one that is thinking.
 - **Sound cues (opt-in)** — four tiny synthesized retro-console motifs: needs
   approval, question, done, and an answer-confirm tick. Generated in code (no audio
   files), silent while your screen is locked, off until you flip them on in Settings
@@ -202,6 +205,10 @@ With no watcher running, hooks stay silent and the normal terminal prompt appear
   "exec": "agentbar waybar", "return-type": "json", "interval": 15
 }
 ```
+
+The module's `class` (and `alt`) is one of `permission`, `question`, `working`,
+`idle` or `empty`, in that priority order — style them in your waybar CSS; the
+text is `✋ n` / `❓ n` / `● n` / the session count.
 
 The CLI works on macOS too (same protocol, handy over SSH). A native tray app
 (StatusNotifierItem) may come later if there's demand.
@@ -315,7 +322,10 @@ Tiny hook scripts (Node.js) write one JSON file per session to `~/.agentbar/stat
 The app watches that folder and renders. No sockets, no daemons; the only network
 traffic is the update check against GitHub Releases.
 Permission approvals use two more folders of the same protocol: the blocking hook
-writes `requests.d/`, the app answers into `answers.d/`.
+writes `requests.d/`, the app answers into `answers.d/`. The contract is
+[docs/protocol.md](docs/protocol.md); everything outside the Swift app (hooks,
+bridges, the OpenCode plugin, the CLI) is covered by four bash test suites that
+run on Linux and macOS — see [docs/testing.md](docs/testing.md).
 
 ## Troubleshooting
 
