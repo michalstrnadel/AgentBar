@@ -22,6 +22,8 @@ jobs:
         run: ./Scripts/test/permission-hook-test.sh
       - name: Run bridge hook test suite
         run: ./Scripts/test/bridge-hooks-test.sh
+      - name: Run OpenCode plugin test suite
+        run: ./Scripts/test/opencode-plugin-test.sh
       - name: Run CLI test suite
         run: ./Scripts/test/cli-test.sh
 
@@ -37,6 +39,8 @@ jobs:
         run: ./Scripts/test/permission-hook-test.sh
       - name: Run bridge hook test suite
         run: ./Scripts/test/bridge-hooks-test.sh
+      - name: Run OpenCode plugin test suite
+        run: ./Scripts/test/opencode-plugin-test.sh
       - name: Run CLI test suite
         run: ./Scripts/test/cli-test.sh
 

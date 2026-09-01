@@ -108,7 +108,9 @@ function run() {
     writeAtomic(statePath, {
       ...prev, agent: AGENT, state,
       label: j.tool_name ? String(j.tool_name) : (state === "done" ? "Done" : ""),
-      project: cwd ? path.basename(cwd) : "", cwd, sessionId: id,
+      // An event without cwd must not erase the project an earlier one knew.
+      project: (cwd || prev.cwd) ? path.basename(cwd || prev.cwd) : (prev.project || ""),
+      cwd: cwd || prev.cwd || "", sessionId: id,
       entrypoint: "cli", term_program: process.env.TERM_PROGRAM || "",
       // Cursor execs the script directly, so ppid is the agent process (liveness handle).
       pid: process.ppid, started: state !== "idle" ? true : (prev.started || false),

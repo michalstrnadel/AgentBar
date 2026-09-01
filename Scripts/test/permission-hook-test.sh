@@ -543,6 +543,37 @@ check "pretty cut: utf16-clean" \
 printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 
+
+# 25. lifecycle end deletes the row — the protocol never writes state "end".
+fresh_home
+printf '{"session_id":"endsess","cwd":"/tmp/proj"}' | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/claude/lifecycle.js start
+check "lifecycle: start seeds the row"   '[ -e "$HOME/.agentbar/state.d/endsess.json" ]'
+printf '{"session_id":"endsess"}' | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/claude/lifecycle.js end
+check "lifecycle: end removes the row"   '[ ! -e "$HOME/.agentbar/state.d/endsess.json" ]'
+
+# 26. the hookPid guard applies to question answers too: a stale answer aimed at
+# a predecessor is swallowed, the wizard stays answerable, the right one lands.
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=10 "$NODE" "$HOOK" <<<"$QO_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"behavior":"answer","answers":[["Red"]],"hookPid":999999}' > "$HOME/.agentbar/answers.d/$REQ"
+sleep 1
+check "question: foreign hookPid swallowed" '[ ! -e "$HOME/.agentbar/answers.d/$REQ" ] && kill -0 "$hookpid" 2>/dev/null && grep -q "\"state\":\"question\"" "$HOME/.agentbar/state.d/testsess.json"'
+printf '{"behavior":"answer","answers":[["Blue"]],"hookPid":%s}' "$hookpid" > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "question: own hookPid answer lands"  'grep -q "User answered \\\\\"Blue\\\\\"" "$HOME/out.json"'
+
+# 27. junk answer files must not crash the poll loop or count as decisions
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=6 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf 'not json at all' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "junk answer: silent defer"        '[ ! -s "$HOME/out.json" ]'
+check "junk answer: request cleaned"     '[ ! -e "$HOME/.agentbar/requests.d/$REQ" ]'
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

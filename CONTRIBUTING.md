@@ -28,6 +28,7 @@ Thanks for your interest! AgentBar is intentionally small — please keep it tha
 open build/AgentBar.app
 ./Scripts/test/permission-hook-test.sh    # hook protocol tests
 ./Scripts/test/bridge-hooks-test.sh       # cursor/gemini/antigravity/codex bridge tests
+./Scripts/test/opencode-plugin-test.sh    # OpenCode plugin driven through its event bus
 ./Scripts/test/cli-test.sh                # cross-platform CLI tests
 ./Scripts/test/antigravity-watcher-test.sh # live-app integration test (needs the app running)
 ./Scripts/test/cowork-watcher-test.sh     # live-app integration test (needs AgentBar + Claude.app running)
