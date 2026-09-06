@@ -51,6 +51,9 @@ OUT="$("$CLI" requests --json)"
 check "requests lists pending"         'echo "$OUT" | grep -q "Bash: ls"'
 "$CLI" approve >/dev/null
 check "approve writes allow answer"    'grep -q "\"behavior\":\"allow\"" "$HOME/.agentbar/answers.d/r1.json"'
+# Answers name the hook they are for — request names repeat within a turn, and
+# the hook discards answers aimed at a predecessor (docs/protocol.md).
+check "approve stamps hookPid"         'grep -q "\"hookPid\":'"$$"'" "$HOME/.agentbar/answers.d/r1.json"'
 rm -f "$HOME/.agentbar/answers.d/r1.json"
 "$CLI" approve --always >/dev/null
 check "approve --always carries rule"  'grep -q "\"behavior\":\"always\"" "$HOME/.agentbar/answers.d/r1.json" && grep -q addRules "$HOME/.agentbar/answers.d/r1.json"'
@@ -79,6 +82,7 @@ rm -f "$HOME/.agentbar/answers.d/perm.json"
 check "explicit index on question errors" '! "$CLI" approve 1 >/dev/null 2>&1'
 "$CLI" answer Blue >/dev/null
 check "answer by label"                   'grep -q "\"answers\":\[\[\"Blue\"\]\]" "$HOME/.agentbar/answers.d/quest.json"'
+check "answer stamps hookPid"             'grep -q "\"hookPid\":'"$$"'" "$HOME/.agentbar/answers.d/quest.json"'
 rm -f "$HOME/.agentbar/answers.d/quest.json"
 "$CLI" answer 1 Red >/dev/null   # explicit request index 1 (the question), option by name
 check "answer with explicit index"        'grep -q "\"answers\":\[\[\"Red\"\]\]" "$HOME/.agentbar/answers.d/quest.json"'
@@ -95,6 +99,12 @@ seed_session live permission $$
 OUT="$("$CLI" waybar)"
 check "waybar emits permission class"  'echo "$OUT" | grep -q "\"class\":\"permission\""'
 check "waybar writes heartbeat"        'grep -q "\"ts\":" "$HOME/.agentbar/watcher.json"'
+# A session waiting on an AskUserQuestion is waiting on the human like a
+# permission is — it must not render as a quiet "idle".
+fresh_home
+seed_session ask question $$
+OUT="$("$CLI" waybar)"
+check "waybar surfaces question class" 'echo "$OUT" | grep -q "\"class\":\"question\""'
 
 # --- heartbeat makes the permission hook block (watcher path, no app)
 fresh_home
@@ -116,20 +126,60 @@ check "CLI answer reaches the hook"    'grep -q "\"behavior\":\"allow\"" "$TESTR
 
 # --- install-hooks: wiring, idempotence, unparseable config untouched
 fresh_home
-mkdir -p "$HOME/.gemini" "$HOME/.cursor" "$HOME/.claude"
+mkdir -p "$HOME/.gemini" "$HOME/.cursor" "$HOME/.claude" "$HOME/.qwen" "$HOME/.codex" "$HOME/.config/opencode"
 echo '{"theme":"dark"}' > "$HOME/.gemini/settings.json"
 "$CLI" install-hooks >/dev/null 2>&1
 check "gemini wired, existing kept"    'grep -q BeforeAgent "$HOME/.gemini/settings.json" && grep -q theme "$HOME/.gemini/settings.json"'
 check "cursor wired with pinned node"  'grep -q afterAgentResponse "$HOME/.cursor/hooks.json" && head -1 "$HOME/.agentbar/hooks/cursor/cursor.js" | grep -qv "env node"'
 check "claude wired"                   'grep -q PermissionRequest "$HOME/.claude/settings.json"'
+check "qwen wired with its identity"   'grep -q StopFailure "$HOME/.qwen/settings.json" && grep -q AGENTBAR_AGENT "$HOME/.qwen/settings.json"'
+check "codex notify wired"             'grep -q "/.agentbar/hooks/codex/" "$HOME/.codex/config.toml"'
+check "opencode plugin installed"      '[ -f "$HOME/.config/opencode/plugins/agentbar.js" ]'
 SNAP="$(cat "$HOME/.gemini/settings.json")"
+QWEN_SNAP="$(cat "$HOME/.qwen/settings.json")"
 "$CLI" install-hooks >/dev/null 2>&1
-check "install-hooks idempotent"       '[ "$SNAP" = "$(cat "$HOME/.gemini/settings.json")" ]'
+check "install-hooks idempotent"       '[ "$SNAP" = "$(cat "$HOME/.gemini/settings.json")" ] && [ "$QWEN_SNAP" = "$(cat "$HOME/.qwen/settings.json")" ]'
 echo '{broken' > "$HOME/.gemini/settings.json"
 "$CLI" install-hooks >/dev/null 2>&1
 check "unparseable config untouched"   '[ "$(cat "$HOME/.gemini/settings.json")" = "{broken" ]'
 CLAUDE_CONFIG_DIR="$HOME/.claude-custom" "$CLI" install-hooks >/dev/null 2>&1
 check "CLAUDE_CONFIG_DIR wired (contained)" 'grep -q PermissionRequest "$HOME/.claude-custom/settings.json"'
+
+
+# --- plan requests: the hook can't carry a plan approval, so the CLI must say so
+seed_plan() { # $1 name
+  printf '{"sessionId":"s3","agent":"claude","toolName":"ExitPlanMode","display":"Plan ready for review","toolInputPretty":"{}","context":{"kind":"plan","plan":"## Plan\\n1. Edit auth.ts\\n2. Run tests"},"pid":%s,"hookPid":%s,"ts":%s}' \
+    $$ $$ "$(date +%s)" > "$HOME/.agentbar/requests.d/$1.json"
+}
+fresh_home
+seed_plan plan1
+check "requests renders the plan"          '"$CLI" requests | grep -q "Edit auth.ts"'
+check "requests explains plan semantics"   '"$CLI" requests | grep -q "keep planning"'
+check "approve on a plan refuses"          '! "$CLI" approve >/dev/null 2>&1 && [ ! -f "$HOME/.agentbar/answers.d/plan1.json" ]'
+"$CLI" deny >/dev/null
+check "deny on a plan = keep planning"     'grep -q "\"behavior\":\"deny\"" "$HOME/.agentbar/answers.d/plan1.json"'
+
+# --- answer: multi-question calls can't be answered from a one-liner
+fresh_home
+printf '{"sessionId":"s4","agent":"claude","toolName":"AskUserQuestion","display":"Question: Which?","toolInputPretty":"{}","context":{"kind":"question","questions":[{"question":"Which layers?","header":"Layers","multiSelect":true,"options":[{"label":"API"},{"label":"UI"}]},{"question":"Ship?","header":"","multiSelect":false,"options":[{"label":"Yes"},{"label":"No"}]}]},"pid":%s,"hookPid":%s,"ts":%s}' \
+  $$ $$ "$(date +%s)" > "$HOME/.agentbar/requests.d/multiq.json"
+check "answer refuses multi-question calls" '! "$CLI" answer API >/dev/null 2>&1 && [ ! -f "$HOME/.agentbar/answers.d/multiq.json" ]'
+
+# --- waybar: the remaining classes
+fresh_home
+OUT="$("$CLI" waybar)"
+check "waybar empty class with no sessions" 'echo "$OUT" | grep -q "\"class\":\"empty\""'
+seed_session busy tool $$
+OUT="$("$CLI" waybar)"
+check "waybar working class"                'echo "$OUT" | grep -q "\"class\":\"working\"" && echo "$OUT" | grep -q "● 1"'
+seed_session waiting permission $$
+OUT="$("$CLI" waybar)"
+check "waybar permission outranks working"  'echo "$OUT" | grep -q "\"class\":\"permission\""'
+
+# --- status text: a failed turn reads as failed, a question as waiting
+fresh_home
+printf '{"agent":"claude","state":"error","label":"provider returned 429","project":"proj","pid":%s,"started":true,"ts":%s}' $$ "$(date +%s)" > "$HOME/.agentbar/state.d/err.json"
+check "status shows failed + reason"        '"$CLI" status | grep -q "failed" && "$CLI" status | grep -q "provider returned 429"'
 
 echo "---"
 echo "$pass passed, $fail failed"

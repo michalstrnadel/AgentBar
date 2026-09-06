@@ -36,7 +36,8 @@ native system-tray counterpart that shares the same `~/.agentbar` hook protocol.
 curl -fsSL https://raw.githubusercontent.com/michalstrnadel/AgentBar/main/Scripts/install.sh | bash
 ```
 
-1. The app lands in `/Applications`, launches, and installs its Claude Code hooks.
+1. The app lands in `/Applications` (or `~/Applications` when that isn't
+   writable; `AGENTBAR_INSTALL_DIR` overrides), launches, and installs its hooks.
    A welcome window asks where it should live — menu bar, Dynamic Island, or both.
 2. Open a **new** Claude Code session (hooks load at session start) and give it any task.
 3. Watch it: the mascot animates while the agent works, and the moment it
@@ -55,7 +56,8 @@ all reversible (see [Uninstall](#uninstall)):
 - Merges AgentBar hook entries into your Claude Code settings — `~/.claude/settings.json`,
   and your `CLAUDE_CONFIG_DIR` if you set one. Existing hooks are preserved.
 - Adds a `notify` line to `~/.codex/config.toml` **only if you use Codex and have none**;
-  merges into `~/.cursor/hooks.json` / `~/.gemini/settings.json` / `~/.qwen/settings.json`
+  merges into `~/.cursor/hooks.json` / `~/.gemini/settings.json` /
+  `~/.gemini/antigravity{,-cli}/hooks.json` / `~/.qwen/settings.json`
   **only if those exist**.
 - Copies a plugin to `~/.config/opencode/plugins/agentbar.js` **only if you use OpenCode**.
 - The SessionStart hook launches AgentBar in the background when an agent session begins.
@@ -78,9 +80,10 @@ don't use. Hooks are snapshotted per session — start a new agent session after
   *codex* (Codex), the pixel mascot head + dots spelling *copilot* (Copilot), and the
   animated pixel rainbow arch (Antigravity).
 - **Permission alerts** — an amber dot the moment an agent waits for your approval.
-- **Multi-session** — every running session listed with project, git branch, and state;
-  click a row to jump to its app or terminal.
-- **Open anything** — launch Claude, Codex, Copilot, or Antigravity straight from the menu.
+- **Multi-session** — every running session listed with its agent's mark, project, git
+  branch, state and elapsed time; click a row to jump to its app or terminal.
+- **Open anything** — launch any supported agent (Claude, Codex, Copilot,
+  Antigravity, Cursor, Gemini, Qwen, OpenCode) straight from the menu.
 - **Two looks** — full-color mascots, or a monochrome System mode that matches the menu bar.
 - **Remote Allow/Deny** — answer Claude Code permission prompts straight from the menu:
   see exactly what's requested, then Allow once, Always allow, Deny, or defer to terminal.
@@ -105,6 +108,9 @@ don't use. Hooks are snapshotted per session — start a new agent session after
   not just the app.
 - **Turn recaps** — a finished session's row says *what* finished: one line of the
   agent's closing words under "Done", not just a green dot.
+- **Activity breadcrumb** — while a session works, the island hero shows its last
+  few tool steps ("Reading · Searching · Editing"), so you can tell a session
+  that is grinding through files from one that is thinking.
 - **Sound cues (opt-in)** — four tiny synthesized retro-console motifs: needs
   approval, question, done, and an answer-confirm tick. Generated in code (no audio
   files), silent while your screen is locked, off until you flip them on in Settings
@@ -152,8 +158,8 @@ git clone https://github.com/michalstrnadel/AgentBar.git && cd AgentBar
 open "build/AgentBar.app"
 ```
 
-First launch installs the Claude Code hooks automatically (and the Codex notify hook if
-`~/.codex` exists). New agent sessions appear in the bar from then on.
+First launch installs hooks automatically for every supported tool you have —
+see the [agent table](#agent-support). New agent sessions appear in the bar from then on.
 
 **Updating:** the app checks GitHub Releases daily and offers new versions in the menu
 (**Check for Updates…** works any time). Homebrew users can keep using
@@ -163,11 +169,13 @@ First launch installs the Claude Code hooks automatically (and the Codex notify 
 > entries are merged into your Claude `settings.json` (`~/.claude` **and** a custom
 > `CLAUDE_CONFIG_DIR`, both; existing hooks are preserved), a `notify` line is added
 > to `~/.codex/config.toml` only if none exists, and — only for tools you already
-> have — hook entries are merged into `~/.cursor/hooks.json` and
-> `~/.gemini/settings.json`. A config that exists but isn't valid JSON is never
-> touched. The Claude SessionStart hook also auto-launches AgentBar in the
-> background when a session begins. Hooks are snapshotted per session — start a new
-> agent session after installing.
+> have — hook entries are merged into `~/.cursor/hooks.json`,
+> `~/.gemini/settings.json`, `~/.gemini/antigravity{,-cli}/hooks.json` and
+> `~/.qwen/settings.json`, and the OpenCode plugin is copied to
+> `~/.config/opencode/plugins/agentbar.js`. A config that exists but isn't valid
+> JSON is never touched. The Claude SessionStart hook also auto-launches AgentBar
+> in the background when a session begins. Hooks are snapshotted per session —
+> start a new agent session after installing.
 
 ## Linux (CLI)
 
@@ -176,7 +184,7 @@ and the hooks are plain Node — so on Linux, the `agentbar` CLI is the frontend
 
 ```bash
 git clone https://github.com/michalstrnadel/AgentBar.git && cd AgentBar
-./Scripts/cli/agentbar install-hooks   # wires Claude/Codex/Cursor/Gemini hooks
+./Scripts/cli/agentbar install-hooks   # wires Claude/Codex/Cursor/Antigravity/Gemini/Qwen/OpenCode hooks
 sudo ln -s "$PWD/Scripts/cli/agentbar" /usr/local/bin/agentbar   # optional
 
 agentbar                 # session list (same rows as the macOS menu)
@@ -198,6 +206,10 @@ With no watcher running, hooks stay silent and the normal terminal prompt appear
 }
 ```
 
+The module's `class` (and `alt`) is one of `permission`, `question`, `working`,
+`idle` or `empty`, in that priority order — style them in your waybar CSS; the
+text is `✋ n` / `❓ n` / `● n` / the session count.
+
 The CLI works on macOS too (same protocol, handy over SSH). A native tray app
 (StatusNotifierItem) may come later if there's demand.
 
@@ -211,6 +223,8 @@ rm -rf ~/.agentbar
 #   ~/.codex/config.toml       — delete the notify line referencing "/.agentbar/hooks/"
 #   ~/.cursor/hooks.json       — delete entries whose command references "/.agentbar/hooks/cursor/"
 #   ~/.gemini/settings.json    — delete hook groups whose command references "/.agentbar/hooks/gemini/"
+#   ~/.gemini/antigravity/hooks.json and ~/.gemini/antigravity-cli/hooks.json
+#                              — delete the top-level "agentbar" key
 #   ~/.qwen/settings.json      — delete hook groups whose command references "/.agentbar/hooks/claude/"
 rm -f ~/.config/opencode/plugins/agentbar.js
 ```
@@ -329,7 +343,10 @@ Tiny hook scripts (Node.js) write one JSON file per session to `~/.agentbar/stat
 The app watches that folder and renders. No sockets, no daemons; the only network
 traffic is the update check against GitHub Releases.
 Permission approvals use two more folders of the same protocol: the blocking hook
-writes `requests.d/`, the app answers into `answers.d/`.
+writes `requests.d/`, the app answers into `answers.d/`. The contract is
+[docs/protocol.md](docs/protocol.md); everything outside the Swift app (hooks,
+bridges, the OpenCode plugin, the CLI) is covered by four bash test suites that
+run on Linux and macOS — see [docs/testing.md](docs/testing.md).
 
 ## Troubleshooting
 

@@ -19,8 +19,19 @@ const STATE = {
 };
 
 const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";
+// Never end a cut on a lone high surrogate: JSON.stringify escapes one happily,
+// but Swift's JSONSerialization rejects the whole file — and an unreadable state
+// file hides the session from every frontend until the next clean write.
+const sliceSafe = (s, n) => {
+  const cut = s.slice(0, n);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+};
 // The macOS app, or the CLI's watch/waybar heartbeat (any platform).
+// AGENTBAR_FORCE_APP=1|0 overrides for tests, same knob the claude hooks honor.
 const running = () => {
+  if (process.env.AGENTBAR_FORCE_APP === "1") return true;
+  if (process.env.AGENTBAR_FORCE_APP === "0") return false;
   if (process.platform === "darwin") {
     try { cp.execSync(`pgrep -x ${EXEC}`, { stdio: "ignore" }); return true; } catch {}
   }
@@ -63,25 +74,43 @@ function run() {
     try { fs.rmSync(statePath, { force: true }); } catch (e) { warn("state remove " + statePath, e); }
     return process.exit(0);
   }
-  if (state === "idle" && !running()) {
+  // App/watcher down on session start -> sweep leftovers from a prior crash, but
+  // only files whose agent process is actually gone: other agents' sessions
+  // outlive an AgentBar restart, and wiping the folder made live work disappear
+  // (same rule as lifecycle.js and gemini.js).
+  const appUp = state === "idle" ? running() : true;
+  if (state === "idle" && !appUp) {
     try {
-      const stale = fs.readdirSync(stateDir);
-      for (const f of stale) fs.rmSync(path.join(stateDir, f), { force: true });
+      let cleared = 0;
+      for (const f of fs.readdirSync(stateDir)) {
+        const p = path.join(stateDir, f);
+        let owner = 0;
+        try { owner = Number(JSON.parse(fs.readFileSync(p, "utf8")).pid) || 0; } catch {}
+        if (owner > 0) {
+          try { process.kill(owner, 0); continue; } catch (e) {
+            if (e.code === "EPERM") continue; // exists, just not ours to signal
+          }
+        }
+        fs.rmSync(p, { force: true });
+        cleared++;
+      }
       // Leave a trail: "my sessions vanished" must be explainable after the fact.
-      if (stale.length)
-        console.error("[agentbar] AgentBar not running: cleared " + stale.length +
-                      " stale state file(s) from " + stateDir);
+      if (cleared)
+        console.error("[agentbar] AgentBar not running: cleared " + cleared +
+                      " dead state file(s) from " + stateDir);
     } catch (e) { warn("stale state cleanup", e); }
   }
 
   let prev = {}; try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
   const ts = Math.floor(Date.now() / 1000);
-  const oneLine = (s) => String(s).replace(/\s+/g, " ").trim().slice(0, 120);
+  const oneLine = (s) => sliceSafe(String(s).replace(/\s+/g, " ").trim(), 120);
   try {
     writeAtomic(statePath, {
       ...prev, agent: AGENT, state,
       label: j.tool_name ? String(j.tool_name) : (state === "done" ? "Done" : ""),
-      project: cwd ? path.basename(cwd) : "", cwd, sessionId: id,
+      // An event without cwd must not erase the project an earlier one knew.
+      project: (cwd || prev.cwd) ? path.basename(cwd || prev.cwd) : (prev.project || ""),
+      cwd: cwd || prev.cwd || "", sessionId: id,
       entrypoint: "cli", term_program: process.env.TERM_PROGRAM || "",
       // Cursor execs the script directly, so ppid is the agent process (liveness handle).
       pid: process.ppid, started: state !== "idle" ? true : (prev.started || false),
@@ -90,7 +119,10 @@ function run() {
       ts,
     });
   } catch (e) { warn("state write " + statePath, e); }
-  if (state === "idle" && process.platform === "darwin")
+  // Launch ONLY when nothing is running: with two copies on disk LaunchServices
+  // may resolve the bundle ID to the OTHER copy and start a second instance —
+  // which then terminates the one already running (see lifecycle.js).
+  if (state === "idle" && process.platform === "darwin" && !appUp)
     cp.spawn("open", ["-g", "-b", BUNDLE_ID], { stdio: "ignore", detached: true }).unref();
   process.exit(0);
 }

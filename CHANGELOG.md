@@ -19,6 +19,90 @@ All notable changes to AgentBar are documented here. This project follows
   Finished runs linger briefly and age out (`retentionMinutes`); Devin's
   auto-suspended threads show as idle within their own window. Devin joins the
   agent roster with an original D letterform mark.
+- **Activity feed.** The island hero shows the turn's recent tool steps as a
+  quiet breadcrumb ("Reading · Searching · Editing") while the session works —
+  the last item of the island plan's content-parity phase. Carried as the
+  optional, additive `activity` field in the state protocol (≤ 5 short labels,
+  consecutive duplicates collapsed, reset on each new prompt like `recap`).
+- **Menu rows say who and how long.** Each session row in the dropdown carries
+  its agent's mark (the same glyphs the Open submenu uses) and the session's
+  elapsed time next to the state text.
+- **Test coverage and a testing guide.** A new `opencode-plugin-test.sh` drives
+  the OpenCode plugin through its event bus (23 checks); the bridge, CLI and
+  permission suites gained lifecycle, plan, waybar and hookPid coverage —
+  227 checks in all, on Linux and macOS in CI. `docs/testing.md` explains what
+  each suite covers, the env knobs, and how to add a test.
+- **The Linux CLI wires Qwen Code and OpenCode.** `agentbar install-hooks` now
+  covers the same seven tools the macOS installer does: Qwen's Claude-style
+  hooks land in `~/.qwen/settings.json` (failure events included) and the
+  OpenCode plugin is copied to `~/.config/opencode/plugins/agentbar.js`.
+- **waybar shows questions.** A session waiting on an `AskUserQuestion` gets its
+  own module class (`question`) and `❓ n` text instead of hiding inside "idle".
+- **Answers name their hook.** Answer files may carry the request's `hookPid`,
+  and the hook ignores an answer aimed at an earlier request that shared the
+  file name; frontends that omit the field keep working (`docs/protocol.md`).
+
+### Fixed
+
+Found by an adversarial review pass over the whole repository; every hook fix
+is covered by a test that fails on the old code.
+
+- **Starting Cursor could wipe other agents' live sessions.** Its bridge's
+  stale-file sweep deleted every state file whenever no frontend was running,
+  instead of probing each file's pid the way the Claude and Gemini bridges
+  already did.
+- **The Antigravity bridge's app-launch condition was inverted** — it launched
+  AgentBar only when one was already running (the two-copies LaunchServices
+  hazard) and never when it was down. The Cursor and Gemini bridges also
+  launched unconditionally on every session start; all three now launch only
+  when nothing is running.
+- **An emoji at a cut point could hide a session or block an approval.** The
+  permission hook's 4 KB input preview and the codex/cursor/gemini/opencode
+  one-liners truncated mid-surrogate-pair; Swift's `JSONSerialization` then
+  rejected the whole file — an unreadable request blocks the approval until its
+  600 s timeout. Every cut is surrogate-safe now, and Codex state file names
+  respect the protocol's 64-char cap.
+- **Resume, /clear and auto-compact no longer reset a session.** SessionStart
+  merges over the existing state file (the protocol's own rule): `started_at`
+  stops jumping (elapsed time survives), prompt/model/recap ride along, and a
+  compact mid-turn no longer hides a live row behind `started: false`.
+- **The open dropdown could answer a request it wasn't showing.** Request file
+  names repeat across the tools of one turn, and the menu keyed strips by name
+  alone — a replaced request looked like "no change", so the displayed Allow
+  answered the new request while showing the old command. Strips are keyed by
+  request identity now, with the `hookPid` echo above as the protocol-level
+  second lock.
+- **A poisoned state file can't crash-loop the app.** `pid`/`hookPid` decode
+  via `Int32(exactly:)` instead of a trapping conversion — an out-of-range pid
+  from a third-party writer used to crash every refresh, relaunch included.
+- **No celebration for a guess.** The mascot's finish hop now skips
+  watchdog-decayed Antigravity sessions, as the sound cue always did; the
+  welcome window's preview stops its animation timers when it closes (they used
+  to tick at 12.5 fps forever); and the island notices prompt/model changes
+  that land mid-state, so a queued prompt renames its row immediately.
+- **Antigravity desktop rows die with the app.** The watcher stamps the app's
+  pid, so quitting Antigravity clears its sessions instead of waiting out the
+  24 h prune. The installer's wired-hooks list also stopped racing the welcome
+  window (main-queue only), and the CLI writes `~/.codex/config.toml`
+  atomically.
+- **The docs tell the truth again.** The installer's consent summary, the
+  README's two install-footprint blocks and Uninstall all agree with what is
+  actually installed (Antigravity/Qwen/OpenCode included);
+  `THIRD_PARTY_NOTICES.md` covers all eight agents; and the design docs'
+  status notes match the shipped app instead of contradicting it.
+- **A dropped folder watch comes back.** If re-opening `state.d`/`requests.d`
+  failed at the moment the directory was replaced, fs-event responsiveness
+  silently degraded to the 2 s poll forever; the poll now re-arms the watch.
+- **The global Allow chord can't tick success over a plan.** With the session
+  gone from the store, a hotkey "allow" on an `ExitPlanMode` request used to
+  play the confirm tick while the hook (per protocol) swallowed the answer.
+- **Bridge hooks keep the project across events.** An Antigravity, Cursor or
+  Gemini event that carries no workspace/cwd (PostToolUse, Stop, AfterAgent)
+  used to blank the row's project; they merge the previous value now, per the
+  protocol's merge rule. Found by the new bridge lifecycle tests.
+- **Update fallback URL respects the release's real tag.** The downloader no
+  longer hardcodes a `v` prefix when a release lacks the `AgentBar.app.zip`
+  asset — a release tagged without one used to 404 as "Download failed".
 
 ## 1.12.0 - 2026-08-18
 

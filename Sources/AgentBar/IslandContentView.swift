@@ -272,6 +272,16 @@ final class IslandRowView: NSView {
             column.append(you)
         }
         column.append(status)
+        // The turn's recent tool steps under the live status — a quiet breadcrumb
+        // (island plan, Phase 3.2). Only while working, and only once there is
+        // more than the current step to show; head-truncated so the newest steps
+        // survive a narrow panel.
+        if session.state.isWorking, session.activity.count > 1 {
+            let feed = NSTextField(labelWithAttributedString: Self.activityLine(session))
+            feed.lineBreakMode = .byTruncatingHead
+            feed.maximumNumberOfLines = 1
+            column.append(feed)
+        }
         // "You: …" asked; "Claude: …" answers — the pair reads as the exchange.
         if !session.recap.isEmpty, session.state == .done || session.state == .idle {
             let recap = NSTextField(labelWithAttributedString: Self.recapLine(session))
@@ -384,6 +394,14 @@ final class IslandRowView: NSView {
             .foregroundColor: NSColor.white.withAlphaComponent(0.6),
         ]))
         return out
+    }
+
+    /// "Reading · Searching · Editing" — the turn's recent tool steps.
+    private static func activityLine(_ s: Session) -> NSAttributedString {
+        NSAttributedString(string: s.activity.joined(separator: " · "), attributes: [
+            .font: NSFont.systemFont(ofSize: 10.5),
+            .foregroundColor: NSColor.white.withAlphaComponent(0.35),
+        ])
     }
 
     /// The hero's second line: what this session wants from the user, in its colour.

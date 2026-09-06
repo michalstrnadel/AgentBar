@@ -183,6 +183,17 @@ function run() {
   const model = typeof p.model === "string" ? p.model : (p.model && p.model.display_name) || "";
   if (model) out.model = String(model);
   else if (prev.model) out.model = prev.model;
+  // A short ring of the turn's tool steps, oldest → newest, consecutive
+  // duplicates collapsed — the island renders it as a quiet breadcrumb.
+  // Optional and additive (docs/protocol.md). Like recap, a new prompt starts
+  // it clean: the feed describes the task the session is on NOW.
+  const ring = Array.isArray(prev.activity)
+    ? prev.activity.filter((x) => typeof x === "string") : [];
+  if (event === "pre") {
+    out.activity = (ring[ring.length - 1] === label ? ring : [...ring, label]).slice(-5);
+  } else if (event !== "prompt" && ring.length) {
+    out.activity = ring;
+  }
   // What the agent last said, for done rows. Only "stop" carries it — every other
   // event omits the field (out is built fresh, not {...prev}), so the next prompt
   // naturally clears the previous turn's recap and a working session never shows

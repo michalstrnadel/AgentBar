@@ -57,8 +57,16 @@ function run() {
   // An unwritable state.d must not throw the hook out with a stack trace: report it
   // once and carry on, so the SessionEnd cleanup below still runs.
   try { fs.mkdirSync(stateDir, { recursive: true }); } catch (e) { warn("mkdir " + stateDir, e); }
-  let id = "", cwd = "";
-  try { const j = JSON.parse(input); id = j.session_id; cwd = j.cwd || ""; } catch {}
+  let id = "", cwd = "", source = "", model = "";
+  try {
+    const j = JSON.parse(input);
+    id = j.session_id; cwd = j.cwd || "";
+    // Why this start fired: "startup" | "resume" | "clear" | "compact" ("" on
+    // older Claude Code versions — treated as a fresh start).
+    source = typeof j.source === "string" ? j.source : "";
+    // Model is best-effort: taken when the payload carries one, omitted otherwise.
+    model = typeof j.model === "string" ? j.model : (j.model && j.model.display_name) || "";
+  } catch {}
   const statePath = path.join(stateDir, safeId(id) + ".json");
 
   if (event === "start") {
@@ -90,23 +98,37 @@ function run() {
                         " dead state file(s) from " + stateDir);
       } catch (e) { warn("stale state cleanup", e); }
     }
-    // started:false — a merely-opened conversation stays out of the dropdown until real
-    // activity (update.js flips started on the first prompt/tool event).
+    // Merge over what's already there (protocol rule): SessionStart also fires
+    // mid-life — resume, /clear, auto-compact, all on the SAME session id — and a
+    // fresh-object write reset started_at (elapsed restarted), dropped
+    // prompt/model/recap, and hid a live row behind started:false until the next
+    // event.
+    let prev = {};
+    try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
+    // started:false — a merely-opened conversation stays out of the dropdown until
+    // real activity (update.js flips started on the first prompt/tool event).
+    // A resume reopens a session that has history and a compact fires mid-turn:
+    // both keep prev's visibility; compact alone also keeps state/label — the
+    // session is still doing whatever it was doing.
+    const continues = source === "resume" || source === "compact";
     try {
       const ts = Math.floor(Date.now() / 1000);
-      // Model is best-effort: taken when the payload carries one, omitted otherwise.
-      let model = "";
-      try {
-        const j = JSON.parse(input);
-        model = typeof j.model === "string" ? j.model : (j.model && j.model.display_name) || "";
-      } catch {}
       writeAtomic(statePath, {
-        agent: AGENT, state: "idle", label: "",
-        project: cwd ? path.basename(cwd) : "", cwd, sessionId: id || "",
-        entrypoint: process.env.CLAUDE_CODE_ENTRYPOINT || "",
-        term_program: process.env.TERM_PROGRAM || "",
-        pid: process.ppid, started: false, started_at: ts,
-        ...(model ? { model: String(model) } : {}), ts,
+        ...prev,
+        agent: AGENT,
+        state: source === "compact" ? (prev.state || "idle") : "idle",
+        label: source === "compact" ? (prev.label || "") : "",
+        project: cwd ? path.basename(cwd) : (prev.project || ""),
+        cwd: cwd || prev.cwd || "",
+        sessionId: id || prev.sessionId || "",
+        entrypoint: process.env.CLAUDE_CODE_ENTRYPOINT || prev.entrypoint || "",
+        term_program: process.env.TERM_PROGRAM || prev.term_program || "",
+        pid: process.ppid,
+        started: continues ? prev.started === true : false,
+        // Set once and preserved from then on — elapsed depends on it never moving.
+        started_at: prev.started_at || ts,
+        ...(model ? { model: String(model) } : {}),
+        ts,
       });
     } catch (e) { warn("state write " + statePath, e); }
     // Launch ONLY when nothing is running. With two copies on disk (a dev build

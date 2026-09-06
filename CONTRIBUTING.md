@@ -15,8 +15,10 @@ Thanks for your interest! AgentBar is intentionally small — please keep it tha
 3. **Hooks must never block the host agent** — async, atomic writes, exit fast.
    Sole exception: `permission.js` (see the comment at its top).
 4. **Adding an agent** = one entry in `Agents.swift`, a sprite in
-   `Sources/AgentBar/Sprites/`, and optionally a hook dir in `Scripts/hooks/<agent>/`.
-   Nothing else should need touching.
+   `Sources/AgentBar/Sprites/`, optionally a hook dir in `Scripts/hooks/<agent>/`
+   plus its installer step in `HookInstaller.swift` and the Linux CLI's
+   `install-hooks`, and the agent id in the `docs/protocol.md` list and the README
+   agent table (same checklist as `CLAUDE.md`). Nothing else should need touching.
 5. Third-party marks belong in `THIRD_PARTY_NOTICES.md`.
 
 ## Developing
@@ -25,6 +27,8 @@ Thanks for your interest! AgentBar is intentionally small — please keep it tha
 ./Scripts/build.sh                        # builds build/AgentBar.app
 open build/AgentBar.app
 ./Scripts/test/permission-hook-test.sh    # hook protocol tests
+./Scripts/test/bridge-hooks-test.sh       # cursor/gemini/antigravity/codex bridge tests
+./Scripts/test/opencode-plugin-test.sh    # OpenCode plugin driven through its event bus
 ./Scripts/test/cli-test.sh                # cross-platform CLI tests
 ./Scripts/test/antigravity-watcher-test.sh # live-app integration test (needs the app running)
 ./Scripts/test/cowork-watcher-test.sh     # live-app integration test (needs AgentBar + Claude.app running)

@@ -46,6 +46,9 @@ max 64 chars (fallback `"unknown"`). The file name is the session's identity;
   "model": "claude-opus-5",    // OPTIONAL: model name, when the agent reports one
   "recap": "Fixed the auth bug and added 3 regression tests",
                                // OPTIONAL: what the agent last said, one line, <= 160 chars
+  "activity": ["Reading", "Searching", "Editing"],
+                               // OPTIONAL: the turn's recent tool steps, oldest → newest,
+                               // <= 5 short labels, consecutive duplicates collapsed
   "url": "https://app.devin.ai/sessions/abc"
                                // OPTIONAL: where the session lives when it isn't local.
                                // Required for entrypoint "cloud": a row click opens it
@@ -74,7 +77,9 @@ Rules:
   written by the agent's turn-end hook (Claude's Stop) and replaced on each turn
   end. Writers MUST drop it (omit, not carry forward) when a new prompt starts, so
   a working session never advertises the previous turn's result. Absent = the
-  writer doesn't know what was said.
+  writer doesn't know what was said. `activity` follows the same reset rule: it is
+  the ring of the *current* task's tool steps (≤ 5 short labels, oldest → newest,
+  consecutive duplicates collapsed), and a new prompt starts it clean.
 
 Frontend pruning (each refresh):
 - delete when `pid > 0` and the process no longer exists (`kill(pid, 0)` → ESRCH);
@@ -138,8 +143,8 @@ is ignored upstream. `questions` carries what the wizard shows (≤ 4 questions,
 
 Answer (frontend → hook):
 ```json
-{ "behavior": "allow", "rule": { } }
-{ "behavior": "answer", "answers": [["JWT"]] }
+{ "behavior": "allow", "rule": { }, "hookPid": 12399 }
+{ "behavior": "answer", "answers": [["JWT"]], "hookPid": 12399 }
 ```
 `behavior`: `allow` | `always` | `deny` | `defer` | `answer`. `rule` only with
 `always`, and the hook accepts it **only** if it structurally equals one of the
@@ -154,6 +159,13 @@ a `kind:"plan"` one: a frontend that speaks only the older verbs must leave the
 question answerable rather than silently deferring it while showing "allowed". `defer` (or junk) makes the hook exit silently, falling
 back to the agent's normal terminal prompt (for questions: the wizard, which is
 already on screen).
+
+`hookPid` SHOULD echo the request's own `hookPid`. Request names repeat across
+the tools of one turn, so a successor hook can be polling the same file name the
+frontend answered — the hook **swallows** (deletes, keeps waiting) an answer
+naming a hook other than itself, so a frontend that stamps it can never answer a
+request it wasn't displaying. Answers without `hookPid` (older frontends) are
+accepted as before.
 
 Lifecycle: the hook polls `answers.d` (100 ms), times out after 600 s (env
 `AGENTBAR_APPROVAL_TIMEOUT`), and deletes both files on exit (including SIGTERM/

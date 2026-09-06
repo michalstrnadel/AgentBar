@@ -224,7 +224,7 @@ function run() {
 
     let pretty = "";
     try { pretty = JSON.stringify(p.tool_input || {}, null, 2); } catch {}
-    if (pretty.length > 4096) pretty = pretty.slice(0, 4096) + "\n…";
+    if (pretty.length > 4096) pretty = sliceSafe(pretty, 4096) + "\n…";
 
     // Rule suggestions come from Claude Code and go back verbatim on "Always allow";
     // the hook never invents permission rules itself. Questions carry none.
@@ -312,6 +312,15 @@ function run() {
           // Contract: the app writes answers atomically (tmp+rename), so a plain
           // read here never observes a partially written file.
           try { a = JSON.parse(fs.readFileSync(ansPath, "utf8")); } catch {}
+          if (typeof a.hookPid === "number" && a.hookPid !== process.pid) {
+            // The answer names the hook it was meant for — and it isn't this
+            // one. Frontends stamp the hookPid from the request they displayed,
+            // and request names repeat across the tools of one turn: executing a
+            // predecessor's answer would approve a tool the user never saw.
+            // Swallow it and keep waiting.
+            try { fs.rmSync(ansPath, { force: true }); } catch {}
+            return;
+          }
           const b = a.behavior;
           if (isQuestion && (b === "allow" || b === "always" || b === "deny")) {
             // A frontend speaking the pre-question protocol pressed its verbs at

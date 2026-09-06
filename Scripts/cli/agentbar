@@ -8,13 +8,13 @@
 //   agentbar approve [n] [--always] answer the newest (or n-th) pending request
 //   agentbar deny [n]
 //   agentbar watch [-i SEC]         live view; keys: a allow · A always · d deny ·
-//                                   f defer (terminal prompt) · q quit. Holds the
-//                                   watcher heartbeat, so hooks offer remote
-//                                   approval while it runs.
+//                                   f defer (terminal prompt) · 1-9 answer a
+//                                   question · q quit. Holds the watcher heartbeat,
+//                                   so hooks offer remote approval while it runs.
 //   agentbar waybar                 one-line JSON for waybar/polybar custom modules
 //                                   (each call refreshes the heartbeat; poll <= 30s)
 //   agentbar install-hooks          wire agent hooks (Claude/Codex/Cursor/Antigravity/
-//                                   Gemini) —
+//                                   Gemini/Qwen/OpenCode) —
 //                                   the Linux equivalent of the macOS app's installer
 
 "use strict";
@@ -90,6 +90,9 @@ function answer(r, behavior) {
   // "always" only sticks when the hook can match it to a rule Claude itself
   // suggested; without a suggestion it degrades to a plain one-shot allow there.
   if (behavior === "always" && r.ruleSuggestion) obj.rule = r.ruleSuggestion;
+  // Name the hook this answer is meant for: request names repeat across the
+  // tools of one turn, and the hook discards answers aimed at a predecessor.
+  if (r.hookPid > 0) obj.hookPid = r.hookPid;
   writeAtomic(path.join(ansDir, r.fileName), obj);
 }
 
@@ -97,7 +100,9 @@ function answer(r, behavior) {
 // only accepts labels the request itself offered.
 function answerQuestion(r, labels) {
   fs.mkdirSync(ansDir, { recursive: true });
-  writeAtomic(path.join(ansDir, r.fileName), { behavior: "answer", answers: labels });
+  const obj = { behavior: "answer", answers: labels };
+  if (r.hookPid > 0) obj.hookPid = r.hookPid;
+  writeAtomic(path.join(ansDir, r.fileName), obj);
 }
 
 // Same .git/HEAD trick as the app: no git invocation, handles worktrees.
@@ -261,9 +266,12 @@ function waybar() {
   heartbeat(); // each poll refreshes presence; keep the module interval <= 30s
   const ss = sessions(), rs = requests();
   const pending = ss.filter((s) => s.state === "permission").length;
+  // A session blocked on an AskUserQuestion is waiting on the human exactly like
+  // a permission is — it must not hide inside "idle".
+  const asking = ss.filter((s) => s.state === "question").length;
   const working = ss.filter((s) => s.state === "thinking" || s.state === "tool").length;
-  const cls = pending ? "permission" : working ? "working" : ss.length ? "idle" : "empty";
-  const text = pending ? `✋ ${pending}` : working ? `● ${working}` : ss.length ? `${ss.length}` : "";
+  const cls = pending ? "permission" : asking ? "question" : working ? "working" : ss.length ? "idle" : "empty";
+  const text = pending ? `✋ ${pending}` : asking ? `❓ ${asking}` : working ? `● ${working}` : ss.length ? `${ss.length}` : "";
   const tooltip = ss.map((s) => `${s.project || "session"} — ${s.state}${s.label ? " · " + s.label : ""} (${s.agent})`)
     .concat(rs.map((r) => `pending: ${r.display}`)).join("\n") || "no sessions";
   console.log(JSON.stringify({ text, alt: cls, class: cls, tooltip }));
@@ -419,7 +427,11 @@ function installHooks() {
     else {
       if (toml && !toml.endsWith("\n")) toml += "\n";
       toml += `notify = ["${node}", "${path.join(hooksDir, "codex", "notify.js")}"]\n`;
-      fs.writeFileSync(file, toml);
+      // tmp+rename like every other config write here — a crash mid-write must
+      // not truncate the user's Codex config.
+      const t = file + "." + process.pid + ".tmp";
+      fs.writeFileSync(t, toml);
+      fs.renameSync(t, file);
       report("codex   " + file, true);
     }
   }
@@ -484,6 +496,63 @@ function installHooks() {
       report("gemini  " + file, writeIfChanged(file, root));
     }
   }
+
+  // Qwen Code — ~/.qwen/settings.json. Qwen speaks Claude-style hooks (same event
+  // names, same stdin JSON), so the claude/ scripts serve it as-is with
+  // AGENTBAR_AGENT naming the rows — the same reuse the macOS installer does.
+  // Observational events only: Qwen's PermissionRequest decision contract is
+  // unverified against permission.js, and a blocking hook must never be wired on
+  // faith. Timeouts here are milliseconds (Qwen), not seconds (Claude).
+  const qwenDir = path.join(os.homedir(), ".qwen");
+  if (fs.existsSync(qwenDir)) {
+    const file = path.join(qwenDir, "settings.json");
+    const root = readConfig(file);
+    if (root !== null) {
+      const hooks = root.hooks && typeof root.hooks === "object" ? root.hooks : {};
+      for (const [ev, rules] of Object.entries(hooks)) {
+        if (!Array.isArray(rules)) continue;
+        const kept = rules.filter((rule) => !((rule.hooks || []).some((h) => String(h.command || "").includes("/.agentbar/hooks/claude/"))));
+        if (kept.length) hooks[ev] = kept; else delete hooks[ev];
+      }
+      const qwenEvents = [
+        ["SessionStart", `"${node}" "${dir}/lifecycle.js" start`, false],
+        ["SessionEnd", `"${node}" "${dir}/lifecycle.js" end`, false],
+        ["UserPromptSubmit", `"${node}" "${dir}/update.js" prompt`, false],
+        ["PreToolUse", `"${node}" "${dir}/update.js" pre`, true],
+        ["PostToolUse", `"${node}" "${dir}/update.js" post`, true],
+        // Qwen splits the failure paths into their own events; without them a
+        // turn that errors out keeps animating as if it were still working.
+        ["PostToolUseFailure", `"${node}" "${dir}/update.js" post`, true],
+        ["Stop", `"${node}" "${dir}/update.js" stop`, false],
+        ["StopFailure", `"${node}" "${dir}/update.js" fail`, false],
+      ];
+      for (const [ev, cmd, matcher] of qwenEvents) {
+        const rule = { hooks: [{ type: "command", command: cmd, timeout: 5000, env: { AGENTBAR_AGENT: "qwen" } }] };
+        if (matcher) rule.matcher = "*";
+        hooks[ev] = (hooks[ev] || []).concat([rule]);
+      }
+      root.hooks = hooks;
+      report(`qwen    ${file}`, writeIfChanged(file, root));
+    }
+  }
+
+  // OpenCode — ~/.config/opencode/plugins/agentbar.js. OpenCode loads JS plugins
+  // from its config dir; ours observes the event bus and mirrors it into state
+  // files. Copied on change, same refresh-with-the-installer rule as macOS.
+  const opencodeDir = path.join(os.homedir(), ".config", "opencode");
+  if (fs.existsSync(opencodeDir)) {
+    const file = path.join(opencodeDir, "plugins", "agentbar.js");
+    const src = fs.readFileSync(path.join(hooksDir, "opencode", "agentbar.js"), "utf8");
+    let changed = true;
+    try { changed = fs.readFileSync(file, "utf8") !== src; } catch {}
+    if (changed) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      const t = file + "." + process.pid + ".tmp";
+      fs.writeFileSync(t, src);
+      fs.renameSync(t, file);
+    }
+    report("opencode " + file, changed);
+  }
   console.log("Done. Start a NEW agent session to see it (hooks snapshot at session start).");
 }
 
@@ -511,6 +580,6 @@ switch (cmd) {
   agentbar watch [-i SEC]         live view + keys (a allow/A always/d deny/f defer/1-9 answer/q quit);
                                   enables remote approval
   agentbar waybar                 JSON for waybar/polybar (poll <= 30s)
-  agentbar install-hooks          wire Claude/Codex/Cursor/Antigravity/Gemini hooks (Linux installer)`);
+  agentbar install-hooks          wire Claude/Codex/Cursor/Antigravity/Gemini/Qwen/OpenCode hooks (Linux installer)`);
     break;
 }

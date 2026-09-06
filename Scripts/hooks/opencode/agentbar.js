@@ -14,7 +14,15 @@ const base = path.join(os.homedir(), ".agentbar");
 const stateDir = path.join(base, "state.d");
 
 const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";
-const oneLine = (s) => String(s).replace(/\s+/g, " ").trim().slice(0, 120);
+// Never end a cut on a lone high surrogate: JSON.stringify escapes one happily,
+// but Swift's JSONSerialization rejects the whole file — and an unreadable state
+// file hides the session from every frontend until the next clean write.
+const sliceSafe = (s, n) => {
+  const cut = s.slice(0, n);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+};
+const oneLine = (s) => sliceSafe(String(s).replace(/\s+/g, " ").trim(), 120);
 const writeAtomic = (file, obj) => {
   const tmp = file + "." + process.pid + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(obj));

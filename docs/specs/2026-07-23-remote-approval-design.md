@@ -3,6 +3,16 @@
 Date: 2026-07-23
 Status: approved for planning
 
+> **Historical record — do not read as current design.** This is the design as
+> approved on 2026-07-23; what shipped has since moved on. In particular:
+> AgentBar covers eight agents now, not four (`Agents.swift`); Antigravity
+> gained a real approval flow in 1.9.0 (`approveKeys` sends Return to its
+> preselected dialog — the "IDE without a scriptable prompt" line below is
+> obsolete); the disabled-note submenu for keystroke agents became the inline
+> button strip; and requests/answers grew `kind:"question"` / `kind:"plan"`
+> payloads plus a `hookPid` echo on answers. The normative contract is
+> [`docs/protocol.md`](../protocol.md).
+
 ## Problem
 
 When an agent session hits a permission prompt, AgentBar already shows it (yellow

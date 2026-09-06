@@ -69,8 +69,10 @@ final class UpdateChecker {
                     let url = assets.first { ($0["name"] as? String) == "AgentBar.app.zip" }
                         .flatMap { $0["browser_download_url"] as? String }
                         .flatMap(URL.init(string:))
+                    // Fallback built from the release's OWN tag — hardcoding a "v"
+                    // prefix 404'd for releases tagged without one.
                     self.zipURL = url ?? URL(string:
-                        "https://github.com/\(Self.repo)/releases/download/v\(latest)/AgentBar.app.zip")
+                        "https://github.com/\(Self.repo)/releases/download/\(tag)/AgentBar.app.zip")
                     self.setStatus(.available(latest))
                 } else {
                     self.setStatus(manual ? .upToDate : .idle)

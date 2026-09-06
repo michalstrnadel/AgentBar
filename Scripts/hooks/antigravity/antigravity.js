@@ -21,7 +21,11 @@ const STATE = {
 };
 
 const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";
+// The macOS app, or the CLI's watch/waybar heartbeat (any platform).
+// AGENTBAR_FORCE_APP=1|0 overrides for tests, same knob the claude hooks honor.
 const running = () => {
+  if (process.env.AGENTBAR_FORCE_APP === "1") return true;
+  if (process.env.AGENTBAR_FORCE_APP === "0") return false;
   if (process.platform === "darwin") {
     try { cp.execSync(`pgrep -x ${EXEC}`, { stdio: "ignore" }); return true; } catch {}
   }
@@ -67,11 +71,14 @@ function run() {
 
   try { fs.mkdirSync(stateDir, { recursive: true }); } catch {}
   let prev = {}; try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
+  // Not every event carries the workspace (PostToolUse/Stop often don't): a
+  // blank must not erase what an earlier event knew — protocol merge rule.
+  const dir = cwd || prev.cwd || "";
   try {
     writeAtomic(statePath, {
       ...prev, agent: AGENT, state,
       label: state === "tool" && tool ? String(tool) : (state === "done" ? "Done" : ""),
-      project: cwd ? path.basename(cwd) : "", cwd, sessionId: id,
+      project: dir ? path.basename(dir) : (prev.project || ""), cwd: dir, sessionId: id,
       // Desktop sessions come from the app's language_server; TERM_PROGRAM can't
       // be trusted (the app inherits it when launched from a terminal via `open`).
       entrypoint: isApp() ? "antigravity-app" : "cli",
@@ -80,7 +87,11 @@ function run() {
       ts: Math.floor(Date.now() / 1000),
     });
   } catch {}
-  if (!prev.agent && process.platform === "darwin" && running())
+  // First sighting of this session: make sure a frontend is up. Launch ONLY when
+  // nothing is running — with two copies on disk LaunchServices may resolve the
+  // bundle ID to the OTHER copy and start a second instance, which then
+  // terminates the one already running (see lifecycle.js).
+  if (!prev.agent && process.platform === "darwin" && !running())
     cp.spawn("open", ["-g", "-b", BUNDLE_ID], { stdio: "ignore", detached: true }).unref();
   process.exit(0);
 }

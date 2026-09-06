@@ -23,6 +23,12 @@ enum AnswerWriter {
     }
 
     private static func write(obj: [String: Any], behavior: String, for request: ApprovalRequest) -> Bool {
+        var obj = obj
+        // Name the hook this answer is meant for. Request file names repeat
+        // across the tools of one turn, so a successor hook polling the same
+        // name must be able to tell a predecessor's answer from its own — it
+        // discards answers stamped with a pid that isn't its own.
+        if request.hookPid > 0 { obj["hookPid"] = Int(request.hookPid) }
         let fm = FileManager.default
         let final = RequestStore.answersDir.appendingPathComponent(request.fileName)
         let data: Data

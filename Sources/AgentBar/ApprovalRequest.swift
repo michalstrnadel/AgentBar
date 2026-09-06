@@ -67,8 +67,10 @@ struct ApprovalRequest {
         toolInputPretty = o["toolInputPretty"] as? String ?? ""
         ruleSuggestion  = o["ruleSuggestion"] as? [String: Any]
         context         = Self.decodeContext(o["context"] as? [String: Any])
-        pid             = Int32(o["pid"] as? Int ?? 0)
-        hookPid         = Int32(o["hookPid"] as? Int ?? 0)
+        // Same guard as Session.pid: a malformed pid degrades to 0 (no liveness
+        // handle, expiry prune applies), never traps on an Int32 overflow.
+        pid             = max(0, Int32(exactly: o["pid"] as? Int ?? 0) ?? 0)
+        hookPid         = max(0, Int32(exactly: o["hookPid"] as? Int ?? 0) ?? 0)
         ts              = o["ts"] as? TimeInterval ?? 0
     }
 

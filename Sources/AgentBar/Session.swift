@@ -29,6 +29,7 @@ struct Session {
     let prompt: String       // latest user prompt — names the task ("" ok)
     let model: String        // model name when the agent reports one ("" ok)
     let recap: String        // what the agent last said at turn end ("" ok)
+    let activity: [String]   // the turn's recent tool steps, oldest → newest ([] ok)
     let url: String          // where the session lives when it isn't local ("" ok)
 
     /// Sort/priority weight: what the menu bar should surface first.
@@ -57,13 +58,18 @@ struct Session {
         cwd         = o["cwd"] as? String ?? ""
         entrypoint  = o["entrypoint"] as? String ?? ""
         termProgram = o["term_program"] as? String ?? ""
-        pid         = Int32(o["pid"] as? Int ?? 0)
+        // Third-party writers reach state.d too (the protocol invites them): an
+        // out-of-range or negative pid must degrade to "no liveness handle",
+        // never trap — the poisoned file survives on disk, so a trap here is a
+        // crash loop that outlives every relaunch.
+        pid         = max(0, Int32(exactly: o["pid"] as? Int ?? 0) ?? 0)
         started     = o["started"] as? Bool ?? true
         ts          = o["ts"] as? TimeInterval ?? 0
         startedAt   = o["started_at"] as? TimeInterval ?? 0
         prompt      = o["prompt"] as? String ?? ""
         model       = o["model"] as? String ?? ""
         recap       = o["recap"] as? String ?? ""
+        activity    = (o["activity"] as? [String] ?? []).prefix(5).map { String($0.prefix(40)) }
         url         = o["url"] as? String ?? ""
     }
 
@@ -109,6 +115,7 @@ struct Session {
         prompt = ""
         model = ""
         recap = ""
+        activity = []
         url = ""
         decayed = false
     }

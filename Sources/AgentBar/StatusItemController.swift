@@ -115,6 +115,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // keystroke approval instead of an allow the hook is obliged to
         // swallow — the chord must never tick success over a no-op.
         guard let session = sessions.first(where: { $0.id == r.sessionId }) else {
+            // Without the session a plan can't take its keystroke approval, and a
+            // raw "allow" is swallowed by the hook (docs/protocol.md) — acking it
+            // would tick success over a no-op, the exact thing the comment above
+            // promises never happens. Deny still works: it's a real hook decision.
+            if r.isPlanRequest, behavior == "allow" { return }
             AgentActions.ack(AgentActions.reportFailedAnswer(
                 AnswerWriter.write(behavior: behavior, for: r)))
             return
@@ -184,7 +189,11 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let rows = sessions.map {
             "\($0.id)|\($0.state.rawValue)|\($0.label)|\($0.project)|\($0.gitBranch ?? "")|\($0.termProgram)|\($0.recap)"
         }
-        let pending = requestStore.requests.map(\.fileName)
+        // Name AND identity (ts:hookPid): a request replaced under the same file
+        // name (names repeat across the tools of one turn) must not read as "no
+        // change" — the strip would stay bound to the old request and answer the
+        // new one while showing the old command.
+        let pending = requestStore.requests.map { "\($0.fileName)|\($0.identity)" }
         return (rows + ["req:"] + pending
                 + ["upd:\(UpdateChecker.shared.status)",
                    "hk:\(approvalShortcutEnabled):\(KeyCombo.allow.display)\(KeyCombo.deny.display)",
