@@ -4,10 +4,10 @@ Status: **delivered 2026-07-29**, annotations refreshed 2026-08-31 — Phases 0�
 shipped with the plan, and Phase 3 (content parity) is now complete: item 1
 (elapsed time), item 3 (answerable questions, 1.11.0), item 4 (plan preview,
 1.12.0) and item 2 (the activity feed — the `activity` ring in
-`docs/protocol.md`, rendered on the island hero). Of Phase 4 (polish), sounds
-(1.11.0) and the precise terminal jump (1.12.0) shipped, and the menu rows
-carry agent marks and elapsed time now; the full custom-NSView row pass is the
-one item still open. The usage/quota entry under *Explicitly not doing* was
+`docs/protocol.md`, rendered on the island hero, 1.13.0). Of Phase 4 (polish),
+sounds (1.11.0) and the precise terminal jump (1.12.0) shipped, and the menu
+rows carry agent marks and elapsed time now (1.13.0); the full custom-NSView
+row pass is the one item still open. The usage/quota entry under *Explicitly not doing* was
 re-opened on different terms and shipped in 1.12.0 — see the note there.
 See *As built* for where the shipped app differs from this draft; everything
 below the fold is the original 2026-07-28 draft, kept because its survey of the

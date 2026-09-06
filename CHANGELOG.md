@@ -3,7 +3,7 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 1.13.0 - 2026-09-06
 
 ### Added
 - **Cloud agents in the bar.** Cursor cloud agents, Devin sessions, and Codex
