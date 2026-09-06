@@ -1,5 +1,8 @@
 build/
 *.dmg
+# Release artifact: CONTRIBUTING's release step builds it in the repo root,
+# and it is published to the GitHub release rather than committed.
+AgentBar.app.zip
 .DS_Store
 node_modules/
 
