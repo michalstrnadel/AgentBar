@@ -227,7 +227,11 @@ rm -rf ~/.agentbar
 #                              — delete the top-level "agentbar" key
 #   ~/.qwen/settings.json      — delete hook groups whose command references "/.agentbar/hooks/claude/"
 rm -f ~/.config/opencode/plugins/agentbar.js
+./Scripts/cloud/install.sh uninstall   # only if you installed the cloud poller
 ```
+
+Wiping `~/.agentbar` takes `cloud.json` (and its API keys) with it; the poller's
+launchd agent has to be booted out separately, which is what the last line does.
 
 ## Agent support
 

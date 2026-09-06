@@ -27,7 +27,11 @@ tool a session belongs to — and remain the property of their respective owners
   project; its name remains with its maintainers. The terminal-chevron mark
   AgentBar shows is original artwork drawn for this project; the name is used
   nominatively to identify the tool.
+- **Devin name** (shown for Devin cloud sessions) — "Devin" is a trademark of
+  Cognition AI, Inc. The heavy-D letterform mark AgentBar shows is original
+  artwork drawn for this project, not Cognition's logo; the name is used
+  nominatively to identify the tool.
 
 AgentBar is an independent project and is not affiliated with, endorsed by, or
-sponsored by Anthropic, OpenAI, GitHub, Google, Anysphere, Alibaba, or the
-OpenCode maintainers.
+sponsored by Anthropic, OpenAI, GitHub, Google, Anysphere, Alibaba, Cognition,
+or the OpenCode maintainers.

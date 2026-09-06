@@ -48,5 +48,5 @@ environment instead of the file.
 
 ```bash
 node Scripts/cloud/index.js --once   # single poll, then exit
-node --test Scripts/cloud/test/      # pure-function tests, no network
+node --test Scripts/cloud/test/*.test.js   # pure-function tests, no network
 ```
