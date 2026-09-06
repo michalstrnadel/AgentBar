@@ -24,6 +24,8 @@ enum AgentActions {
             // CLI-only agents open into the user's terminal (chosen in Open ▸ Terminal,
             // or auto-detected from the most recent session).
             TerminalApp.preferred(sessions: currentSessions()).open()
+        case .url(let s):
+            if let url = URL(string: s) { ws.open(url) }
         }
     }
 
@@ -45,11 +47,35 @@ enum AgentActions {
         openApp(named: terminalAppName(for: termProgram))
     }
 
+    /// Any state file in `~/.agentbar/state.d` can name a `url`, and the protocol
+    /// deliberately invites third-party writers — so a row click must not become
+    /// "open an arbitrary local path with its default app". Web and vendor schemes
+    /// (`cursor://`, `devin://`, …) stay open-ended; the ones that reach the
+    /// filesystem or a script interpreter are refused.
+    private static let refusedURLSchemes: Set<String> =
+        ["file", "javascript", "data", "vbscript", "about", "smb", "afp", "nfs"]
+
+    private static func openableCloudURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), !scheme.isEmpty else { return false }
+        return !refusedURLSchemes.contains(scheme)
+    }
+
     /// A row click: jump to wherever the session actually lives. A session waiting
     /// on us is released to its own prompt first, or the user lands on a spinner
     /// with the hook still blocked. (A question's wizard is already on screen, but
     /// deferring still retires the island card — answered where the user is going.)
     static func focus(_ s: Session, requests: [ApprovalRequest]) {
+        // A cloud session lives at a URL, not in anything local: open it and stop —
+        // there is no tty to resolve and no blocked hook to release. Checked first
+        // so no local-only path can ever run for a row the poller wrote.
+        if s.entrypoint == "cloud" {
+            if let url = URL(string: s.url), openableCloudURL(url) {
+                NSWorkspace.shared.open(url)
+            } else {
+                NSSound.beep() // no url, or one we refuse to open — nowhere to go
+            }
+            return
+        }
         if s.state == .permission || s.state == .question,
            let r = requests.first(where: { $0.sessionId == s.id }) {
             reportFailedAnswer(AnswerWriter.write(behavior: "defer", for: r))

@@ -30,6 +30,7 @@ struct Session {
     let model: String        // model name when the agent reports one ("" ok)
     let recap: String        // what the agent last said at turn end ("" ok)
     let activity: [String]   // the turn's recent tool steps, oldest → newest ([] ok)
+    let url: String          // where the session lives when it isn't local ("" ok)
 
     /// Sort/priority weight: what the menu bar should surface first.
     var priority: Int {
@@ -69,6 +70,7 @@ struct Session {
         model       = o["model"] as? String ?? ""
         recap       = o["recap"] as? String ?? ""
         activity    = (o["activity"] as? [String] ?? []).prefix(5).map { String($0.prefix(40)) }
+        url         = o["url"] as? String ?? ""
     }
 
     /// "‹1m" / "28m" / "3h" / "2d" — how long the session has been going.
@@ -114,6 +116,7 @@ struct Session {
         model = ""
         recap = ""
         activity = []
+        url = ""
         decayed = false
     }
 

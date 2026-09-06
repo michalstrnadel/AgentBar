@@ -6,6 +6,21 @@ All notable changes to AgentBar are documented here. This project follows
 ## Unreleased
 
 ### Added
+- **Cloud agents in the bar.** Cursor cloud agents, Devin sessions, and Codex
+  cloud tasks — runs with no local pid, tty, or hook — now appear as first-class
+  rows via the optional [`Scripts/cloud/`](Scripts/cloud/) poller (zero-dep
+  Node, launchd, `install.sh`). The protocol grows two additive fields:
+  `entrypoint: "cloud"` and `url` — a cloud row's click opens the run where it
+  lives (the `cursor://` run deep link; the exact thread in Devin Desktop via
+  its ACP URL handler, which itself falls back to the web thread; the task on
+  chatgpt.com), never a terminal, and cloud rows never grow approval
+  affordances. Vendors fail independently: a broken key collapses to one
+  clickable "check API key" row without touching the other vendors' rows.
+  Finished runs linger briefly and age out (`retentionMinutes`); Devin's
+  auto-suspended threads show as idle within their own window. A row click only
+  follows web and vendor schemes — any state file can name a `url`, and opening
+  an arbitrary local path with its default app is not what a row click is for.
+  Devin joins the agent roster with an original D letterform mark.
 - **Activity feed.** The island hero shows the turn's recent tool steps as a
   quiet breadcrumb ("Reading · Searching · Editing") while the session works —
   the last item of the island plan's content-parity phase. Carried as the

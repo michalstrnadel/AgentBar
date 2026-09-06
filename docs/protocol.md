@@ -27,14 +27,15 @@ max 64 chars (fallback `"unknown"`). The file name is the session's identity;
 
 ```json
 {
-  "agent": "claude",           // agent id: claude | codex | copilot | antigravity | cursor | gemini | qwen | opencode
+  "agent": "claude",           // agent id: claude | codex | copilot | antigravity | cursor | gemini | qwen | opencode | devin
   "state": "tool",             // idle | thinking | tool | permission | question | done | error
   "label": "Running command",  // short human hint for the current state ("" ok)
   "project": "AgentBar",       // basename of cwd ("" ok)
   "cwd": "/path/to/project",
   "sessionId": "abc-123",
-  "entrypoint": "cli",         // "cli" | "claude-desktop" | "antigravity-app" | "" — which surface hosts it
+  "entrypoint": "cli",         // "cli" | "claude-desktop" | "antigravity-app" | "cloud" | "" — which surface hosts it
                                // "claude-desktop" also covers Cowork: the row opens the app, not a terminal
+                               // "cloud" = the session runs on a vendor's infrastructure; the row opens `url`
   "term_program": "WarpTerminal", // $TERM_PROGRAM of the hosting terminal ("" ok)
   "pid": 12345,                // the agent process (hook's ppid) — liveness handle
   "started": true,             // false = session opened but no real activity yet
@@ -45,9 +46,13 @@ max 64 chars (fallback `"unknown"`). The file name is the session's identity;
   "model": "claude-opus-5",    // OPTIONAL: model name, when the agent reports one
   "recap": "Fixed the auth bug and added 3 regression tests",
                                // OPTIONAL: what the agent last said, one line, <= 160 chars
-  "activity": ["Reading", "Searching", "Editing"]
+  "activity": ["Reading", "Searching", "Editing"],
                                // OPTIONAL: the turn's recent tool steps, oldest → newest,
                                // <= 5 short labels, consecutive duplicates collapsed
+  "url": "https://app.devin.ai/sessions/abc"
+                               // OPTIONAL: where the session lives when it isn't local.
+                               // Required for entrypoint "cloud": a row click opens it
+                               // (https:// or a vendor scheme like cursor://).
 }
 ```
 
@@ -194,3 +199,13 @@ rules. AgentBar does this for Antigravity (sparse hooks) and for Claude Cowork,
 which hands every session a throwaway config directory so there is nothing to
 install into. A watcher MUST leave newer hook writes alone and SHOULD stamp a
 `pid` that dies with the session, so the normal pruning rules clean up after it.
+
+Sessions that run on a vendor's infrastructure (cloud agents) are the same
+pattern taken out of process: an external poller writes rows with
+`entrypoint: "cloud"`, a `url`, `cwd: ""` (there is no local checkout — a
+non-empty cwd would advertise the wrong git branch), and the **poller's own
+pid** — rows die with the poller. Cloud writers MUST NOT write `requests.d`:
+remote approval is a rendezvous with a blocking local hook, and no such hook
+exists for a cloud session. Use `question` (not `permission`) when a cloud
+session waits on its user, so frontends never offer a keystroke approval that
+has nowhere to land.

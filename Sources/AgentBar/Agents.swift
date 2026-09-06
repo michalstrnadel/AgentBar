@@ -22,6 +22,7 @@ struct Agent {
         case bundle(String)   // open by bundle identifier
         case appNamed(String) // open -a <name>
         case terminal         // bring the user's terminal forward
+        case url(String)      // web-only agents: open their home in the browser
     }
 
     let id: String
@@ -76,6 +77,12 @@ struct Agent {
               brand: .labelColor, // monochrome brand; adapt to menu appearance
               artwork: .appIconMark(opencodeMarkPNG),
               open: .terminal,
+              approveKeys: nil),
+        // Cloud-only: rows come from the external poller (Scripts/cloud), never hooks.
+        Agent(id: "devin", name: "Devin",
+              brand: NSColor(srgbRed: 0.169, green: 0.502, blue: 1.0, alpha: 1), // #2B80FF
+              artwork: .tintedMark(devinMarkPNG),
+              open: .url("https://app.devin.ai"),
               approveKeys: nil),
     ]
 

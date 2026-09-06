@@ -24,7 +24,10 @@ enum MenuBuilder {
                 // glance, and the section keeps one consistent icon gutter.
                 item.image = menuMark(for: Agent.byID(s.agentID))
                 let sessionRequests = requests.filter { $0.sessionId == s.id }
-                if s.state == .permission {
+                // Cloud rows get no approval affordances: there is no local hook a
+                // keystroke or answer file could reach — the plain row (which opens
+                // the session's URL) is the whole offer.
+                if s.state == .permission, s.entrypoint != "cloud" {
                     if !sessionRequests.isEmpty {
                         // Row click defers to the session's own UI; actions live right below.
                         menu.addItem(item)
