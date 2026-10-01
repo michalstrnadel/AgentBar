@@ -14,11 +14,13 @@ import Testing
 
     private func request(tool: String = "Bash", command: String? = "git status",
                          input: String = "{}", display: String = "Bash: git status",
+                         filePath: String? = nil,
                          ts: TimeInterval = DecisionLedgerTests.noon.timeIntervalSince1970 - 30)
     -> ApprovalRequest {
         let context = command.map { #"{"kind":"bash","command":"\#($0)"}"# } ?? "null"
+        let path = filePath.map { #""filePath":\#(quoted($0)),"# } ?? ""
         let json = """
-        {"sessionId":"s1","agent":"claude","toolName":"\(tool)","display":"\(display)",
+        {"sessionId":"s1","agent":"claude","toolName":"\(tool)","display":"\(display)",\(path)
          "toolInputPretty":\(quoted(input)),"context":\(context),
          "pid":1,"hookPid":2,"ts":\(Int(ts))}
         """
@@ -83,6 +85,20 @@ import Testing
         let shape = DecisionLedger.shape(of: r)
         #expect(shape == "edit:AgentBar/*.swift")
         #expect(!shape.contains("/Users/me"))
+    }
+
+    /// The hook cuts the tool input at 4 KB and a cut is not JSON, so a large edit
+    /// used to lose its path and count as `tool:Edit` — out of reach of every
+    /// `edit:` rule written for the same folder. The hook's own field keeps it.
+    @Test func aLargeEditKeepsItsShape() {
+        let cut = #"{"file_path":"/Users/me/AgentBar/Sources/AgentBar/Weight.swift","new_string":""#
+            + String(repeating: "x", count: 5000) + "\n…"
+        let r = request(tool: "Edit", command: nil, input: cut, display: "Edit: Weight.swift",
+                        filePath: "/Users/me/AgentBar/Sources/AgentBar/Weight.swift")
+        #expect(DecisionLedger.shape(of: r) == "edit:AgentBar/*.swift")
+        // An older hook wrote no field; that request still falls back to parsing.
+        let old = request(tool: "Edit", command: nil, input: cut, display: "Edit: Weight.swift")
+        #expect(DecisionLedger.shape(of: old) == "tool:Edit")
     }
 
     @Test func anythingElseCountsByTool() {
@@ -212,6 +228,24 @@ import Testing
         #expect(DecisionLedger.read(url: url).isEmpty)
     }
 
+    /// …but not for a rule. The switch is about the human's clicks; an answer
+    /// nobody clicked exists only on condition that it leaves a row naming the
+    /// rule, and a watching rule with no rows could never be judged.
+    @Test func aRuleFiringIsWrittenWithTheSwitchOff() throws {
+        let url = ledgerFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let ledger = DecisionLedger(url: url)
+        DecisionLedger.enabled = false
+        defer { DecisionLedger.enabled = true }
+        ledger.record("allow", request: request(), session: nil, via: "rule", rule: "r1")
+        ledger.record("watch", request: request(), session: nil, via: "rule", rule: "r1",
+                      would: "allow")
+        ledger.flush()
+        let rows = DecisionLedger.read(url: url)
+        #expect(rows.map(\.decision) == ["allow", "watch"])
+        #expect(rows.allSatisfy { $0.rule == "r1" })
+    }
+
     /// A request with no timestamp contributes no wait rather than one measured
     /// from the epoch, which would put four decades into the day's total.
     @Test func aRequestWithoutATimestampContributesNoWait() throws {
@@ -251,15 +285,23 @@ import Testing
         #expect(kept.count == 1)
         #expect(kept[0].ts == fresh.ts)
     }
-}
 
-private extension String {
-    func appendLine(to url: URL) throws {
-        let handle = try FileHandle(forWritingTo: url)
-        defer { try? handle.close() }
-        try handle.seekToEnd()
-        try handle.write(contentsOf: Data((self + "\n").utf8))
+    /// A hand-edited `ts` of `1e19` or NaN is read as no time: prune does `Int(ts)`
+    /// on every row at launch, and one poisoned line must not trap it.
+    @Test func aTimeThatIsNotATimeIsReadAsNone() throws {
+        for ts in ["1e19", "-1e19"] {
+            let line = #"{"v":1,"ts":\#(ts),"decision":"allow","shape":"bash:ls"}"#
+            let row = try #require(DecisionLedger.Record(jsonLine: line))
+            #expect(row.ts == 0)
+            #expect(row.json["ts"] as? Int == 0)
+        }
+        let url = ledgerFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(#"{"v":1,"ts":1e19,"decision":"allow","shape":"bash:ls"}"#.utf8).write(to: url)
+        DecisionLedger.prune(url: url, now: Self.noon.timeIntervalSince1970)
+        #expect(DecisionLedger.read(url: url).isEmpty)
     }
+
     // MARK: - Handing the record to somebody else
 
     /// A record you cannot show anybody is only half a record, so it comes out as a
@@ -316,5 +358,13 @@ private extension String {
         let row = try #require(DecisionLedger.Record(jsonLine: line))
         #expect(row.waited == 42)
     }
+}
 
+private extension String {
+    func appendLine(to url: URL) throws {
+        let handle = try FileHandle(forWritingTo: url)
+        defer { try? handle.close() }
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data((self + "\n").utf8))
+    }
 }

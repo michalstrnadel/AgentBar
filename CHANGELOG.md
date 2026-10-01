@@ -3,6 +3,78 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- **A rule that approves now refuses more of what it cannot read.** The refused
+  flags were matched as exact words, so `rm -Rf .`, `rm -rfv .` and `chmod 4755
+  ./tool` slipped past an approving `bash:rm` or `bash:chmod` rule that `rm -r .`
+  could not. Short-flag clusters, unambiguous prefixes of long flags and chmod modes
+  that grant setuid, setgid, sticky or world-write are now refused too. The path
+  clause read the word as typed, so `cat $HOME/.config/gh/hosts.yml` looked like a
+  file inside the repo: a command with `$`, `\`, braces or a glob now goes to you,
+  `.` and `..` count as paths, and the value after `--opt=` is checked as one.
+- **Rule firings are written down even with "Remember what I decided" off.** That
+  switch also silenced the ledger rows rules write, so a rule could answer with no
+  record and a watching rule could never be judged. Rows from rules no longer depend
+  on it, and the Approvals page says so.
+- **A deny rule on a folder now catches large edits too.** The hook cuts the request
+  text at 4 KB, which broke the JSON the edit's file path was read from, so a big
+  Write fell back to `tool:Edit` and missed an `edit:<dir>/*.ext` rule. The hook now
+  sends the path as its own `filePath` field (see `docs/protocol.md`).
+- **Codex keeps a config.toml it can load.** The check for a `notify` of your own
+  only looked at the first line, so one further down got a second `notify` appended
+  beside it, and TOML refuses duplicate keys. AgentBar's own `notify` was also
+  appended after your tables, where TOML reads it as part of the last one; it now
+  goes above the first table, and a misplaced one is moved there. A config.toml that
+  cannot be read or is not UTF-8 is now left alone instead of being rewritten from
+  empty. The Linux CLI places `notify` the same way.
+- **The Linux CLI keeps a settings file's permissions.** `install-hooks` rewrote a
+  0600 `settings.json` or `config.toml` as 0644; it now keeps the original mode.
+  `agentbar doctor` no longer reports that nothing is listening right after a
+  `waybar` poll, and it now refuses a rules file with a duplicate id or a relative
+  `cwd`, as the app does, instead of calling it healthy.
+- **Recording the launcher shortcut can no longer swallow your keyboard.** Clicking
+  away from Settings mid-capture left that recorder listening and every global
+  shortcut switched off until it ended.
+- **Two sheets at once no longer leave one stuck.** Opening the changes sheet from
+  both Welcome and Settings, or a second rule sheet from the menu, released the first
+  sheet's controller, and its buttons stopped working until AgentBar quit.
+- **A denied or allowed request no longer leaves its session "waiting on you".** The
+  hook answered and went, but the row it had set to *permission* stayed there until
+  the agent's next event. A deny now moves it on to *thinking* — the agent reads the
+  refusal and carries on — and an allow back to the tool it was about to run; a row
+  something newer already rewrote is left alone.
+- **A banner can't answer the request that replaced it.** Prompt ids repeat within a
+  turn, so a stale Allow on a notification could reach a new request filed under the
+  same name. The banner now carries the request's identity and only focuses the
+  session when it no longer matches.
+- **A rule's folder has to be written plainly.** `/x/repo/` never matched sessions in
+  `/x/repo`, and `/x/repo/../other` named a different folder than it read as. The
+  rules file now refuses a `cwd` with a trailing `/`, `//`, `.` or `..` and says what
+  to write instead; the sheet writes the plain form itself, and the CLI refuses the
+  same.
+- **A symlinked settings file stays a symlink.** The atomic write replaced a
+  dotfiles-managed `settings.json` link with a regular file. AgentBar now writes
+  through the link to its target and keeps the backup beside the link.
+- **`agentbar watch -i` longer than a minute keeps remote approval working.** The
+  presence heartbeat was refreshed only when the screen redrew, so a slow interval
+  let it lapse and hooks stopped waiting on the watcher. It now beats on its own
+  every 20 seconds.
+- **`agentbar doctor` checks every Claude config install-hooks wires**, including
+  `CLAUDE_CONFIG_DIR` and the hint file, and the CLI leaves an unreadable or non-UTF-8
+  `config.toml` untouched instead of rewriting it from empty.
+- **Smaller things.** A label made only of colons no longer crashes the island; a
+  re-shown launcher keeps the double-Return guard a link set; the git branch is read
+  for submodules whose `.git` file points at a relative path; closing the claude.ai
+  sign-in window stops its poll; a hand-edited timestamp no longer traps at launch;
+  the launcher reads the session list on the main thread.
+- **The test suites no longer touch your own data.** One test wrote watch rows into
+  the real `~/.agentbar/decisions.jsonl` on every run and another read the real
+  `rules.json`; the shell suites now also drop an inherited `COPILOT_HOME` and
+  `CODEX_HOME`.
+
 ## 1.31.0 - 2026-10-01
 
 ### Added

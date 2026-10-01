@@ -110,7 +110,11 @@ final class DecisionLedger {
             else { return nil }
             self.shape = shape
             self.decision = decision
-            ts = (o["ts"] as? NSNumber)?.doubleValue ?? 0
+            // Checked the way `waited` is below: `json` does `Int(ts)`, and prune runs
+            // that on every row at launch. A time that is not a time (NaN, `1e19`,
+            // past the year 3000) reads as none, which prune then drops as old
+            // rather than trapping on.
+            ts = Session.plausibleTime(o["ts"])
             agent = o["agent"] as? String ?? ""
             sessionId = o["sessionId"] as? String ?? ""
             project = o["project"] as? String ?? ""
@@ -135,7 +139,12 @@ final class DecisionLedger {
     func record(_ decision: String, request: ApprovalRequest, session: Session?,
                 via: String = "app", rule: String = "", would: String = "",
                 now: TimeInterval = Date().timeIntervalSince1970) {
-        guard Self.enabled else { return }
+        // The switch is about the human's own clicks. A rule's firing is written
+        // whatever it says: an answer nobody clicked is only allowed to exist
+        // because it leaves a row naming the rule (CLAUDE.md rule 3), and a
+        // watching rule with no rows can never be judged. Off, rules kept
+        // approving and nothing anywhere said so.
+        guard Self.enabled || via == "rule" else { return }
         var r = Record()
         r.ts = now
         r.agent = request.agentID
@@ -212,7 +221,7 @@ final class DecisionLedger {
         default:
             break
         }
-        if let path = filePath(in: request.toolInputPretty) {
+        if let path = filePath(of: request) {
             return "\(request.toolName.lowercased()):\(folder(of: path))"
         }
         return "tool:" + request.toolName
@@ -246,6 +255,13 @@ final class DecisionLedger {
         // The subcommand, if there is one that isn't a flag.
         guard let next = words.dropFirst().first(where: { !$0.hasPrefix("-") }) else { return name }
         return "\(name) \(next)"
+    }
+
+    /// The file this request names: the hook's own field when it wrote one, else
+    /// read out of the tool input. The field is what keeps a large edit's shape
+    /// the same as a small one's — the input is cut at 4 KB, and a cut is not JSON.
+    static func filePath(of request: ApprovalRequest) -> String? {
+        request.filePath.isEmpty ? filePath(in: request.toolInputPretty) : request.filePath
     }
 
     /// Tool inputs are JSON, capped at 4 KB by the hook. Edits and writes name a

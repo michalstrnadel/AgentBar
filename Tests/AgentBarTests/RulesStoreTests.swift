@@ -127,6 +127,33 @@ import Testing
         #expect(why.contains("absolute"))
     }
 
+    /// The engine compares directories as text: a trailing slash would never match,
+    /// and `..` would name a directory nobody wrote. Refused, with the plain spelling.
+    @Test func aDirectoryNotWrittenPlainlyIsRefused() {
+        for cwd in ["/x/repo/", "/x//repo", "/x/./repo", "/x/repo/../other"] {
+            let url = file()
+            defer { try? FileManager.default.removeItem(at: url) }
+            write(#"{"v":1,"rules":[{"id":"r-1","decision":"allow","shape":"bash:ls","cwd":"\#(cwd)"}]}"#,
+                  to: url)
+            guard case .invalid(let why) = RulesStore.load(url: url) else {
+                Issue.record("expected a refusal for \(cwd)"); continue
+            }
+            #expect(why.contains("not written plainly"))
+        }
+        #expect(RulesStore.normalisedCwd("/x/repo/../other") == "/x/other")
+        #expect(RulesStore.normalisedCwd("/") == "/")
+        #expect(RulesStore.validate(RulesStore.Rule(id: "a", decision: "allow", shape: "s",
+                                                    cwd: "/x/repo"), index: 0, seen: []) == nil)
+    }
+
+    /// `json` writes `Int(created)`; a hand-edited `1e19` must not trap the next save.
+    @Test func aCreatedTimeThatIsNotATimeIsReadAsNone() throws {
+        let rule = try #require(RulesStore.Rule(json: ["id": "r-1", "decision": "deny",
+                                                       "shape": "bash:curl", "created": 1e19]))
+        #expect(rule.created == 0)
+        #expect(rule.json["created"] as? Int == 0)
+    }
+
     @Test func aMissingFieldIsRefusedByName() {
         let url = file()
         defer { try? FileManager.default.removeItem(at: url) }

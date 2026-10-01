@@ -75,7 +75,9 @@ function run() {
   // emit — is one parser change away from refusing every tool call in the CLI.
   // So the decision goes out first, synchronously (process.exit can truncate a
   // buffered async write), before any of the work below can go wrong. The desktop
-  // app ignores stdout, so it costs that side nothing.
+  // app ignores stdout, so it costs that side nothing. "allow" here only means
+  // "this hook does not object": agy 1.2.14 still applies its own permission
+  // system on top of it (verified 2026-10-01), so nothing is approved for the user.
   if (event === "PreToolUse") { try { fs.writeSync(1, '{"decision":"allow"}'); } catch {} }
   const state = STATE[event];
   if (!state) return process.exit(0);

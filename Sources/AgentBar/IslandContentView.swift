@@ -522,7 +522,15 @@ final class IslandRowView: NSView {
             let parts = s.label.split(separator: ":", maxSplits: 1).map {
                 $0.trimmingCharacters(in: .whitespaces)
             }
-            let out = NSMutableAttributedString(string: parts[0], attributes: [
+            // The label is whatever the agent wrote. One made only of colons splits
+            // into nothing, and reads the way an empty one does.
+            guard let head = parts.first else {
+                return NSAttributedString(string: "Working…", attributes: [
+                    .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
+                    .foregroundColor: working,
+                ])
+            }
+            let out = NSMutableAttributedString(string: head, attributes: [
                 .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
                 .foregroundColor: working,
             ])

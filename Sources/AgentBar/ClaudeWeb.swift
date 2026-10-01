@@ -210,7 +210,7 @@ enum ClaudeWeb {
 /// injected script, no form of our own, no interception. The page is theirs, the
 /// typing goes to them, and all this window does is notice when a session cookie
 /// appears and then get out of the way.
-final class ClaudeWebLogin: NSObject, WKNavigationDelegate {
+final class ClaudeWebLogin: NSObject, WKNavigationDelegate, NSWindowDelegate {
     static let shared = ClaudeWebLogin()
 
     private var window: NSWindow?
@@ -260,7 +260,16 @@ final class ClaudeWebLogin: NSObject, WKNavigationDelegate {
         w.isReleasedWhenClosed = false
         w.center()
         w.contentView = web
+        w.delegate = self
         window = w
+    }
+
+    /// Closing the window is giving up on signing in, and the clock goes with it —
+    /// otherwise it keeps asking for a cookie every two seconds until the next
+    /// sign-in, for a window nobody can see.
+    func windowWillClose(_ notification: Notification) {
+        poll?.invalidate()
+        poll = nil
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

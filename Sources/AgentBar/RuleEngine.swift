@@ -59,7 +59,8 @@ final class RuleEngine {
     /// True when this request was answered from a rule and must not be shown as
     /// pending. False for everything else, including every failure.
     func handle(_ request: ApprovalRequest, session: Session?,
-                load: RulesStore.Load? = nil, now: Date = Date()) -> Bool {
+                load: RulesStore.Load? = nil, now: Date = Date(),
+                ledger: DecisionLedger = .shared) -> Bool {
         guard RulesStore.enabled else { return false }
         lock.lock()
         let seen = answered.contains(request.identity)
@@ -85,10 +86,10 @@ final class RuleEngine {
             }
             lock.unlock()
             if !alreadyNoted {
-                DecisionLedger.shared.record("watch", request: request, session: session,
-                                             via: "rule", rule: verdict.rule.id,
-                                             would: verdict.behavior,
-                                             now: now.timeIntervalSince1970)
+                ledger.record("watch", request: request, session: session,
+                              via: "rule", rule: verdict.rule.id,
+                              would: verdict.behavior,
+                              now: now.timeIntervalSince1970)
             }
             return false
         }
@@ -107,9 +108,9 @@ final class RuleEngine {
         if firings.count > 20 { firings.removeLast(firings.count - 20) }
         lock.unlock()
 
-        DecisionLedger.shared.record(verdict.behavior, request: request, session: session,
-                                     via: "rule", rule: verdict.rule.id,
-                                     now: now.timeIntervalSince1970)
+        ledger.record(verdict.behavior, request: request, session: session,
+                      via: "rule", rule: verdict.rule.id,
+                      now: now.timeIntervalSince1970)
         return true
     }
 
@@ -175,7 +176,7 @@ final class RuleEngine {
             // Every other tool is judged by the file it names. A tool that names
             // nothing this code understands is not understood, and a rule does not
             // get to approve what it cannot read.
-            guard let path = DecisionLedger.filePath(in: request.toolInputPretty) else {
+            guard let path = DecisionLedger.filePath(of: request) else {
                 return "this tool names nothing a rule can check"
             }
             return refusalInPath(path, cwd: cwd)
@@ -276,6 +277,15 @@ final class RuleEngine {
         for marker in ["|", ";", "&", "\n", "$(", "`", ">", "<"] where line.contains(marker) {
             return "more than one command, a redirect or a substitution on one line"
         }
+        // SECOND: every word below is judged as the literal text it is, and the shell
+        // does not run the literal text. A parameter (`$HOME/.ssh`, `${HOME}`, the
+        // ANSI-C `$'-r'`), a backslash escape (`\-r`), a brace (`{..,.}/x`) or a
+        // glob (`.?/x` is `../x`) is rewritten before the command sees it, so the
+        // path and flag clauses would be checking a word that never arrives. A rule
+        // does not approve what this code cannot read; the human still can.
+        for marker in ["$", "\\", "{", "*", "?", "["] where line.contains(marker) {
+            return "a word the shell rewrites before the command sees it"
+        }
 
         var words = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
             .map { unquote(String($0)) }
@@ -320,11 +330,27 @@ final class RuleEngine {
         if let bad = refusedArguments[name]?.intersection(Set(words)).sorted().first {
             return "`\(name) \(bad)` is never approved by a rule"
         }
+        if let bad = refusedSpelling(of: name, in: words) {
+            return "`\(name) \(bad)` is never approved by a rule"
+        }
         if let subs = refusedSubcommands[name],
            let sub = words.first(where: { !$0.hasPrefix("-") }), subs.contains(sub) {
             return "`\(name) \(sub)` is never approved by a rule"
         }
         for word in words {
+            // `--output=/tmp/x` and `PREFIX=/usr/local` carry their path after the
+            // `=`; read whole, they are a relative name that lands inside the
+            // directory on paper. An option with a path glued on and no `=`
+            // (`-o/tmp/x`) has no edge this code can find, so it is not understood.
+            if word.hasPrefix("-"), !word.contains("="), looksLikePath(word) {
+                return "an option with a path glued to it"
+            }
+            if let eq = word.firstIndex(of: "=") {
+                let value = String(word[word.index(after: eq)...])
+                if looksLikePath(value), let reason = refusalInPath(value, cwd: cwd) {
+                    return reason
+                }
+            }
             if looksLikePath(word) {
                 if let reason = refusalInPath(word, cwd: cwd) { return reason }
             } else if let fragment = refusedFragment(in: "/" + word) {
@@ -335,6 +361,54 @@ final class RuleEngine {
             }
         }
         return nil
+    }
+
+    /// A refused flag in a spelling the table does not list, or nil. The table holds
+    /// the flags; the shell accepts more ways of writing each. `-Rf`, `-rfv` and
+    /// `-rv` are `-r` to the remover, `perl -le` is `perl -e`, and getopt takes any
+    /// unambiguous prefix of a long option, so `--rec` is `--recursive`. A mode is
+    /// the other half: `chmod 4755` sets setuid exactly as `+s` does.
+    static func refusedSpelling(of name: String, in words: [String]) -> String? {
+        let refused = refusedArguments[name] ?? []
+        // Only single-letter entries can hide in a cluster; `find -delete` is one
+        // long option written with one dash, not seven letters.
+        let letters = Set(refused.filter { $0.count == 2 && $0.hasPrefix("-") && $0 != "--" }
+            .compactMap { $0.last })
+        let long = refused.filter { $0.hasPrefix("--") }
+        for word in words {
+            if word.hasPrefix("--") {
+                let flag = String(word.prefix { $0 != "=" })
+                if flag.count > 2, long.contains(where: { $0.hasPrefix(flag) }) { return word }
+            } else if word.hasPrefix("-"), word.count > 2,
+                      word.dropFirst().contains(where: { letters.contains($0) }) {
+                return word
+            }
+        }
+        guard name == "chmod" else { return nil }
+        for word in words where !word.hasPrefix("-") && refusedMode(word) { return word }
+        return nil
+    }
+
+    /// A chmod mode that hands out rights: setuid, setgid or sticky, or write for
+    /// everybody. Numeric or symbolic; a clause that names nobody (`+w`) is read as
+    /// naming everybody, because which bits the umask spares is not on the line.
+    static func refusedMode(_ mode: String) -> Bool {
+        if !mode.isEmpty, mode.count <= 4, mode.allSatisfy({ ("0"..."7").contains($0) }) {
+            let digits = mode.compactMap { $0.wholeNumberValue }
+            if digits.count == 4, digits[0] != 0 { return true }   // setuid / setgid / sticky
+            return digits.last.map { $0 & 2 != 0 } ?? false        // world-writable
+        }
+        for clause in mode.split(separator: ",") {
+            let who = clause.prefix { "ugoa".contains($0) }
+            let rest = clause.dropFirst(who.count)
+            guard let op = rest.first, "+=".contains(op) else { continue }
+            let perms = rest.dropFirst()
+            if perms.contains("s") || perms.contains("t") { return true }
+            if perms.contains("w"), who.isEmpty || who.contains("o") || who.contains("a") {
+                return true
+            }
+        }
+        return false
     }
 
     /// The reason a file this request names puts it out of a rule's reach, or nil.
@@ -359,9 +433,11 @@ final class RuleEngine {
     // MARK: - Small, dull helpers the table leans on
 
     /// A token worth checking as a path: anything with a separator in it, or a
-    /// home-relative name. A bare word is an argument, not a place.
+    /// home-relative name. A bare word is an argument, not a place, except that
+    /// `.` and `..` are places with no separator in them: `ls ..` lists the parent.
     static func looksLikePath(_ word: String) -> Bool {
         word.hasPrefix("/") || word.hasPrefix("~") || word.contains("/")
+            || word == "." || word == ".."
     }
 
     static func absolute(_ path: String, in cwd: String) -> String {

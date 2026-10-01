@@ -200,6 +200,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let title: String
         let body: String
         let sessionId: String
+        /// The request's `identity` for approvals and questions, empty otherwise. The
+        /// banner is keyed by file name, and a file name can come back holding a
+        /// different request; this is what tells the two apart when it is tapped.
+        var requestIdentity: String = ""
     }
 
     /// Approvals and questions, keyed by the request's file name so the banner can
@@ -219,9 +223,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             let who = project.isEmpty ? Agent.byID(r.agentID).name : project
             return r.questions != nil
                 ? Event(id: r.fileName, kind: .question, title: "\(who) is asking",
-                        body: r.display, sessionId: r.sessionId)
+                        body: r.display, sessionId: r.sessionId, requestIdentity: r.identity)
                 : Event(id: r.fileName, kind: .approval, title: "\(who) needs approval",
-                        body: r.display, sessionId: r.sessionId)
+                        body: r.display, sessionId: r.sessionId, requestIdentity: r.identity)
         }
         return (post, previous.subtracting(live).map { $0 })
     }
@@ -408,9 +412,22 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         // opt-in with its own volume — two systems both deciding to make a noise
         // would double up on every approval.
         content.categoryIdentifier = e.kind == .approval ? Self.approvalCategory : Self.plainCategory
-        content.userInfo = ["sessionId": e.sessionId, "requestId": e.id]
+        content.userInfo = ["sessionId": e.sessionId, "requestId": e.id,
+                            "requestIdentity": e.requestIdentity]
         let request = UNNotificationRequest(identifier: e.id, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request)
+    }
+
+    /// The request a banner's button may answer: the one still under that file name
+    /// *and* still the one the banner showed. A banner with no identity (posted by an
+    /// older build, or not a request at all) answers nothing.
+    static func answerable(requestId: String, identity: String,
+                           requests: [ApprovalRequest]) -> ApprovalRequest? {
+        guard !identity.isEmpty,
+              let r = requests.first(where: { $0.fileName == requestId }),
+              r.identity == identity
+        else { return nil }
+        return r
     }
 
     // MARK: - UNUserNotificationCenterDelegate
@@ -431,6 +448,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let info = response.notification.request.content.userInfo
         let requestId = info["requestId"] as? String ?? ""
         let sessionId = info["sessionId"] as? String ?? ""
+        let identity = info["requestIdentity"] as? String ?? ""
         deliveredRequests.remove(requestId)
 
         let behavior: String?
@@ -458,10 +476,18 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         // Re-look-up rather than trusting the banner: request file names repeat
         // across the tools of one turn, so by the time this is tapped the name may
         // belong to a *successor* request showing a different command. Answering
-        // that one would allow something the user never read.
-        guard let request = (requests?() ?? []).first(where: { $0.fileName == requestId }),
-              let session = live.first(where: { $0.id == request.sessionId })
-        else { return }
+        // that one would allow something the user never read — so a name that now
+        // holds another request only takes you to it, and the answer is yours there.
+        let pending = requests?() ?? []
+        guard let request = Self.answerable(requestId: requestId, identity: identity,
+                                            requests: pending)
+        else {
+            if let session = live.first(where: { $0.id == sessionId }) {
+                AgentActions.focus(session, requests: pending)
+            }
+            return
+        }
+        guard let session = live.first(where: { $0.id == request.sessionId }) else { return }
         AgentActions.answer(ApprovalAction(request: request, behavior: behavior, session: session,
                                            note: note))
     }

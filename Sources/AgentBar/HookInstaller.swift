@@ -323,7 +323,26 @@ enum HookInstaller {
         let codexDir = home.appendingPathComponent(".codex")
         guard FileManager.default.fileExists(atPath: codexDir.path) else { return } // not a Codex user
         let configURL = codexDir.appendingPathComponent("config.toml")
-        let config = (try? String(contentsOf: configURL, encoding: .utf8)) ?? ""
+        // The same rule `readConfig` keeps for the JSON configs: missing is a fresh
+        // install, but present-and-unreadable or present-and-not-UTF-8 is not empty.
+        // Read as "", it planned a fresh file and replaced the user's whole
+        // config.toml with AgentBar's two keys — with no backup when the read had
+        // failed, since the backup reads the same bytes.
+        let config: String
+        do {
+            let data = try Data(contentsOf: configURL)
+            guard let text = String(data: data, encoding: .utf8) else {
+                NSLog("AgentBar: ~/.codex/config.toml is not UTF-8 — leaving it untouched")
+                return
+            }
+            config = text
+        } catch {
+            guard !FileManager.default.fileExists(atPath: configURL.path) else {
+                NSLog("AgentBar: ~/.codex/config.toml exists but could not be read (\(error)) — leaving it untouched")
+                return
+            }
+            config = ""
+        }
         let script = hooksDir.appendingPathComponent("codex/notify.js").path
 
         // Two independent keys in one file, applied in order. `notify` is the older
@@ -442,11 +461,23 @@ enum HookInstaller {
         let ourLine = #"(?m)^[ \t]*notify[ \t]*=[ \t]*\[[^\]]*/\.agentbar/hooks/codex/[^\]]*\]"#
 
         if let line = config.range(of: ourLine, options: .regularExpression) {
-            guard let interpreter = firstQuoted(String(config[line])), !isExecutable(interpreter)
-            else { return .unchanged }
+            let dead = firstQuoted(String(config[line])).map { !isExecutable($0) } ?? false
+            // Written below a table header by an older AgentBar, the key belongs to
+            // that table and Codex never sees a top-level notify — and nothing would
+            // ever have noticed, because the line still reads as ours. It moves.
+            let misplaced = rootTableEnd(of: config).map { line.lowerBound > $0 } ?? false
+            guard dead || misplaced else { return .unchanged }
             var next = config
-            next.replaceSubrange(line, with: ours)
-            return .write(next, repaired: true)
+            guard misplaced else {
+                next.replaceSubrange(line, with: ours)
+                return .write(next, repaired: true)
+            }
+            var cut = line
+            if cut.upperBound < next.endIndex, next[cut.upperBound] == "\n" {
+                cut = cut.lowerBound..<next.index(after: cut.upperBound)
+            }
+            next.removeSubrange(cut)
+            return .write(insertingAtRoot(ours, into: next), repaired: true)
         }
         // Our marker somewhere the line pattern could not read — a comment, hand-edited
         // formatting, a `notify` spread over several lines: leave it alone rather than
@@ -457,12 +488,36 @@ enum HookInstaller {
         // `notify` at all would read as "notify is already wired" and notify would never
         // be installed again.
         if withoutCodexBlock(config).contains("/.agentbar/hooks/codex/") { return .unchanged }
-        if config.range(of: #"^\s*notify\s*="#, options: .regularExpression) != nil {
+        // `(?m)`: without it `^` is the start of the file, and a user's own notify on
+        // any later line was invisible — AgentBar then appended a second key, and
+        // TOML refuses a file with a duplicate key, so Codex stopped loading it.
+        if config.range(of: #"(?m)^[ \t]*notify[ \t]*="#, options: .regularExpression) != nil {
             return .foreignNotify
         }
+        return .write(insertingAtRoot(ours, into: config), repaired: false)
+    }
+
+    /// Where the root table ends: the first table header, or the start of our own
+    /// hooks block, whichever comes first; nil when the file has neither. A bare key
+    /// written after a `[table]` header belongs to that table, so `notify` appended
+    /// to a file with an `[mcp_servers.x]` section was `mcp_servers.x.notify`.
+    static func rootTableEnd(of config: String) -> String.Index? {
+        let header = config.range(of: #"(?m)^[ \t]*\[{1,2}[^\[\],=\n]*\]{1,2}[ \t]*(#.*)?$"#,
+                                  options: .regularExpression)?.lowerBound
+        let block = config.range(of: codexBegin)?.lowerBound
+        return [header, block].compactMap { $0 }.min()
+    }
+
+    /// `line` as a top-level key: before the first table, or at the end of a file
+    /// that has none.
+    static func insertingAtRoot(_ line: String, into config: String) -> String {
         var next = config
+        if let end = rootTableEnd(of: next) {
+            next.insert(contentsOf: line + "\n", at: end)
+            return next
+        }
         if !next.isEmpty && !next.hasSuffix("\n") { next += "\n" }
-        return .write(next + ours + "\n", repaired: false)
+        return next + line + "\n"
     }
 
     /// The config with AgentBar's own hooks block removed, for the questions that are
@@ -546,7 +601,9 @@ enum HookInstaller {
         guard !dirs.isEmpty else { return } // not an Antigravity user
         if !pass.preview { try pinNodeShebang(of: scriptURL) }
 
-        // Observational events only; PreToolUse stays decision-free (no stdout).
+        // Observational events only. PreToolUse is not decision-free: agy is
+        // fail-closed on it, so antigravity.js prints `{"decision":"allow"}` first
+        // (see that script and Scripts/hooks/antigravity/README.md).
         // The stdin payload carries no event name, so it rides along as an argument.
         var group: [String: Any] = [:]
         for event in ["PreInvocation", "PreToolUse", "PostToolUse", "PostInvocation", "Stop"] {

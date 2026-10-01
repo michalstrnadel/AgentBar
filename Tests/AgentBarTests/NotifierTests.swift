@@ -24,11 +24,12 @@ import Testing
     }
 
     private func request(_ name: String, session: String = "a",
-                         display: String = "Bash: git push", question: Bool = false) throws -> ApprovalRequest {
+                         display: String = "Bash: git push", question: Bool = false,
+                         hookPid: Int = 2) throws -> ApprovalRequest {
         let url = dir.appendingPathComponent(name)
         var o: [String: Any] = ["sessionId": session, "agent": "claude", "toolName": "Bash",
                                 "display": display, "toolInputPretty": "{}",
-                                "pid": 1, "hookPid": 2, "ts": 1_000]
+                                "pid": 1, "hookPid": hookPid, "ts": 1_000]
         if question {
             o["context"] = ["kind": "question",
                             "questions": [["question": "Which one?", "header": "Pick",
@@ -80,6 +81,25 @@ import Testing
         let (again, _) = Notifier.requestEvents(previous: ["r1.json"], requests: [r],
                                                 sessions: [s], enabled: true)
         #expect(again.isEmpty)
+    }
+
+    /// File names repeat within a turn. A banner posted for one request must not
+    /// answer the request that later took its file name: the button was pressed on
+    /// a command the user read, and the successor is a different one.
+    @Test func aBannerCannotAnswerTheRequestThatReplacedIt() throws {
+        let first = try request("r1.json")
+        let (post, _) = Notifier.requestEvents(previous: [], requests: [first], sessions: [],
+                                               enabled: true)
+        let shown = try #require(post.first)
+        #expect(shown.requestIdentity == first.identity)
+        #expect(Notifier.answerable(requestId: shown.id, identity: shown.requestIdentity,
+                                    requests: [first])?.identity == first.identity)
+
+        let successor = try request("r1.json", display: "Bash: git reset", hookPid: 3)
+        #expect(Notifier.answerable(requestId: shown.id, identity: shown.requestIdentity,
+                                    requests: [successor]) == nil)
+        // A banner that carries no identity answers nothing either.
+        #expect(Notifier.answerable(requestId: shown.id, identity: "", requests: [first]) == nil)
     }
 
     /// The one that makes the buttons trustworthy: answered in the menu, by the

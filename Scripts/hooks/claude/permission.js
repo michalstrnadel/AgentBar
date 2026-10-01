@@ -339,15 +339,29 @@ function run() {
     // a prefix comparison against half a path would match the wrong directory.
     const cwd = typeof p.cwd === "string" && p.cwd.length <= 1024 ? p.cwd : "";
 
+    // The file an edit names, as its own field. `toolInputPretty` is cut at 4 KB
+    // and a cut is not JSON, so the app could not read the path back out of any
+    // edit larger than that — its shape fell to `tool:Edit` and a deny rule for
+    // `edit:migrations/*.sql` missed exactly the big migrations. Omitted when
+    // implausible, for the reason `cwd` is.
+    const ti = p.tool_input || {};
+    const named = [ti.file_path, ti.notebook_path, ti.path, ti.filePath]
+      .find((v) => typeof v === "string" && v);
+    const filePath = named && named.length <= 1024 ? named : "";
+
     fs.mkdirSync(reqDir, { recursive: true });
     fs.mkdirSync(ansDir, { recursive: true });
 
     // The session row itself shows what's pending, even before the menu opens.
+    // What it said just before is kept: an allowed tool goes back to being the
+    // tool PreToolUse announced.
+    let before = {};
     try {
       const statePath = path.join(stateDir, rowId(p.session_id) + ".json");
       fs.mkdirSync(stateDir, { recursive: true });
       let prev = {};
       try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
+      before = prev;
       writeAtomic(statePath, { ...prev, agent,
         state: isQuestion ? "question" : "permission",
         label: isQuestion ? "❓ " + oneLine(questions[0].question) : display,
@@ -372,6 +386,7 @@ function run() {
       sessionId: rowId(p.session_id), agent,
       toolName: p.tool_name || "", display, toolInputPretty: pretty,
       ...(cwd ? { cwd } : {}),
+      ...(filePath ? { filePath } : {}),
       context: buildContext(p.tool_name, p.tool_input),
       ruleSuggestion: suggestion, pid: process.ppid, hookPid: process.pid,
       ts: Math.floor(Date.now() / 1000),
@@ -414,6 +429,22 @@ function run() {
         const s = JSON.parse(fs.readFileSync(statePath, "utf8"));
         return s.state !== waitingState;
       } catch { return false; }
+    };
+    // Once this hook has answered, the row must stop saying "waiting on you": the
+    // request file is gone with the hook, and a denied tool fires no PostToolUse,
+    // so nothing else would move the row until the agent's next event — the bar
+    // showed a wait for a request that no longer existed. Only while the row
+    // still IS this hook's waiting state, so a newer event is never clobbered;
+    // best-effort, like every other write here — the decision is already out.
+    const settle = (state, label) => {
+      try {
+        let prev = {};
+        try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
+        if (prev.state === waitingState) {
+          writeAtomic(statePath, { ...prev, agent, state, label,
+            ts: Math.floor(Date.now() / 1000) });
+        }
+      } catch {}
     };
     let ticks = 0;
     const timer = setInterval(() => {
@@ -466,14 +497,7 @@ function run() {
               // the question state until the next event — flip it here. Only
               // while it still IS "question": if the wizard won the race a beat
               // ago, newer real state must not be clobbered by this stale write.
-              try {
-                let prev = {};
-                try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
-                if (prev.state === "question") {
-                  writeAtomic(statePath, { ...prev, agent, state: "thinking",
-                    label: "Thinking…", ts: Math.floor(Date.now() / 1000) });
-                }
-              } catch {}
+              settle("thinking", "Thinking…");
             }
             process.exit(0);
           }
@@ -481,6 +505,7 @@ function run() {
             // "Keep planning": without the message the model reads a bare tool
             // denial as "stop" and ends the turn instead of refining the plan.
             respond({ behavior: "deny", message: planMessage(cleanNote(a.message)) });
+            settle("thinking", "Thinking…");
             process.exit(0);
           }
           if (b === "allow" || b === "always") {
@@ -494,11 +519,17 @@ function run() {
               suggestions.some((s) => canonical(s) === canonical(a.rule));
             if (isSuggested) decision.updatedPermissions = [a.rule];
             respond(decision);
+            // The tool runs now and PostToolUse moves the row on when it ends;
+            // until then it is the tool PreToolUse announced, not a wait.
+            settle("tool", before.state === "tool" && typeof before.label === "string"
+              ? before.label : "Using tool");
           } else if (b === "deny") {
             // A bare deny stays bare: Claude Code and Copilot word their own
             // refusal, and a denial without a note has always gone out that way.
             const note = cleanNote(a.message);
             respond(note ? { behavior: "deny", message: denyMessage(note) } : { behavior: "deny" });
+            // The model reads the refusal and carries on with the turn.
+            settle("thinking", "Thinking…");
           }
           process.exit(0); // "defer"/junk: silent exit -> terminal prompt
         } else if (++ticks % 20 === 0 &&

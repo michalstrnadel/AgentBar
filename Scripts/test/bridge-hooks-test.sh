@@ -12,9 +12,9 @@ check() {
   if eval "$2"; then echo "ok   $1"; pass=$((pass+1)); else echo "FAIL $1"; fail=$((fail+1)); fi
 }
 
-# The tests borrow HOME; an inherited CLAUDE_CONFIG_DIR would still point at the
-# runner's real Claude config.
-unset CLAUDE_CONFIG_DIR
+# The tests borrow HOME; an inherited CLAUDE_CONFIG_DIR, COPILOT_HOME or
+# CODEX_HOME would still point at the runner's real config.
+unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME
 TESTROOT="$(mktemp -d)"
 trap 'rm -rf "$TESTROOT"' EXIT
 
@@ -347,9 +347,14 @@ fresh_home
   | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/gemini/gemini.js
 check "gemini keeps one out too"          'utf16_clean "$HOME/.agentbar/state.d/gem9.json" prompt'
 
+# Through the one free-text field notify.js copies into the row: the last of the
+# turn's input messages becomes `prompt`. It never reads last-assistant-message, so
+# a surrogate there proved nothing — and utf16_clean passes on a missing key, so the
+# prompt is also required to be there.
 fresh_home
-"$NODE" Scripts/hooks/codex/notify.js "$("$NODE" -e 'process.stdout.write(JSON.stringify({type:"agent-turn-complete","thread-id":"ntf9",cwd:"/tmp","last-assistant-message":"done \ud800 here"}))')"
-check "notify keeps one out as well"      'utf16_clean "$HOME/.agentbar/state.d/codex-ntf9.json" recap || utf16_clean "$HOME/.agentbar/state.d/codex-ntf9.json" label'
+"$NODE" Scripts/hooks/codex/notify.js "$("$NODE" -e 'process.stdout.write(JSON.stringify({type:"agent-turn-complete","thread-id":"ntf9",cwd:"/tmp","input-messages":["fix \ud800 this"]}))')"
+check "notify keeps one out as well"      'utf16_clean "$HOME/.agentbar/state.d/codex-ntf9.json" prompt'
+check "and the prompt is still there"     'grep -q "\"prompt\":\"fix  this\"" "$HOME/.agentbar/state.d/codex-ntf9.json"'
 
 # --- antigravity, handed payloads nobody sane would send -------------------------
 # The stakes here are the opposite way round from every other bridge: agy reads

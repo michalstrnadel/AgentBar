@@ -300,9 +300,12 @@ function decisionVerb(command) {
 function decisionShape(r) {
   const ctx = r.context || {};
   if (ctx.kind === "bash") return "bash:" + decisionVerb(ctx.command);
+  // The hook's own field first: toolInputPretty is cut at 4 KB, and a cut is
+  // not JSON, so a large edit would otherwise lose its shape.
   let input = null;
-  try { input = JSON.parse(r.toolInputPretty || "null"); } catch {}
-  const p = input && (input.file_path || input.notebook_path || input.path || input.filePath);
+  if (!r.filePath) { try { input = JSON.parse(r.toolInputPretty || "null"); } catch {} }
+  const p = r.filePath
+    || (input && (input.file_path || input.notebook_path || input.path || input.filePath));
   if (p) {
     const parts = String(p).split("/").filter(Boolean);
     const dir = parts.length > 1 ? parts[parts.length - 2] : "";
@@ -616,6 +619,19 @@ function printApprovals(argv, json) {
 // approving something nobody meant to approve. The `shape` normalisation already
 // lives in two places and that is one too many. Said out loud here and in
 // docs/protocol.md rather than discovered.
+// RulesStore.normalisedCwd, character for character: purely textual (no realpath —
+// the engine sees the directory the agent reports, not the one the disk resolves
+// it to), empty and `.` parts dropped, `..` popping one part but never above root.
+function plainCwd(p) {
+  const out = [];
+  for (const part of p.split("/")) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") { out.pop(); continue; }
+    out.push(part);
+  }
+  return "/" + out.join("/");
+}
+
 function readRules() {
   let raw;
   try { raw = fs.readFileSync(rulesFile, "utf8"); } catch { return { state: "none", rules: [] }; }
@@ -623,12 +639,26 @@ function readRules() {
   try { o = JSON.parse(raw); } catch { return { state: "invalid", why: "not valid JSON", rules: [] }; }
   if (!o || o.v !== 1) return { state: "invalid", why: `version ${o && o.v}, not 1`, rules: [] };
   if (!Array.isArray(o.rules)) return { state: "invalid", why: "no `rules` list", rules: [] };
+  // Every refusal the app makes, because the app refuses the WHOLE file on any of
+  // them: a check missing here is a file this command lists as in force while the
+  // app applies none of it — told to the one person asking why a rule stopped firing.
+  const ids = new Set();
   for (const r of o.rules) {
     if (!r || !r.id || !r.shape) return { state: "invalid", why: "a rule with no id or shape", rules: [] };
+    if (ids.has(r.id)) return { state: "invalid", why: `rule ${r.id}: repeats an id used above`, rules: [] };
+    ids.add(r.id);
     if (r.decision !== "allow" && r.decision !== "deny")
       return { state: "invalid", why: `rule ${r.id}: decision is not allow or deny`, rules: [] };
     if (r.decision === "allow" && !r.cwd)
       return { state: "invalid", why: `rule ${r.id}: approves without naming a directory`, rules: [] };
+    if (r.cwd && !String(r.cwd).startsWith("/"))
+      return { state: "invalid", why: `rule ${r.id}: cwd is not an absolute path`, rules: [] };
+    // Refused rather than tidied, exactly as RulesStore.validate does: the engine
+    // compares directories as text, so `/x/repo/` would never match a session in
+    // `/x/repo`, and `/x/repo/../other` names somewhere the person did not write
+    // down. Rewriting either would make the file say one thing and the app another.
+    if (r.cwd && plainCwd(String(r.cwd)) !== String(r.cwd))
+      return { state: "invalid", why: `rule ${r.id}: has a \`cwd\` that is not written plainly — no trailing \`/\`, \`//\`, \`.\` or \`..\`. Write it as ${plainCwd(String(r.cwd))}`, rules: [] };
     // An unreadable mode is never read as "on": a typo must not start a rule
     // answering. Same refusal the app makes.
     if (r.mode !== undefined && !["on", "watch", "off"].includes(r.mode))
@@ -1163,7 +1193,13 @@ function watch(argv) {
     process.stdout.write(out);
   };
   const timer = setInterval(render, interval * 1000);
-  const quit = () => { clearInterval(timer); clearHeartbeat(); process.stdout.write("\n"); process.exit(0); };
+  // Presence on its own clock, not the screen's: render() refreshes it too, but
+  // `-i 120` would let the heartbeat lapse past PRESENCE_TTL between frames and
+  // every hook would stop blocking for remote approval mid-watch. A third of the
+  // TTL survives one missed beat. A failed write is retried on the next beat
+  // rather than taking the watch down.
+  const beat = setInterval(() => { try { heartbeat(); } catch {} }, (PRESENCE_TTL / 3) * 1000);
+  const quit = () => { clearInterval(timer); clearInterval(beat); clearHeartbeat(); process.stdout.write("\n"); process.exit(0); };
   process.on("SIGINT", quit);
   process.on("SIGTERM", quit);
   process.on("SIGHUP", quit); // PTY closed under us — the heartbeat must not outlive the terminal
@@ -1231,6 +1267,34 @@ const QUIET_DAYS = 14;
 // wires that agent, so checking the others would flag a healthy machine.
 const SHEBANG_SCRIPTS = { cursor: "cursor/cursor.js", antigravity: "antigravity/antigravity.js" };
 
+// Every Claude config directory install-hooks wires, and so every one doctor has
+// to look at: one list, so the two cannot drift apart again (doctor used to read
+// ~/.claude alone and call a machine whose sessions run under CLAUDE_CONFIG_DIR
+// healthy without ever opening the file those sessions read). `skip` hears about
+// a directory left out, so install-hooks can say why.
+function claudeConfigDirs(skip = () => {}) {
+  const dirs = new Set([path.join(os.homedir(), ".claude")]);
+  // A CLAUDE_CONFIG_DIR outside this HOME is almost always inherited by a run with a
+  // borrowed HOME (a test, a sandbox, `HOME=$(mktemp -d)`): wiring it would point a
+  // real Claude config at hooks under a throwaway directory, and every session started
+  // until the next repair would run them from there. Somebody who really keeps their
+  // config outside HOME says so with AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1.
+  if (process.env.CLAUDE_CONFIG_DIR) {
+    const custom = path.resolve(process.env.CLAUDE_CONFIG_DIR.replace(/^~/, os.homedir()));
+    const home = path.resolve(os.homedir());
+    if (custom === home || custom.startsWith(home + path.sep) || process.env.AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME === "1") {
+      dirs.add(custom);
+    } else {
+      skip(`skip   claude  CLAUDE_CONFIG_DIR=${custom} is outside HOME (${home}); set AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1 to wire it anyway`);
+    }
+  }
+  try {
+    const raw = fs.readFileSync(path.join(base, "claude-config-dir"), "utf8").trim();
+    if (raw) dirs.add(raw.replace(/^~/, os.homedir()));
+  } catch {}
+  return [...dirs];
+}
+
 function doctor(json) {
   const H = os.homedir(), out = [];
   const add = (id, title, status, detail, fix) => out.push({ id, title, status, detail, fix });
@@ -1282,19 +1346,37 @@ function doctor(json) {
   }
 
   const hist = readHistory();
+  // `~/x` for a path under HOME, the path itself otherwise — a Claude config dir
+  // may live outside HOME when AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME says so.
+  const shown = (p) => (p.startsWith(H + path.sep) ? "~/" + p.slice(H.length + 1) : p);
   for (const i of INTEGRATIONS) {
-    if (!i.presence.some((d) => there(path.join(H, d)))) {
+    // Claude's settings are read from every directory install-hooks writes, and
+    // each of them has to carry the hooks: a session started under a config dir
+    // that was missed reports nothing, however healthy ~/.claude looks. Every other
+    // agent's list is alternatives (Antigravity: either file will do).
+    const extra = i.id === "claude" ? claudeConfigDirs() : [];
+    const configs = i.id === "claude"
+      ? extra.map((d) => path.join(d, "settings.json"))
+      : i.configs.map((rel) => path.join(H, rel));
+    if (!i.presence.some((d) => there(path.join(H, d))) && !extra.some(there)) {
       add(`agent.${i.id}`, i.name, "skipped", "Not installed here.");
       continue;
     }
-    let wired = false, absent = null;
-    for (const rel of i.configs) {
-      const text = read(path.join(H, rel));
-      if (text === null) { if (i.configs.length === 1) absent = rel; continue; }
-      if (rel.endsWith(".json")) {
+    const needsAll = i.id === "claude";
+    let anyWired = false, absent = null;
+    const unwired = [];   // every config that does not carry the marker, as shown
+    for (const file of configs) {
+      const text = read(file);
+      if (text === null) {
+        if (configs.length === 1) absent = shown(file);
+        unwired.push(shown(file));
+        continue;
+      }
+      if (file.endsWith(".json")) {
         try { JSON.parse(text); } catch {
+          unwired.push(shown(file));
           add(`agent.${i.id}.parseable`, `${i.name} config parses`, "fail",
-              `~/${rel} is not valid JSON, so install-hooks refuses to touch it — deliberately, it is your file.`,
+              `${shown(file)} is not valid JSON, so install-hooks refuses to touch it — deliberately, it is your file.`,
               "Fix the JSON (a `//` comment or a trailing comma is the usual cause), then re-run `agentbar install-hooks`.");
           continue;
         }
@@ -1304,17 +1386,20 @@ function doctor(json) {
       // they match against the parsed value — but raw-text search does, and would
       // report every macOS-written config as unwired.
       const flat = text.replace(/\\\//g, "/");
-      if (flat.includes(i.marker)) wired = true;
+      if (flat.includes(i.marker)) anyWired = true; else unwired.push(shown(file));
       const dead = (flat.match(/"(\/[^"]*\/node)"/g) || [])
         .map((m) => m.slice(1, -1)).filter((n) => !runnable(n));
       if (dead.length) {
         add(`agent.${i.id}.interpreter`, `${i.name}'s node still exists`, "fail",
-            `~/${rel} points at ${dead[0]}, which is gone. The hooks never run, so they never complain.`,
+            `${shown(file)} points at ${dead[0]}, which is gone. The hooks never run, so they never complain.`,
             "Re-run `agentbar install-hooks` — it repairs the path now.");
       }
     }
+    const wired = needsAll ? unwired.length === 0 : anyWired;
     add(`agent.${i.id}.wired`, `${i.name} hooks`, wired ? "ok" : "fail",
-        wired ? null : (absent ? `~/${absent} does not exist.` : "Installed, but AgentBar is not wired into it."),
+        wired ? null : (absent ? `${absent} does not exist.`
+          : needsAll && configs.length > 1 ? `Not wired into ${unwired.join(", ")} — install-hooks writes every config directory it knows of.`
+          : "Installed, but AgentBar is not wired into it."),
         wired ? null : "Run `agentbar install-hooks`.");
     if (!wired) continue;
 
@@ -1398,7 +1483,10 @@ function doctor(json) {
     try { require("child_process").execSync("pgrep -x AgentBar", { stdio: "ignore" }); appHere = true; } catch {}
   }
   const w = readJSON(watcherFile);
-  const fresh = appHere || !!(w && w.ts && now() - w.ts < PRESENCE_TTL && (!w.pid || alive(w.pid)));
+  // Freshness only, exactly as permission.js judges it. `agentbar waybar` stamps
+  // its own pid and exits, so a pid test said "nothing is listening" after every
+  // waybar poll while the hook it describes was blocking and remote approval worked.
+  const fresh = appHere || !!(w && w.ts && now() - w.ts < PRESENCE_TTL);
   add("frontend.present", "A frontend that hooks can block for", fresh ? "ok" : "warn",
       fresh ? (appHere ? "The AgentBar app is running." : "watcher.json heartbeat is fresh.") : "Nothing is listening, so hooks fall straight through to the terminal prompt — remote Allow/Deny is off.",
       fresh ? null : (process.platform === "darwin"
@@ -1534,8 +1622,14 @@ function writeConfig(file, data) {
     for (let n = 1; fs.existsSync(backup); n++) backup = `${base}-${n}`;
     fs.copyFileSync(file, backup);
   }
+  // The file keeps its own mode. A new file gets 0666 & ~umask, and the rename put
+  // that over a settings file somebody had kept at 0600 because it holds API keys
+  // or MCP tokens — the backup beside it kept 0600, the live file became 0644.
   const t = file + "." + process.pid + ".tmp";
-  fs.writeFileSync(t, data);
+  let mode;
+  if (before !== null) { try { mode = fs.statSync(file).mode & 0o777; } catch {} }
+  fs.writeFileSync(t, data, mode === undefined ? undefined : { mode });
+  if (mode !== undefined) fs.chmodSync(t, mode); // writeFileSync's mode is filtered by umask
   fs.renameSync(t, file);
   if (backup) {
     const ours = backupsOf(file);
@@ -1605,25 +1699,7 @@ function installHooks() {
   const report = (name, changed) => console.log(`${changed ? "wired" : "ok   "}  ${name}`);
 
   // Claude Code — <configDir>/settings.json (default + CLAUDE_CONFIG_DIR + hint file)
-  const claudeDirs = new Set([path.join(os.homedir(), ".claude")]);
-  // A CLAUDE_CONFIG_DIR outside this HOME is almost always inherited by a run with a
-  // borrowed HOME (a test, a sandbox, `HOME=$(mktemp -d)`): wiring it would point a
-  // real Claude config at hooks under a throwaway directory, and every session started
-  // until the next repair would run them from there. Somebody who really keeps their
-  // config outside HOME says so with AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1.
-  if (process.env.CLAUDE_CONFIG_DIR) {
-    const custom = path.resolve(process.env.CLAUDE_CONFIG_DIR.replace(/^~/, os.homedir()));
-    const home = path.resolve(os.homedir());
-    if (custom === home || custom.startsWith(home + path.sep) || process.env.AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME === "1") {
-      claudeDirs.add(custom);
-    } else {
-      console.error(`skip   claude  CLAUDE_CONFIG_DIR=${custom} is outside HOME (${home}); set AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1 to wire it anyway`);
-    }
-  }
-  try {
-    const raw = fs.readFileSync(path.join(base, "claude-config-dir"), "utf8").trim();
-    if (raw) claudeDirs.add(raw.replace(/^~/, os.homedir()));
-  } catch {}
+  const claudeDirs = claudeConfigDirs((msg) => console.error(msg));
   const dir = path.join(hooksDir, "claude");
   const claudeEvents = [
     ["SessionStart", `"${node}" "${dir}/lifecycle.js" start`, false, null],
@@ -1658,9 +1734,28 @@ function installHooks() {
 
   // Codex — ~/.codex/config.toml notify hook (append-only, never rewrite TOML)
   const codexDir = path.join(os.homedir(), ".codex");
-  if (fs.existsSync(codexDir)) {
-    const file = path.join(codexDir, "config.toml");
-    let toml = ""; try { toml = fs.readFileSync(file, "utf8"); } catch {}
+  // Missing is a fresh install; present-and-unreadable or present-and-not-UTF-8 is
+  // not empty. Read as "", it planned a fresh file and replaced the person's whole
+  // config.toml with AgentBar's two keys — with no backup worth having, since the
+  // backup reads the same bytes. The rule readConfig keeps for the JSON configs,
+  // and the one HookInstaller.installCodex keeps on macOS.
+  const readCodexConfig = (file) => {
+    let buf;
+    try { buf = fs.readFileSync(file); } catch (e) {
+      if (e && e.code === "ENOENT") return "";
+      console.error(`skip: ${file} exists but could not be read (${(e && e.code) || e}) — left untouched`);
+      return null;
+    }
+    try { return new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch {
+      console.error(`skip: ${file} is not UTF-8 — left untouched`);
+      return null;
+    }
+  };
+  const codexFile = path.join(codexDir, "config.toml");
+  const codexText = fs.existsSync(codexDir) ? readCodexConfig(codexFile) : null;
+  if (codexText !== null) {
+    const file = codexFile;
+    let toml = codexText;
     const ours = `notify = ["${node}", "${path.join(hooksDir, "codex", "notify.js")}"]`;
     // Both keys are worked out on `toml` and written ONCE at the end, through
     // writeConfig (diff, backup, tmp+rename). Two writes used to happen here, and the
@@ -1680,6 +1775,20 @@ function installHooks() {
       const e = t.indexOf(CODEX_END, b);
       return e < 0 ? t : t.slice(0, b) + t.slice(e + CODEX_END.length);
     };
+    // A bare key written after a [table] header belongs to that table, so notify
+    // must go above the first header (or above our own block), never at the end
+    // of a file that has one — the same placement HookInstaller.codexPlan makes.
+    const rootEnd = (t) => {
+      const h = t.search(/^[ \t]*\[{1,2}[^\[\],=\n]*\]{1,2}[ \t]*(#.*)?$/m);
+      const b = t.indexOf(CODEX_BEGIN);
+      const found = [h, b].filter((i) => i >= 0);
+      return found.length ? Math.min(...found) : -1;
+    };
+    const atRoot = (t) => {
+      const end = rootEnd(t);
+      if (end >= 0) return t.slice(0, end) + ours + "\n" + t.slice(end);
+      return (t && !t.endsWith("\n") ? t + "\n" : t) + ours + "\n";
+    };
     const line = toml.match(/^[ \t]*notify[ \t]*=[ \t]*\[[^\]]*\/\.agentbar\/hooks\/codex\/[^\]]*\]/m);
     if (line) {
       // Ours already — but "ours" is not "working". Every other config here is
@@ -1689,7 +1798,13 @@ function installHooks() {
       const interp = (line[0].match(/"([^"]*)"/) || [])[1];
       let alive = false;
       try { fs.accessSync(interp, fs.constants.X_OK); alive = true; } catch {}
-      if (alive) report("codex   " + file, false);
+      // Below a table header (where an older release appended it) the key is that
+      // table's, Codex sees no top-level notify, and this branch said "ok" forever.
+      const end = rootEnd(toml);
+      if (end >= 0 && line.index > end) {
+        toml = atRoot(toml.slice(0, line.index) + toml.slice(line.index + line[0].length).replace(/^\n/, ""));
+        report("codex   " + file, true);
+      } else if (alive) report("codex   " + file, false);
       else { toml = toml.replace(line[0], ours); report("codex   " + file, true); }
     }
     // Our marker somewhere the line regex could not read (hand-edited formatting,
@@ -1697,8 +1812,7 @@ function installHooks() {
     else if (withoutBlock(toml).includes("/.agentbar/hooks/codex/")) report("codex   " + file, false);
     else if (/^\s*notify\s*=/m.test(toml)) console.error(`skip: ${file} already has a notify hook — left untouched`);
     else {
-      if (toml && !toml.endsWith("\n")) toml += "\n";
-      toml += ours + "\n";
+      toml = atRoot(toml);
       report("codex   " + file, true);
     }
 

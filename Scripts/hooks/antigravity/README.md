@@ -32,6 +32,14 @@ The full decision enum, read from the bundled engine's jsonschema tag
 (`Antigravity.app/Contents/Resources/bin/language_server`), is wider than the docs
 suggest: `allow | deny | ask | force_ask | deny_unless_prior_grant`.
 
+What `allow` does *not* mean, checked 2026-10-01 on agy 1.2.14: with the bridge
+answering `{"decision":"allow"}`, `agy -p "…touch probe.txt…"` still enforced its
+own permission and refused the command — stderr: `a tool required the "command"
+permission that headless mode cannot prompt for, so it was auto-denied`. A hook's
+`allow` means "this hook does not object"; it does not bypass agy's permission
+system. So the bridge answers nothing on the user's behalf — CLAUDE.md rule 3
+holds.
+
 ## Remote approval: the CLI could, the desktop can't
 
 Checked 2026-09-16. `agy` fires blocking `PreToolUse` and honours the decision, so

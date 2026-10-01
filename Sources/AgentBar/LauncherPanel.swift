@@ -87,8 +87,13 @@ final class LauncherPanel: NSObject, NSWindowDelegate {
         // A link arriving while the panel is open with something typed in it must
         // not replace what the person wrote.
         let keepTyped = panel?.isVisible == true && !(field?.stringValue.isEmpty ?? true)
-        fromLink = prefill != nil
-        armed = !fromLink
+        // A plain show over a panel that kept its text keeps what that text is: a
+        // link-filled prompt opened again from the menu or the hotkey is still one
+        // the person did not write, and still owes its second Return.
+        if prefill != nil || !keepTyped {
+            fromLink = prefill != nil
+            armed = !fromLink
+        }
         shownAt = Date()
         if panel == nil { build() }
         rebuildRows()
@@ -272,10 +277,12 @@ final class LauncherPanel: NSObject, NSWindowDelegate {
                                  cwd: projects[chosenProject].cwd,
                                  prompt: field.stringValue)
         close()
+        // Read here, on the main thread that writes them; the queue below gets a copy.
+        let sessions = Self.sessions()
         // Off the main thread: an AppleScript that has never been allowed sits on
         // the consent dialog for as long as it takes somebody to read it.
         DispatchQueue.global(qos: .userInitiated).async {
-            let terminal = TerminalApp.preferred(sessions: Self.sessions())
+            let terminal = TerminalApp.preferred(sessions: sessions)
             let outcome = Launcher.start(task, terminal: terminal)
             DispatchQueue.main.async { Self.report(outcome, terminal: terminal) }
         }

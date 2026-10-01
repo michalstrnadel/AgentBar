@@ -131,6 +131,42 @@ import Testing
                                         isExecutable: { _ in false }) == .foreignNotify)
     }
 
+    /// …on any line, not only the first. Without `(?m)` the pattern saw a notify only
+    /// at the very start of the file, and a second key appended below the user's made
+    /// a config.toml that TOML, and so Codex, refuses to load.
+    @Test func aForeignNotifyOnALaterLineIsStillForeign() {
+        #expect(HookInstaller.codexPlan(config: "model = \"o3\"\nnotify = [\"/usr/bin/say\", \"done\"]\n",
+                                        node: "/opt/homebrew/bin/node", script: Self.script,
+                                        isExecutable: { _ in true }) == .foreignNotify)
+    }
+
+    /// A bare key written after a `[table]` header belongs to that table, so notify
+    /// appended to a file with an MCP server in it was that server's notify.
+    @Test func notifyGoesAboveTheFirstTable() {
+        let config = "model = \"o3\"\n\n[mcp_servers.github]\ncommand = \"gh\"\n"
+        guard case .write(let next, _) = HookInstaller.codexPlan(
+            config: config, node: "/n", script: Self.script, isExecutable: { _ in true }) else {
+            Issue.record("expected a write"); return
+        }
+        let notify = next.range(of: "notify = [")!.lowerBound
+        #expect(notify < next.range(of: "[mcp_servers.github]")!.lowerBound)
+        #expect(next.hasSuffix("[mcp_servers.github]\ncommand = \"gh\"\n"))
+    }
+
+    /// …and one an older release already put below a table is moved up, once.
+    @Test func aNotifyStrandedInATableIsMovedToTheTop() {
+        let ours = "notify = [\"/n\", \"\(Self.script)\"]"
+        let stranded = "model = \"o3\"\n[mcp_servers.github]\ncommand = \"gh\"\n\(ours)\n"
+        guard case .write(let next, let repaired) = HookInstaller.codexPlan(
+            config: stranded, node: "/n", script: Self.script, isExecutable: { _ in true }) else {
+            Issue.record("expected a move"); return
+        }
+        #expect(repaired)
+        #expect(next == "model = \"o3\"\n\(ours)\n[mcp_servers.github]\ncommand = \"gh\"\n")
+        #expect(HookInstaller.codexPlan(config: next, node: "/n", script: Self.script,
+                                        isExecutable: { _ in true }) == .unchanged)
+    }
+
     /// Our marker in a shape the line pattern can't read (a comment, hand-edited
     /// formatting) must fall through to "leave it", never to "append a second key".
     @Test func codexDoesNotAppendWhenTheMarkerIsThereInAnUnreadableShape() {

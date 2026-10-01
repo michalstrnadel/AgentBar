@@ -479,7 +479,7 @@ enum Diagnostics {
             return [Check(id: "rules.file", title: "Rules", status: .fail,
                           detail: why + " No rule is being applied.",
                           fix: "Fix ~/.agentbar/rules.json, or move it aside and write the "
-                               + "rules again in Settings ▸ Approvals. Nothing is applied "
+                               + "rules again in Settings ▸ Rules. Nothing is applied "
                                + "while any of it is wrong.")]
         }
     }

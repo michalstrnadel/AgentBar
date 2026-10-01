@@ -83,6 +83,33 @@ import Testing
         #expect(ConfigBackup.recent(log: log) == [record!])
     }
 
+    /// A dotfiles setup: the settings file is a (relative) link into a repo. The
+    /// write must land in the repo's file and leave the link a link; the backup sits
+    /// next to the link, not in the repo, and keeps the target's permissions.
+    @Test func aSymlinkedSettingsFileStaysALink() throws {
+        let fm = FileManager.default
+        let repo = dir.appendingPathComponent("dotfiles")
+        try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+        let real = repo.appendingPathComponent("settings.json")
+        try Data("{\"theme\":\"dark\"}\n".utf8).write(to: real)
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: real.path)
+        let link = dir.appendingPathComponent("settings.json")
+        try fm.createSymbolicLink(atPath: link.path, withDestinationPath: "dotfiles/settings.json")
+
+        let record = try ConfigBackup.write(Data("{\"hooks\":{}}\n".utf8), to: link,
+                                            now: date("20261001-142233"), log: log)
+
+        #expect(try fm.destinationOfSymbolicLink(atPath: link.path) == "dotfiles/settings.json")
+        #expect(try String(contentsOf: real, encoding: .utf8) == "{\"hooks\":{}}\n")
+        #expect((try fm.attributesOfItem(atPath: real.path)[.posixPermissions] as? Int) == 0o600)
+        let backup = dir.appendingPathComponent("settings.json.agentbar-bak-20261001-142233")
+        #expect(record?.backup == backup.path)
+        #expect(try String(contentsOf: backup, encoding: .utf8) == "{\"theme\":\"dark\"}\n")
+        #expect((try fm.attributesOfItem(atPath: backup.path)[.type] as? FileAttributeType) == .typeRegular)
+        #expect((try fm.attributesOfItem(atPath: backup.path)[.posixPermissions] as? Int) == 0o600)
+        #expect(try fm.contentsOfDirectory(atPath: repo.path) == ["settings.json"])
+    }
+
     /// The launch that finds everything already wired. Every launch is one, so any
     /// trace here would be a backup directory full of identical copies.
     @Test func aNoOpWritesNothingKeepsNothingRecordsNothing() throws {

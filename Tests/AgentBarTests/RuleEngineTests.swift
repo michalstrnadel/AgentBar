@@ -94,9 +94,19 @@ import Testing
         let was = RulesStore.enabled
         defer { RulesStore.enabled = was }
         RulesStore.enabled = true
+        // A ledger of its own: the shared one is the user's real decisions.jsonl,
+        // and every test run used to file a "would have allowed" there for a rule
+        // that does not exist.
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("agentbar-decisions-\(UUID().uuidString).jsonl")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let ledger = DecisionLedger(url: url)
         #expect(RuleEngine.shared.handle(request(), session: nil,
-                                         load: .rules([allow("bash:git status", mode: .watch)]))
+                                         load: .rules([allow("bash:git status", mode: .watch)]),
+                                         ledger: ledger)
                 == false)
+        ledger.flush()
+        #expect(DecisionLedger.read(url: url).map(\.decision) == ["watch"])
     }
 
     @Test func aRuleCanBeHeldToOneAgent() {
@@ -139,7 +149,7 @@ import Testing
         let was = RulesStore.enabled
         defer { RulesStore.enabled = was }
         RulesStore.enabled = true
-        #expect(RuleEngine.shared.handle(request(), session: nil, load: .none) == false)
+        #expect(RuleEngine.shared.handle(request(), session: nil, load: RulesStore.Load.none) == false)
         #expect(RuleEngine.shared.handle(request(), session: nil,
                                          load: .rules([allow("bash:npm test")])) == false)
     }
@@ -217,7 +227,11 @@ import Testing
 
     @Test func destructiveFilesystemCommandsAreNeverApproved() {
         for line in ["rm -rf build", "rm -f out.txt", #"rm "-rf" build"#, "shred secrets",
-                     "dd if=/dev/zero of=disk", "chmod 777 script.sh", "chown me file"] {
+                     "dd if=/dev/zero of=disk", "chmod 777 script.sh", "chown me file",
+                     // The table lists flags; the shell takes more spellings of each.
+                     "rm -rfv .", "rm -Rf .", "rm -rv src", "rm $'-r' src", #"rm \-r src"#,
+                     "rm --recur src", "chmod u+s ./tool", "chmod 4755 ./tool",
+                     "chmod o+w file", "chmod 0757 file", "perl -le 'print 1'"] {
             #expect(RuleEngine.refusalInCommand(line, cwd: Self.repo) != nil,
                     "should refuse: \(line)")
         }
@@ -278,6 +292,21 @@ import Testing
         #expect(RuleEngine.refusalInCommand("cat ../../etc/passwd", cwd: Self.repo) != nil)
         #expect(RuleEngine.refusalInCommand("cat ~/.ssh/id_rsa", cwd: Self.repo) != nil)
         #expect(RuleEngine.refusalInCommand("cat Sources/AgentBar/main.swift", cwd: Self.repo) == nil)
+        // The shell rewrites these before the command sees them, so the literal word
+        // lands inside the directory on paper and outside it in practice.
+        for line in ["cat $HOME/.config/gh/hosts.yml", "cat ${HOME}/.zshrc",
+                     "tar -cf keys.tar -C $HOME/.ssh .", "cat {..,.}/notes.txt",
+                     "cat .?/notes.txt", "cp -R .. ./copy", "ls ..",
+                     "git log --output=/tmp/x", "sort -o/tmp/x file"] {
+            #expect(RuleEngine.refusalInCommand(line, cwd: Self.repo) != nil,
+                    "should refuse: \(line)")
+        }
+        // ...and the ordinary spellings still pass.
+        for line in ["ls .", "rm build/foo.o", "chmod +x Scripts/build.sh", "chmod 755 tool",
+                     "git log --format=short", "cp -R Sources ./copy"] {
+            #expect(RuleEngine.refusalInCommand(line, cwd: Self.repo) == nil,
+                    "should pass: \(line)")
+        }
     }
 
     /// A file name with no slash in it is still that file. `looksLikePath` asks for

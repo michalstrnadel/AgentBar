@@ -107,7 +107,9 @@ enum RulesStore {
             self.id = id
             self.decision = decision
             self.shape = shape
-            created = (o["created"] as? NSNumber)?.doubleValue ?? 0
+            // A hand-edited `created` of NaN or `1e19` would trap in `json`'s `Int(_:)`
+            // the next time the file is written; a time that is not one reads as none.
+            created = Session.plausibleTime(o["created"])
             agent = o["agent"] as? String ?? ""
             cwd = o["cwd"] as? String ?? ""
             note = o["note"] as? String ?? ""
@@ -192,6 +194,14 @@ enum RulesStore {
         if !r.cwd.isEmpty && !r.cwd.hasPrefix("/") {
             return "\(where_) has a `cwd` that is not an absolute path."
         }
+        // Refused rather than tidied, like everything else here. `RuleEngine` compares
+        // directories as text, so `/x/repo/` would never match a session in `/x/repo`
+        // and `/x/repo/../other` names somewhere the person did not write down.
+        // Rewriting either behind their back would make the file say one thing and
+        // the engine do another.
+        if !r.cwd.isEmpty && normalisedCwd(r.cwd) != r.cwd {
+            return "\(where_) has a `cwd` that is not written plainly — no trailing `/`, `//`, `.` or `..`. Write it as \(normalisedCwd(r.cwd))."
+        }
         if r.isAllow && !r.tell.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return "\(where_) approves and carries `tell`; only a denial says anything to the agent."
         }
@@ -199,6 +209,22 @@ enum RulesStore {
             return "\(where_) says `mode: \(bad)`; it must be \"on\", \"watch\" or \"off\"."
         }
         return nil
+    }
+
+    /// An absolute path written the one way `RuleEngine` can compare: no empty,
+    /// `.` or `..` components and no trailing slash. Purely textual — symlinks are
+    /// not followed, because the engine sees the directory the agent reports, not
+    /// the one the disk resolves it to.
+    static func normalisedCwd(_ path: String) -> String {
+        var out: [Substring] = []
+        for part in path.split(separator: "/", omittingEmptySubsequences: true) {
+            switch part {
+            case ".": continue
+            case "..": if !out.isEmpty { out.removeLast() }
+            default: out.append(part)
+            }
+        }
+        return "/" + out.joined(separator: "/")
     }
 
     /// `load()` memoised on `(mtime, size)`, the same way `DecisionLedger.cached()`

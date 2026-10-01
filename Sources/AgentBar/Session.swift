@@ -150,7 +150,9 @@ struct Session {
                   let dir = s.split(separator: ":").dropFirst().joined(separator: ":")
                     .trimmingCharacters(in: .whitespacesAndNewlines) as String?
             else { return nil }
-            gitPath = dir
+            // Submodules (and worktrees made with `--relative-paths`) write the path
+            // relative to the directory holding the `.git` file: `../.git/modules/x`.
+            gitPath = dir.hasPrefix("/") ? dir : cwd + "/" + dir
         }
         guard let head = try? String(contentsOfFile: gitPath + "/HEAD", encoding: .utf8) else { return nil }
         let line = head.trimmingCharacters(in: .whitespacesAndNewlines)

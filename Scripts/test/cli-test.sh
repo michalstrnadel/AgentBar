@@ -8,8 +8,9 @@ NODE="${NODE:-node}"
 
 # install-hooks honors CLAUDE_CONFIG_DIR — a value inherited from the runner's
 # shell would make the test wire hooks into the runner's REAL Claude config,
-# pointing at this suite's throwaway temp dir (learned the hard way).
-unset CLAUDE_CONFIG_DIR AGENTBAR_FORCE_APP AGENTBAR_APPROVAL_TIMEOUT
+# pointing at this suite's throwaway temp dir (learned the hard way). COPILOT_HOME
+# and CODEX_HOME are honoured the same way and would do the same to Copilot/Codex.
+unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME AGENTBAR_FORCE_APP AGENTBAR_APPROVAL_TIMEOUT
 
 pass=0; fail=0
 check() {
@@ -255,6 +256,21 @@ check "hook blocks on CLI heartbeat"   '[ -n "$REQ" ]'
 wait "$HOOKPID"
 check "CLI answer reaches the hook"    'grep -q "\"behavior\":\"allow\"" "$TESTROOT/hookout"'
 
+# --- watch keeps presence alive on its own clock, whatever -i says
+# A redraw every 10 minutes must not let the 60s heartbeat lapse: the beat is
+# refreshed every 20s independently of render(). Removing the file after the first
+# frame and seeing it come back long before the next frame proves the second clock.
+fresh_home
+"$CLI" watch -i 600 </dev/null >/dev/null 2>&1 &
+WATCHPID=$!
+for _ in $(seq 50); do [ -e "$HOME/.agentbar/watcher.json" ] && break; sleep 0.1; done
+check "watch writes its heartbeat"     '[ -e "$HOME/.agentbar/watcher.json" ]'
+rm -f "$HOME/.agentbar/watcher.json"
+for _ in $(seq 250); do [ -e "$HOME/.agentbar/watcher.json" ] && break; sleep 0.1; done
+check "watch -i 600 still beats within the TTL" '[ -e "$HOME/.agentbar/watcher.json" ]'
+kill -TERM "$WATCHPID" 2>/dev/null; wait "$WATCHPID" 2>/dev/null
+check "watch takes its heartbeat with it" '[ ! -e "$HOME/.agentbar/watcher.json" ]'
+
 # --- install-hooks: wiring, idempotence, unparseable config untouched
 fresh_home
 mkdir -p "$HOME/.gemini" "$HOME/.cursor" "$HOME/.claude" "$HOME/.qwen" "$HOME/.codex" "$HOME/.config/opencode" "$HOME/.copilot"
@@ -488,6 +504,19 @@ printf '{"v":1,"rules":[{"id":"r-t","decision":"deny","shape":"bash:npm","tell":
 check "a denial lists what it tells"         '"$CLI" rules | grep -q "tells it: \"use pnpm\""'
 printf '{"v":1,"rules":[{"id":"r-t","decision":"allow","shape":"bash:npm","cwd":"/r","tell":"x"}]}' > "$HOME/.agentbar/rules.json"
 check "an approval that tells voids the file" '"$CLI" rules | grep -q "only a denial says anything"'
+# A cwd written any way but plainly is refused, not tidied — the app compares it as
+# text, so `/x/repo/` would never match and `/x/repo/../other` names somewhere else.
+# Same refusal RulesStore.validate makes, and the same plain form in the message.
+plain_cwd_refused() { # $1 cwd, $2 the plain form the message must offer
+  printf '{"v":1,"rules":[{"id":"r-c","decision":"deny","shape":"bash:curl","cwd":"%s"}]}' "$1" > "$HOME/.agentbar/rules.json"
+  "$CLI" rules | grep -q "not written plainly" && "$CLI" rules | grep -q "Write it as $2\.$"
+}
+check "a trailing slash voids the file"      'plain_cwd_refused /x/repo/ /x/repo'
+check "a doubled slash voids the file"       'plain_cwd_refused /x//repo /x/repo'
+check "a dot voids the file"                 'plain_cwd_refused /x/./repo /x/repo'
+check "a dot-dot voids the file"             'plain_cwd_refused /x/repo/../other /x/other'
+check "a plain cwd stays in force"           '! plain_cwd_refused /x/repo /x/repo && "$CLI" rules | grep -q "^deny  bash:curl"'
+check "root is plain"                        '! plain_cwd_refused / /'
 
 # --- the Codex hooks block: the real integration, beside the older notify key ----
 fresh_home
@@ -507,6 +536,10 @@ check "codex block written once"       '[ "$(grep -c "^# >>> agentbar >>>" "$COD
 # key, so a blind marker match reads it as "notify is wired" and never installs it.
 check "hooks block keeps notify too"   '[ "$(grep -c "^notify = " "$CODEX_CFG")" = 1 ]'
 check "codex keeps the user's keys"    'grep -q "^model = \"o3\"" "$CODEX_CFG" && grep -q "^\[profiles.mine\]" "$CODEX_CFG"'
+# A bare key after a [table] header belongs to that table: notify must sit above
+# the first one, or Codex reads it as profiles.mine.notify and sees none at all.
+notify_is_top_level() { [ "$(grep -n "^notify = " "$CODEX_CFG" | cut -d: -f1)" -lt "$(grep -n "^\[" "$CODEX_CFG" | head -1 | cut -d: -f1)" ]; }
+check "codex notify is top-level"      'notify_is_top_level'
 CODEX_SNAP2="$(cat "$CODEX_CFG")"
 "$CLI" install-hooks >/dev/null 2>&1
 check "codex hooks install idempotent" '[ "$CODEX_SNAP2" = "$(cat "$CODEX_CFG")" ]'
@@ -516,6 +549,19 @@ grep -v "^notify = " "$CODEX_CFG" > "$HOME/.codex/c.tmp" && mv "$HOME/.codex/c.t
 check "notify removed for the test"    '! grep -q "^notify = " "$CODEX_CFG"'
 "$CLI" install-hooks >/dev/null 2>&1
 check "notify reinstalled beside block" 'grep -q "^notify = " "$CODEX_CFG" && grep -q "^# >>> agentbar >>>" "$CODEX_CFG"'
+check "reinstalled notify is top-level" 'notify_is_top_level'
+# ...and one an older release appended below every table is moved up.
+grep -v "^notify = " "$CODEX_CFG" > "$HOME/.codex/c.tmp" && mv "$HOME/.codex/c.tmp" "$CODEX_CFG"
+printf 'notify = ["%s", "%s"]\n' "$(command -v node)" "$HOME/.agentbar/hooks/codex/notify.js" >> "$CODEX_CFG"
+"$CLI" install-hooks >/dev/null 2>&1
+check "stranded notify moved to the top" 'notify_is_top_level && [ "$(grep -c "^notify = " "$CODEX_CFG")" = 1 ]'
+
+# A settings file kept private stays private: the rewrite used to land at 0644.
+fresh_home
+mkdir -p "$HOME/.gemini"
+printf '{}\n' > "$HOME/.gemini/settings.json" && chmod 600 "$HOME/.gemini/settings.json"
+"$CLI" install-hooks >/dev/null 2>&1
+check "install-hooks keeps a 0600 file 0600" '[ "$(stat -c %a "$HOME/.gemini/settings.json" 2>/dev/null || stat -f %Lp "$HOME/.gemini/settings.json")" = 600 ] && grep -q agentbar "$HOME/.gemini/settings.json"'
 
 # --- backups and the diff: what install-hooks does to a file you wrote -----------
 # The original is kept beside the file before anything is written; a run that
@@ -550,6 +596,27 @@ check "codex dead node seeded in both" 'grep -q "^notify = \[\"$HOME/gone/node\"
 AGENTBAR_NOW=1790009999 "$CLI" install-hooks >/dev/null 2>&1
 check "codex both keys repaired in one run" '! grep -q "gone/node" "$HOME/.codex/config.toml"'
 check "codex one backup per run"       '[ "$(ls "$HOME/.codex" | grep -c agentbar-bak)" = 2 ]'
+# Present but not UTF-8, or present but unreadable, is not empty: read as "" it was
+# replaced by AgentBar's two keys. Left alone, the way HookInstaller leaves it.
+fresh_home
+mkdir -p "$HOME/.codex"
+printf 'model = "o3"\n# caf\xe9\n' > "$HOME/.codex/config.toml"
+CODEX_BYTES="$(od -An -tx1 "$HOME/.codex/config.toml")"
+ERR="$("$CLI" install-hooks 2>&1 >/dev/null)"
+check "codex non-UTF-8 config untouched" '[ "$CODEX_BYTES" = "$(od -An -tx1 "$HOME/.codex/config.toml")" ] && [ -z "$(ls "$HOME/.codex" | grep agentbar-bak)" ]'
+check "codex non-UTF-8 config says so"   'echo "$ERR" | grep -q "is not UTF-8 — left untouched"'
+fresh_home
+mkdir -p "$HOME/.codex"
+printf 'model = "o3"\n' > "$HOME/.codex/config.toml"
+chmod 000 "$HOME/.codex/config.toml"
+ERR="$("$CLI" install-hooks 2>&1 >/dev/null)"
+chmod 644 "$HOME/.codex/config.toml"
+if [ "$(id -u)" = 0 ]; then
+  echo "skip codex unreadable config (root reads everything)"
+else
+  check "codex unreadable config untouched" '[ "$(cat "$HOME/.codex/config.toml")" = "model = \"o3\"" ]'
+  check "codex unreadable config says so"   'echo "$ERR" | grep -q "could not be read .* left untouched"'
+fi
 
 # --- the record, as something you can hand to somebody ---------------------------
 fresh_home

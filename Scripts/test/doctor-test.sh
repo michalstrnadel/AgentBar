@@ -8,9 +8,9 @@ cd "$(dirname "$0")/../.."
 CLI="Scripts/cli/agentbar"
 NODE="${NODE:-node}"
 
-# install-hooks honors CLAUDE_CONFIG_DIR; an inherited value would point the
-# assertions at the runner's real Claude config.
-unset CLAUDE_CONFIG_DIR AGENTBAR_FORCE_APP AGENTBAR_APPROVAL_TIMEOUT
+# install-hooks honors CLAUDE_CONFIG_DIR, COPILOT_HOME and CODEX_HOME; an
+# inherited value would point the assertions at the runner's real config.
+unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME AGENTBAR_FORCE_APP AGENTBAR_APPROVAL_TIMEOUT
 
 pass=0; fail=0
 check() {
@@ -139,6 +139,41 @@ DCFG="$HOME/.codex/config.toml"
 printf '\n[hooks.state."%s:session_start:0:0"]\ntrusted_hash = "sha256:deadbeef"\n' "$DCFG" >> "$DCFG"
 check "codex hooks accepted passes"     '[ "$(status_of codex.hooks)" = ok ]'
 
+# --- Claude is checked in every config dir install-hooks writes -----------------
+# doctor read ~/.claude alone, so a machine whose sessions run under
+# CLAUDE_CONFIG_DIR (or the claude-config-dir hint) passed while the settings
+# those sessions actually read had no hooks in them.
+fresh_home
+mkdir -p "$HOME/.claude" "$HOME/.claude-work"
+"$CLI" install-hooks >/dev/null 2>&1   # wires ~/.claude only
+check "claude: default dir alone passes"   '[ "$(status_of agent.claude.wired)" = ok ]'
+check "claude: an unwired CLAUDE_CONFIG_DIR fails" '[ "$(CLAUDE_CONFIG_DIR="$HOME/.claude-work" status_of agent.claude.wired)" = fail ]'
+check "claude: and names the file"         'CLAUDE_CONFIG_DIR="$HOME/.claude-work" "$CLI" doctor | grep -q "claude-work/settings.json"'
+CLAUDE_CONFIG_DIR="$HOME/.claude-work" "$CLI" install-hooks >/dev/null 2>&1
+check "claude: wired there too passes"     '[ "$(CLAUDE_CONFIG_DIR="$HOME/.claude-work" status_of agent.claude.wired)" = ok ]'
+
+fresh_home
+mkdir -p "$HOME/.claude" "$HOME/.claude-hint"
+"$CLI" install-hooks >/dev/null 2>&1
+printf '%s\n' "$HOME/.claude-hint" > "$HOME/.agentbar/claude-config-dir"
+check "claude: an unwired hint dir fails"  '[ "$(status_of agent.claude.wired)" = fail ]'
+"$CLI" install-hooks >/dev/null 2>&1
+check "claude: the hint dir wired passes"  '[ "$(status_of agent.claude.wired)" = ok ]'
+
+# Only a custom dir, no ~/.claude: Claude is installed, not absent.
+fresh_home
+mkdir -p "$HOME/.claude-only"
+check "claude: a custom dir alone is not skipped" '[ "$(CLAUDE_CONFIG_DIR="$HOME/.claude-only" status_of agent.claude)" = absent ]'
+
+# Outside HOME the same guard install-hooks applies: not wired, so not checked —
+# unless the person said so, and then it must be wired like the rest.
+fresh_home
+mkdir -p "$HOME/.claude"
+"$CLI" install-hooks >/dev/null 2>&1
+OUTSIDE_CFG="$TESTROOT/outside-cfg.$HOME_SEQ"; mkdir -p "$OUTSIDE_CFG"
+check "claude: outside HOME is not checked" '[ "$(CLAUDE_CONFIG_DIR="$OUTSIDE_CFG" status_of agent.claude.wired)" = ok ]'
+check "claude: unless allowed, then it counts" '[ "$(CLAUDE_CONFIG_DIR="$OUTSIDE_CFG" AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1 status_of agent.claude.wired)" = fail ]'
+
 # --- the rules file, reported the way the app reports it -------------------------
 # A rules file that will not parse is the one failure that is invisible by design:
 # nothing fires, every prompt comes back, and that is exactly what a working
@@ -159,6 +194,22 @@ check "an approval with no directory fails" '[ "$(status_of rules.file)" = fail 
 printf 'not json at all' > "$HOME/.agentbar/rules.json"
 check "junk fails rather than passes"   '[ "$(status_of rules.file)" = fail ]'
 check "and says nothing is applied"     '"$CLI" doctor | grep -q "No rule is being applied"'
+
+# The app refuses the whole file on either of these, so the CLI must too — or it
+# reports "ok" for a file from which nothing is being applied.
+printf '{"v":1,"rules":[{"id":"r-1","decision":"deny","shape":"bash:curl","cwd":"proj"}]}' \
+  > "$HOME/.agentbar/rules.json"
+check "a relative cwd fails"            '[ "$(status_of rules.file)" = fail ]'
+printf '{"v":1,"rules":[{"id":"r-1","decision":"deny","shape":"bash:curl"},{"id":"r-1","decision":"deny","shape":"bash:wget"}]}' \
+  > "$HOME/.agentbar/rules.json"
+check "a repeated id fails"             '[ "$(status_of rules.file)" = fail ]'
+
+# --- a frontend, judged the way the hook judges it --------------------------------
+# permission.js asks only whether the heartbeat is fresh. `agentbar waybar` stamps
+# its own pid and exits, so a pid test said "nothing is listening" after every poll.
+fresh_home
+printf '{"pid":999999,"ts":%s}' "$(date +%s)" > "$HOME/.agentbar/watcher.json"
+check "a fresh heartbeat is a frontend" '[ "$(status_of frontend.present)" = ok ]'
 
 echo "---"
 echo "$pass passed, $fail failed"

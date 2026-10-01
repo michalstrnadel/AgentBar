@@ -89,13 +89,17 @@ final class ConfigChangesSheet: NSObject {
     private let text = NSTextView()
     private let scroll = NSScrollView()
     private var entries: [Entry] = []
-    /// Retained for the life of the sheet; released when it closes.
-    private static var open: ConfigChangesSheet?
+    /// Each sheet retained for its own life and released when *it* closes. Two
+    /// can be up at once — one on the welcome window, one on Settings — and a
+    /// single slot the second overwrote freed the first: its buttons hold weak
+    /// targets, so Done reached nothing and that window could not close.
+    private static var open: [ObjectIdentifier: ConfigChangesSheet] = [:]
 
     static func present(on parent: NSWindow) {
         let s = ConfigChangesSheet()
-        open = s
-        parent.beginSheet(s.sheet) { _ in open = nil }
+        let key = ObjectIdentifier(s.sheet)
+        open[key] = s
+        parent.beginSheet(s.sheet) { _ in open[key] = nil }
         s.load()
     }
 

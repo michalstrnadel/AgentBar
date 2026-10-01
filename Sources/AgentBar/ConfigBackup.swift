@@ -136,7 +136,14 @@ enum ConfigBackup {
         lock.lock()
         defer { lock.unlock() }
         let fm = FileManager.default
-        let before = try? Data(contentsOf: url)
+        // A dotfiles setup makes `~/.claude/settings.json` a link into a repo, and an
+        // atomic write *replaces* the path it is given — the link would become a
+        // plain file and the repo would stop being the settings. So the write goes
+        // to what the link points at. The backup still goes next to the link: that
+        // is where somebody looks for it, and a copy of settings that can hold API
+        // keys has no business appearing as a new untracked file in a git repo.
+        let destination = linkTarget(of: url)
+        let before = try? Data(contentsOf: destination)
         if before == data { return nil }
 
         var backup: URL?
@@ -148,10 +155,10 @@ enum ConfigBackup {
             // A copy, not a move: the original stays in place until the atomic write
             // replaces it, so an agent reading its settings mid-pass never finds none.
             // `copyItem` keeps the original's permissions.
-            try fm.copyItem(at: url, to: target)
+            try fm.copyItem(at: destination, to: target)
             backup = target
         }
-        try data.write(to: url, options: .atomic)
+        try data.write(to: destination, options: .atomic)
 
         if backup != nil {
             let dir = url.deletingLastPathComponent()
@@ -165,6 +172,25 @@ enum ConfigBackup {
                             diff: diff(before: before, after: data, path: url.path))
         if let log { append(record, to: log) }
         return record
+    }
+
+    /// The file a path finally names, following links on its last component — the
+    /// one an atomic write would replace. A relative link is relative to the
+    /// directory holding it. A link whose target does not exist yet still names
+    /// that target, so the write creates it there (or fails loudly) instead of
+    /// replacing the link. Directory links need nothing: a write through them
+    /// lands where they point already.
+    static func linkTarget(of url: URL) -> URL {
+        let fm = FileManager.default
+        var current = url
+        // A loop of links is not a file; forty hops is the kernel's own patience.
+        for _ in 0..<40 {
+            guard let dest = try? fm.destinationOfSymbolicLink(atPath: current.path) else { break }
+            current = dest.hasPrefix("/")
+                ? URL(fileURLWithPath: dest)
+                : current.deletingLastPathComponent().appendingPathComponent(dest)
+        }
+        return current.standardizedFileURL
     }
 
     static func diff(before: Data?, after: Data, path: String) -> String {

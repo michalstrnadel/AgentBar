@@ -142,9 +142,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         reload()
     }
 
+    /// Every recorder, the launcher's included: a capture abandoned by clicking
+    /// away keeps an app-wide key monitor swallowing keystrokes and every global
+    /// shortcut suspended until something ends it.
     private func cancelCaptures() {
-        allowRecorder.cancelCapture()
-        denyRecorder.cancelCapture()
+        for recorder in [allowRecorder, denyRecorder, launchRecorder] { recorder?.cancelCapture() }
     }
 
     private func build() {
@@ -506,7 +508,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                 SettingsChrome.header("Kept in ~/.agentbar/decisions.jsonl, on this Mac and "
                                       + "sent nowhere; `agentbar forget` empties it. It is "
                                       + "also what a rule is offered from, so switching it "
-                                      + "off means no prompt ever offers one."),
+                                      + "off means no prompt ever offers one. What a rule "
+                                      + "answers is written down either way."),
             ])
         case .rules:
             add([
@@ -651,6 +654,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
     @objc private func toggleLauncher() {
         LauncherPanel.shortcutEnabled = launchBox.state == .on
+        if launchBox.state == .off { launchRecorder.cancelCapture() }
         syncRecorderState()
         onChange?()
     }

@@ -13,9 +13,12 @@ check() {
   if eval "$2"; then echo "ok   $1"; pass=$((pass+1)); else echo "FAIL $1"; fail=$((fail+1)); fi
 }
 
-# The tests borrow HOME; an inherited CLAUDE_CONFIG_DIR would still point at the
-# runner's real Claude config.
-unset CLAUDE_CONFIG_DIR
+# The tests borrow HOME; an inherited CLAUDE_CONFIG_DIR, COPILOT_HOME or
+# CODEX_HOME would still point at the runner's real config.
+unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME
+# F11 runs the hook's real liveness check, which an inherited override would pin;
+# every other case sets it on its own command line.
+unset AGENTBAR_FORCE_APP
 TESTROOT="$(mktemp -d)"
 trap 'rm -rf "$TESTROOT"' EXIT
 
@@ -77,6 +80,33 @@ wait_req
 printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 check "deny decision on stdout"     'grep -q "\"behavior\":\"deny\"" "$HOME/out.json"'
+# The request is gone with the hook, and a denied tool fires no PostToolUse: the
+# row must not keep saying "waiting on you" until the agent's next event.
+check "deny: row leaves permission"  'grep -q "\"state\":\"thinking\"" "$HOME/.agentbar/state.d/testsess.json"'
+
+# 2b. allow: the row goes back to the tool PreToolUse announced, label and all
+fresh_home
+mkdir -p "$HOME/.agentbar/state.d"
+printf '{"sessionId":"testsess","agent":"claude","state":"tool","label":"Running command","cwd":"/tmp/proj","ts":1}' \
+  > "$HOME/.agentbar/state.d/testsess.json"
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=$ANSWER_TIMEOUT "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"behavior":"allow"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "allow: row back to the tool"  'grep -q "\"state\":\"tool\"" "$HOME/.agentbar/state.d/testsess.json" && grep -q "\"label\":\"Running command\"" "$HOME/.agentbar/state.d/testsess.json"'
+check "allow: other fields kept"     'grep -q "\"cwd\":\"/tmp/proj\"" "$HOME/.agentbar/state.d/testsess.json"'
+
+# 2c. a newer event already moved the row on: the late settle must not clobber it
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=$ANSWER_TIMEOUT "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"sessionId":"testsess","agent":"claude","state":"done","label":"Finished","ts":2}' \
+  > "$HOME/.agentbar/state.d/testsess.json"
+printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+check "deny: newer state not clobbered" 'grep -q "\"state\":\"done\"" "$HOME/.agentbar/state.d/testsess.json"'
 
 # 3. always -> allow + rule passthrough (rule matches the received suggestion verbatim)
 fresh_home
@@ -160,6 +190,9 @@ check "edit display is cwd-relative" 'grep -q "Edit: Sources/App/File.swift" "$H
 # one, and joining back through state.d on sessionId to learn it is a lookup the
 # hook can spare every reader: it already has the directory in hand.
 check "request carries the cwd"      'grep -q "\"cwd\":\"/tmp/proj\"" "$HOME/.agentbar/requests.d/$REQ"'
+# The file an edit names, as its own field: toolInputPretty is cut at 4 KB and a
+# cut is not JSON, so a large edit's path could not be read back out of it.
+check "request carries the file"     'grep -q "\"filePath\":\"/tmp/proj/Sources/App/File.swift\"" "$HOME/.agentbar/requests.d/$REQ"'
 printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 
@@ -172,6 +205,7 @@ AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=$ANSWER_TIMEOUT "$NODE" "$HOOK" <
 hookpid=$!
 wait_req
 check "no cwd: the field is absent"  '! grep -q "\"cwd\"" "$HOME/.agentbar/requests.d/$REQ"'
+check "no file: the field is absent" '! grep -q "\"filePath\"" "$HOME/.agentbar/requests.d/$REQ"'
 printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 
@@ -907,15 +941,42 @@ printf '{"behavior":"allow"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 contract "F10 request is not ours" '[ ! -s "$HOME/out.json" ]'
 
+# F11: the frontend goes away mid-wait. Not under AGENTBAR_FORCE_APP — that pins
+# "somebody can answer" to true and the hook would only ever fall through by its
+# timeout. The real liveness check runs instead: a pgrep that never finds the app
+# (so a copy of AgentBar running on this machine cannot answer for the test) and a
+# CLI heartbeat that is fresh when the hook starts and gone halfway through. The
+# hook must notice on its ~2s sweep, well inside the 30s it would otherwise wait.
 fresh_home
-AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=$ANSWER_TIMEOUT "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
+mkdir -p "$TESTROOT/nopgrep"
+printf '#!/bin/sh\nexit 1\n' > "$TESTROOT/nopgrep/pgrep"; chmod +x "$TESTROOT/nopgrep/pgrep"
+printf '{"ts":%s}' "$(date +%s)" > "$HOME/.agentbar/watcher.json"
+PATH="$TESTROOT/nopgrep:$PATH" AGENTBAR_APPROVAL_TIMEOUT=30 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
 hookpid=$!
 wait_req
-# The frontend goes away: the hook notices on its ~2s sweep and gives the prompt back.
-touch "$HOME/.agentbar/watcher.json"
-AGENTBAR_FORCE_APP=0 kill -0 $hookpid 2>/dev/null
+sleep 2.5
+check "F11 waits while the heartbeat is fresh" 'kill -0 "$hookpid" 2>/dev/null'
+rm -f "$HOME/.agentbar/watcher.json"
+start=$(date +%s)
 wait "$hookpid" 2>/dev/null || true
+end=$(date +%s)
 contract "F11 frontend quit"       '[ ! -s "$HOME/out.json" ]'
+check "F11 notices within the sweep"  '[ $((end-start)) -le 5 ]'
+check "F11 takes its request with it" '[ ! -e "$HOME/.agentbar/requests.d/$REQ" ]'
+
+# The same quit, as a heartbeat that went stale rather than one that was removed:
+# a CLI killed with SIGKILL leaves its last watcher.json behind.
+fresh_home
+printf '{"ts":%s}' "$(date +%s)" > "$HOME/.agentbar/watcher.json"
+PATH="$TESTROOT/nopgrep:$PATH" AGENTBAR_APPROVAL_TIMEOUT=30 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+printf '{"ts":%s}' "$(( $(date +%s) - 120 ))" > "$HOME/.agentbar/watcher.json"
+start=$(date +%s)
+wait "$hookpid" 2>/dev/null || true
+end=$(date +%s)
+contract "F11 stale heartbeat"     '[ ! -s "$HOME/out.json" ]'
+check "F11 stale: notices within the sweep" '[ $((end-start)) -le 5 ]'
 
 fresh_home
 start=$(date +%s)
@@ -1129,7 +1190,13 @@ wait_req
 LONG="$(printf 'x%.0s' $(seq 900))"
 printf '{"behavior":"deny","message":"%s"}' "$LONG" > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
-check "note: capped at 500"             '[ "$(grep -o "x*…" "$HOME/out.json" | head -1 | wc -m | tr -d " ")" -le 502 ]'
+# The ellipsis has to be there AND the run of x before it has to be short: either
+# alone passes with no cap at all (no "…" left grep empty, and empty counted as 0).
+# NOTE_MAX is 500 with the ellipsis, so 499 x then "…".
+NOTE_RUN="$(grep -o "x*…" "$HOME/out.json" | head -1)"
+# Counted as x rather than as characters: "…" is one character or three bytes
+# depending on the runner's locale.
+check "note: capped at 500"             '[ -n "$NOTE_RUN" ] && [ "$(printf %s "$NOTE_RUN" | tr -cd x | wc -c | tr -d " ")" -eq 499 ]'
 
 # A note cut mid-emoji by some frontend: the half surrogate never reaches the host.
 fresh_home

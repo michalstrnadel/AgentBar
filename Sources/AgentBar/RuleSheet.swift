@@ -73,14 +73,21 @@ final class RuleSheet: NSObject {
     private var directories: [String] = []
     private var editingID = ""
     private var done: ((RulesStore.Rule?) -> Void)?
-    /// Retained for the life of the sheet; released when it closes.
-    private static var open: RuleSheet?
+    /// Each sheet retained for its own life and released when *it* closes. One
+    /// slot was not enough: the status menu stays usable while a sheet is up, so
+    /// "Always allow this here…" can present a second sheet on Settings while the
+    /// first is still open. AppKit queues it, and a single slot that the second
+    /// overwrote freed the first — every control on it holds a weak target, so
+    /// Cancel and Add reached nothing, the queued sheet never came, and Settings
+    /// was stuck until the app quit.
+    private static var open: [ObjectIdentifier: RuleSheet] = [:]
 
     static func present(on parent: NSWindow, prefill: Prefill = Prefill(),
                         done: @escaping (RulesStore.Rule?) -> Void) {
         let s = RuleSheet(prefill: prefill, done: done)
-        open = s
-        parent.beginSheet(s.sheet) { _ in open = nil }
+        let key = ObjectIdentifier(s.sheet)
+        open[key] = s
+        parent.beginSheet(s.sheet) { _ in open[key] = nil }
     }
 
     private init(prefill: Prefill, done: @escaping (RulesStore.Rule?) -> Void) {
@@ -207,8 +214,6 @@ final class RuleSheet: NSObject {
     /// three things this sheet exists to say.
     static func renderForVerification(to url: URL, prefill: Prefill, trying: String) -> Bool {
         let sheet = RuleSheet(prefill: prefill) { _ in }
-        open = sheet
-        defer { open = nil }
         sheet.tryField.stringValue = trying
         sheet.refresh()
         guard let root = sheet.sheet.contentView else { return false }
@@ -438,7 +443,10 @@ final class RuleSheet: NSObject {
                      + "`npm test`.")
             return
         }
-        let dir = selectedDirectory == "choose" ? "" : selectedDirectory
+        // Written plainly, so a directory a session reported as `/x/repo/` saves as
+        // the rule the file check accepts instead of being refused by it.
+        let dir = selectedDirectory == "choose" || selectedDirectory.isEmpty
+            ? "" : RulesStore.normalisedCwd(selectedDirectory)
         var rule = RulesStore.Rule(id: editingID.isEmpty ? RulesStore.newID() : editingID,
                                    decision: isDeny ? "deny" : "allow",
                                    shape: typedShape, cwd: dir,

@@ -6,7 +6,7 @@ way `install-hooks` is — `Sources/AgentBar/Diagnostics.swift` and the `doctor`
 function in `Scripts/cli/agentbar`. This file is what keeps them in step: **the
 check ids below are the contract.** The wording is free to change; an id is not.
 
-Adding an agent adds `agent.<id>.*` rows on both sides — see rule 4 in `CLAUDE.md`.
+Adding an agent adds `agent.<id>.*` rows on both sides — see rule 5 in `CLAUDE.md`.
 
 ## Why this exists at all
 
@@ -73,7 +73,7 @@ Repeated for each entry in the integration table, `<id>` being the agent id.
 | `agent.<id>.parseable` | the config parses (JSON configs only), emitted only when it does not |
 | `agent.<id>.interpreter` | the node path *inside that config* still exists, emitted only when it does not |
 | `agent.<id>.lastSeen` | when this agent last reported, from `history.jsonl`. **No record is `ok`**, not a warning — history only starts when a frontend starts keeping it, so every agent is blank on a freshly updated machine and flagging that would bury the one row that matters under eight that don't. Wired and silent for 14 days *is* a warning: that is the shape of a broken integration every other check passes |
-| `claude.configDir` | the `~/.agentbar/claude-config-dir` hint agrees with the live `CLAUDE_CONFIG_DIR` |
+| `claude.configDir` | the `~/.agentbar/claude-config-dir` hint agrees with the live `CLAUDE_CONFIG_DIR`. App only, emitted only when the hint exists; the CLI reads the hint for wiring and does not check it |
 | `codex.hooks` | Codex has accepted its hooks. Codex runs none until a human says yes, and an unaccepted hook is skipped in silence — so the wired row, which the older `notify` key alone satisfies, cannot tell you. `warn` until the answer lands in `[hooks.state]` |
 | `copilot.exec` | Copilot's hook runs node directly. A `bash` wrapper makes the hook's parent a shell that exits at once — and that pid is what prunes dead rows, so every Copilot row would vanish on the next refresh |
 
@@ -92,7 +92,7 @@ Where each agent lives, and what says it is ours:
 
 | agent | config | marker |
 |---|---|---|
-| claude | `~/.claude/settings.json` (+ `$CLAUDE_CONFIG_DIR`) | `/.agentbar/hooks/claude/` |
+| claude | `~/.claude/settings.json` (+ `$CLAUDE_CONFIG_DIR`, + the `claude-config-dir` hint). The CLI checks the same set `install-hooks` writes — a `$CLAUDE_CONFIG_DIR` outside HOME only with `AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1` — and `wired` needs **every one** of them | `/.agentbar/hooks/claude/` |
 | codex | `~/.codex/config.toml` | `/.agentbar/hooks/codex/` |
 | copilot | `~/.copilot/hooks/agentbar.json` | `/.agentbar/hooks/claude/` |
 | cursor | `~/.cursor/hooks.json` | `/.agentbar/hooks/cursor/` |

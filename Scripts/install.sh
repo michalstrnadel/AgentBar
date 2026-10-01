@@ -35,7 +35,9 @@ main() {
   echo "  • launch AgentBar in the background from the SessionStart hook"
   echo "  • keep each settings file as it was, beside it (*.agentbar-bak-<time>, the last three),"
   echo "    before writing into it — Settings ▸ Diagnostics ▸ Show changes… has the diff"
-  echo "No network calls, no telemetry. Uninstall steps are in the README."
+  echo "No telemetry. Network: this download from GitHub Releases, then the app's daily"
+  echo "update check against the same (plus the Claude quota calls, only if you switch"
+  echo "them on in Settings ▸ Usage). Uninstall steps are in the README."
   # Under `curl … | bash`, stdin is the script itself — read the answer from the
   # controlling terminal so the consent prompt works in the canonical install path.
   # No terminal at all (CI): proceed, same as AGENTBAR_YES=1.

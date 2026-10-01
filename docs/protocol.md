@@ -131,6 +131,7 @@ Request:
   "display": "Bash: git push origin main",   // one line, <= ~60 chars
   "toolInputPretty": "{ ... }",              // full tool input, capped at 4 KB
   "cwd": "/Users/me/AgentBar",               // the session's directory; ABSENT when unknown
+  "filePath": "Sources/AgentBar/Weight.swift", // the file an edit/write names; ABSENT when none
   "context": { "kind": "bash", "command": "git push origin main" },
   "ruleSuggestion": { },                     // verbatim from Claude Code, or null
   "pid": 12345,                              // the claude process
@@ -146,6 +147,14 @@ something the hook already had. A writer that does not know it MUST omit the fie
 rather than send an empty string: empty is indistinguishable from `/` in a prefix
 test, and a rule scoped to one repository would then match every one. A reader that
 does not find it falls back to the session join.
+
+`filePath` is the file an edit or write names (`tool_input.file_path`,
+`notebook_path`, `path` or `filePath`, the first one present), as its own field
+because `toolInputPretty` is cut at 4 KB and a cut is not JSON: a reader that
+could only parse it there lost the path of every large edit, and the shape a rule
+is keyed on with it. A writer MUST omit it when the tool names no file or the path
+is implausible (over 1024 chars). A reader that does not find it falls back to
+parsing `toolInputPretty`.
 
 `context` is one of: `{kind:"bash", command}`, `{kind:"diff", old, new, more}`,
 `{kind:"write", preview}`, `{kind:"question", questions}`, `{kind:"plan", plan}`,
@@ -262,7 +271,7 @@ any account of a day's work. Hence one append-only JSON Lines file.
 
 Rules:
 
-- **Frontends write this, hooks never do.** Hooks exit fast (rule 3), and the
+- **Frontends write this, hooks never do.** Hooks exit fast (rule 4), and the
   end of a session is precisely the event several agents have no hook for.
 - A session is recorded when it reaches `done` or `error`, and again when its row
   disappears. Deliberately **not** on `idle` — that is where a session waits
@@ -412,6 +421,11 @@ Normative, and the reason each one is here:
   Refusing more than the user meant costs a prompt; approving more than they meant
   is the failure this whole file has to not have. A reader MUST refuse a file
   containing an approving rule with no `cwd`.
+- A non-empty `cwd` is absolute and **written plainly**: no trailing `/`, no `//`,
+  no `.` or `..` part (`/` itself is plain). Directories are compared as text, so
+  `/x/repo/` would never match a session in `/x/repo`, and `/x/repo/../other`
+  names somewhere the person did not write down. A reader MUST refuse the file
+  rather than tidy it — textually, without resolving symlinks.
 - A rule MUST NOT be created from a `ruleSuggestion`. Suggestions are produced by
   the agent being guarded; a rule is written from what the person did.
 - `mode` is `on` (answers), `watch` (answers nothing and writes down what it
