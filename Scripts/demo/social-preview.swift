@@ -39,9 +39,9 @@ func text(_ s: String, _ font: NSFont, _ c: NSColor, x: CGFloat, baseline: CGFlo
     attr.draw(at: NSPoint(x: x, y: baseline - font.ascender))
 }
 text("AgentBar", .systemFont(ofSize: 194, weight: .bold), color(0x262421), x: 1049, baseline: 597, kern: -5.5)
-text("One menu bar item for all your AI coding agents.", .systemFont(ofSize: 64, weight: .regular),
+text("One approval queue for every AI coding agent.", .systemFont(ofSize: 64, weight: .regular),
      color(0x6D655C), x: 1058, baseline: 724, kern: -0.8)
-text("Live status · remote Allow/Deny", .monospacedSystemFont(ofSize: 40, weight: .regular),
+text("Menu bar or notch · Allow/Deny in one click", .monospacedSystemFont(ofSize: 40, weight: .regular),
      color(0x998C80), x: 1062, baseline: 840)
 
 // Four agent dots, bottom right: Claude, Codex, Copilot, Antigravity.
