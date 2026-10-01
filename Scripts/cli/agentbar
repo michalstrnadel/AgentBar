@@ -1417,6 +1417,136 @@ function doctor(json) {
   console.log(`\n${out.length} checks - ${bad} failed - ${warn} worth a look`);
 }
 
+// `diff -u` of two texts, in the same shape the macOS app's LineDiff.unified prints:
+// headers, `@@ -a,b +c,d @@` hunks, three lines of context. No dependency on a
+// `diff` binary — a minimal container may not have diffutils, and the one thing
+// this has to do is show the person every line before it is written. Lines keep
+// their newline, so a file that only gained a trailing one still shows a change.
+function unifiedDiff(oldText, newText, oldLabel, newLabel, context = 3) {
+  const tokens = (t) => {
+    if (!t) return [];
+    const lines = t.split("\n");
+    const terminated = lines[lines.length - 1] === "";
+    if (terminated) lines.pop();
+    return lines.map((l, i) => (i < lines.length - 1 || terminated ? l + "\n" : l));
+  };
+  const a = tokens(oldText), b = tokens(newText);
+  if (a.length === b.length && a.every((l, i) => l === b[i])) return "";
+  // Shared head and tail off first: a block appended to a long config.toml leaves
+  // a middle of a few dozen lines, not the file squared. A middle still too big for
+  // the table prints as all-removed then all-added — plainer, never wrong.
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head++;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head &&
+         a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail++;
+  const x = a.slice(head, a.length - tail), y = b.slice(head, b.length - tail);
+  let mid = [];
+  if (x.length * y.length > 4e6) {
+    mid = x.map((t) => [" -", t]).concat(y.map((t) => [" +", t]));
+  } else {
+    const n = x.length, m = y.length;
+    const T = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--)
+      for (let j = m - 1; j >= 0; j--)
+        T[i][j] = x[i] === y[j] ? T[i + 1][j + 1] + 1 : Math.max(T[i + 1][j], T[i][j + 1]);
+    let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (x[i] === y[j]) { mid.push(["  ", x[i]]); i++; j++; }
+      else if (T[i + 1][j] >= T[i][j + 1]) mid.push([" -", x[i++]]);
+      else mid.push([" +", y[j++]]);
+    }
+    while (i < n) mid.push([" -", x[i++]]);
+    while (j < m) mid.push([" +", y[j++]]);
+  }
+  const rows = a.slice(0, head).map((t) => ["  ", t]).concat(mid, a.slice(a.length - tail).map((t) => ["  ", t]));
+  const hunks = [];
+  rows.forEach(([k], i) => {
+    if (k === "  ") return;
+    const lo = Math.max(0, i - context), hi = Math.min(rows.length - 1, i + context);
+    const last = hunks[hunks.length - 1];
+    if (last && lo <= last[1] + 1) last[1] = Math.max(last[1], hi); else hunks.push([lo, hi]);
+  });
+  const oldBefore = [0], newBefore = [0];
+  rows.forEach(([k], i) => {
+    oldBefore[i + 1] = oldBefore[i] + (k === " +" ? 0 : 1);
+    newBefore[i + 1] = newBefore[i] + (k === " -" ? 0 : 1);
+  });
+  const range = (start, count) => {
+    const first = count === 0 ? start : start + 1;
+    return count === 1 ? `${first}` : `${first},${count}`;
+  };
+  const out = [`--- ${oldLabel}`, `+++ ${newLabel}`];
+  for (const [lo, hi] of hunks) {
+    out.push(`@@ -${range(oldBefore[lo], oldBefore[hi + 1] - oldBefore[lo])} ` +
+             `+${range(newBefore[lo], newBefore[hi + 1] - newBefore[lo])} @@`);
+    for (let r = lo; r <= hi; r++) {
+      const [k, t] = rows[r];
+      const mark = k === " +" ? "+" : k === " -" ? "-" : " ";
+      if (t.endsWith("\n")) out.push(mark + t.slice(0, -1));
+      else out.push(mark + t, "\\ No newline at end of file");
+    }
+  }
+  return out.join("\n") + "\n";
+}
+
+// The copy kept before install-hooks writes into an agent's settings — the same
+// rule the macOS app's ConfigBackup follows, so the two leave the same trail:
+// `<file>.agentbar-bak-YYYYMMDD-HHMMSS` (local time) beside the file, the newest
+// BACKUP_KEEP of them kept, and nothing at all when the write would change nothing.
+// Rotation only ever deletes names that are exactly that suffix and stamp; a
+// `settings.json.agentbar-bak-mine` is the person's and stays. The suffix also keeps
+// the copy out of the directories an agent scans: Copilot loads every *.json under
+// hooks/, and a name ending in a timestamp is not one.
+const BACKUP_MARK = ".agentbar-bak-";
+const BACKUP_KEEP = 3;
+let backupsKept = 0; // for the closing line: say where the originals went only if any did
+function backupStamp(ms) {
+  const d = new Date(ms), p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-` +
+         `${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+function backupsOf(file) {
+  const dirName = path.dirname(file), prefix = path.basename(file) + BACKUP_MARK;
+  let names = [];
+  try { names = fs.readdirSync(dirName); } catch {}
+  const key = (n) => { const t = n.slice(prefix.length); return [t.slice(0, 15), Number(t.slice(16) || 0)]; };
+  return names.filter((n) => n.startsWith(prefix) && /^\d{8}-\d{6}(-\d+)?$/.test(n.slice(prefix.length)))
+    .sort((x, y) => { const [a, an] = key(x), [b, bn] = key(y); return a !== b ? (a < b ? -1 : 1) : an - bn; });
+}
+// Print what changes, keep the original, then write — in that order, atomically.
+// Returns whether anything was written.
+function writeConfig(file, data) {
+  let before = null;
+  try { before = fs.readFileSync(file, "utf8"); } catch {}
+  if (before === data) return false;
+  const diff = unifiedDiff(before || "", data, before === null ? "/dev/null" : file, file);
+  for (const line of diff.replace(/\n$/, "").split("\n")) {
+    console.log(line.startsWith("+++") || line.startsWith("---") ? bold(line)
+      : line.startsWith("@@") ? blue(line) : line.startsWith("+") ? green(line)
+      : line.startsWith("-") ? red(line) : dim(line));
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  let backup = null;
+  if (before !== null) {
+    const base = file + BACKUP_MARK + backupStamp(nowMs());
+    backup = base;
+    for (let n = 1; fs.existsSync(backup); n++) backup = `${base}-${n}`;
+    fs.copyFileSync(file, backup);
+  }
+  const t = file + "." + process.pid + ".tmp";
+  fs.writeFileSync(t, data);
+  fs.renameSync(t, file);
+  if (backup) {
+    const ours = backupsOf(file);
+    for (const old of ours.slice(0, Math.max(0, ours.length - BACKUP_KEEP)))
+      fs.rmSync(path.join(path.dirname(file), old), { force: true });
+    console.log(dim(`kept the previous version as ${backup}`));
+    backupsKept++;
+  }
+  return true;
+}
+
 function installHooks() {
   const srcHooks = path.join(__dirname, "..", "hooks");
   if (!fs.existsSync(srcHooks)) { console.error("hooks/ not found next to this CLI — run from a repo checkout"); process.exit(1); }
@@ -1469,20 +1599,27 @@ function installHooks() {
     val && typeof val === "object" && !Array.isArray(val)
       ? Object.keys(val).sort().reduce((o, kk) => ((o[kk] = val[kk]), o), {})
       : val, 2);
-  const writeIfChanged = (file, root) => {
-    const data = sortedStringify(root) + "\n";
-    try { if (fs.readFileSync(file, "utf8") === data) return false; } catch {}
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    const t = file + "." + process.pid + ".tmp";
-    fs.writeFileSync(t, data);
-    fs.renameSync(t, file);
-    return true;
-  };
+  // Every agent's settings go through writeConfig: the diff first, then the backup,
+  // then the atomic write — and none of it when the content is already there.
+  const writeIfChanged = (file, root) => writeConfig(file, sortedStringify(root) + "\n");
   const report = (name, changed) => console.log(`${changed ? "wired" : "ok   "}  ${name}`);
 
   // Claude Code — <configDir>/settings.json (default + CLAUDE_CONFIG_DIR + hint file)
   const claudeDirs = new Set([path.join(os.homedir(), ".claude")]);
-  if (process.env.CLAUDE_CONFIG_DIR) claudeDirs.add(process.env.CLAUDE_CONFIG_DIR.replace(/^~/, os.homedir()));
+  // A CLAUDE_CONFIG_DIR outside this HOME is almost always inherited by a run with a
+  // borrowed HOME (a test, a sandbox, `HOME=$(mktemp -d)`): wiring it would point a
+  // real Claude config at hooks under a throwaway directory, and every session started
+  // until the next repair would run them from there. Somebody who really keeps their
+  // config outside HOME says so with AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1.
+  if (process.env.CLAUDE_CONFIG_DIR) {
+    const custom = path.resolve(process.env.CLAUDE_CONFIG_DIR.replace(/^~/, os.homedir()));
+    const home = path.resolve(os.homedir());
+    if (custom === home || custom.startsWith(home + path.sep) || process.env.AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME === "1") {
+      claudeDirs.add(custom);
+    } else {
+      console.error(`skip   claude  CLAUDE_CONFIG_DIR=${custom} is outside HOME (${home}); set AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1 to wire it anyway`);
+    }
+  }
   try {
     const raw = fs.readFileSync(path.join(base, "claude-config-dir"), "utf8").trim();
     if (raw) claudeDirs.add(raw.replace(/^~/, os.homedir()));
@@ -1525,13 +1662,13 @@ function installHooks() {
     const file = path.join(codexDir, "config.toml");
     let toml = ""; try { toml = fs.readFileSync(file, "utf8"); } catch {}
     const ours = `notify = ["${node}", "${path.join(hooksDir, "codex", "notify.js")}"]`;
-    // tmp+rename like every other config write here — a crash mid-write must
-    // not truncate the user's Codex config.
-    const writeToml = (next) => {
-      const t = file + "." + process.pid + ".tmp";
-      fs.writeFileSync(t, next);
-      fs.renameSync(t, file);
-    };
+    // Both keys are worked out on `toml` and written ONCE at the end, through
+    // writeConfig (diff, backup, tmp+rename). Two writes used to happen here, and the
+    // second one started from the text as it was before the first: a node that moved
+    // repaired the notify line, then the hooks block was written over the original
+    // and put the dead path back. One write also means one backup of the file as the
+    // person had it, rather than one of a halfway state.
+    const original = toml;
     // AgentBar's own hooks block, cut out before any "is notify already ours?"
     // question — it carries the same path on every line, and a blind match would
     // read it as a wired notify and never install notify again.
@@ -1553,7 +1690,7 @@ function installHooks() {
       let alive = false;
       try { fs.accessSync(interp, fs.constants.X_OK); alive = true; } catch {}
       if (alive) report("codex   " + file, false);
-      else { writeToml(toml.replace(line[0], ours)); report("codex   " + file, true); }
+      else { toml = toml.replace(line[0], ours); report("codex   " + file, true); }
     }
     // Our marker somewhere the line regex could not read (hand-edited formatting,
     // a comment): leave it alone rather than appending a second notify key.
@@ -1561,7 +1698,6 @@ function installHooks() {
     else if (/^\s*notify\s*=/m.test(toml)) console.error(`skip: ${file} already has a notify hook — left untouched`);
     else {
       if (toml && !toml.endsWith("\n")) toml += "\n";
-      writeToml(toml + ours + "\n");
       toml += ours + "\n";
       report("codex   " + file, true);
     }
@@ -1600,14 +1736,14 @@ function installHooks() {
     if (b >= 0 && e >= 0) {
       const current = toml.slice(b, e + CODEX_END.length);
       if (current === block) report("codex hooks   " + file, false);
-      else { writeToml(toml.slice(0, b) + block + toml.slice(e + CODEX_END.length)); report("codex hooks   " + file, true); }
+      else { toml = toml.slice(0, b) + block + toml.slice(e + CODEX_END.length); report("codex hooks   " + file, true); }
     } else {
-      let next = toml;
-      if (next && !next.endsWith("\n")) next += "\n";
-      if (next) next += "\n";
-      writeToml(next + block + "\n");
+      if (toml && !toml.endsWith("\n")) toml += "\n";
+      if (toml) toml += "\n";
+      toml += block + "\n";
       report("codex hooks   " + file, true);
     }
+    if (toml !== original) writeConfig(file, toml);
   }
 
   // Cursor — ~/.cursor/hooks.json (command is a single executable path)
@@ -1754,7 +1890,9 @@ function installHooks() {
 
   // OpenCode — ~/.config/opencode/plugins/agentbar.js. OpenCode loads JS plugins
   // from its config dir; ours observes the event bus and mirrors it into state
-  // files. Copied on change, same refresh-with-the-installer rule as macOS.
+  // files. Copied on change, same refresh-with-the-installer rule as macOS — and,
+  // like there, not diffed or backed up: it is AgentBar's own code, not a setting
+  // of the person's, and an old copy of it is nothing to go back to.
   const opencodeDir = path.join(os.homedir(), ".config", "opencode");
   if (fs.existsSync(opencodeDir)) {
     const file = path.join(opencodeDir, "plugins", "agentbar.js");
@@ -1770,6 +1908,7 @@ function installHooks() {
     report("opencode " + file, changed);
   }
   console.log("Done. Start a NEW agent session to see it (hooks snapshot at session start).");
+  if (backupsKept) console.log(`Each settings file changed above was kept as it was, beside itself (*${BACKUP_MARK}<time>; the last ${BACKUP_KEEP} stay).`);
 }
 
 // MARK: - Main

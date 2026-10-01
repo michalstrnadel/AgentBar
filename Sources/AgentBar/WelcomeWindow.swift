@@ -27,6 +27,7 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
     private var displayCaption: NSTextField!
     private var modeCaption: NSTextField!
     private var wiredLabel: NSTextField!
+    private var changesButton: NSButton!
     private var showBox: NSButton!
     /// A driver of its own, fed a canned session, so the preview animates whether
     /// or not anything real is running.
@@ -257,6 +258,13 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         wiredLabel.textColor = .secondaryLabelColor
         wiredLabel.preferredMaxLayoutWidth = Self.rowWidth
 
+        // The install that just ran edited files of the user's. Saying which agents
+        // it wired is half of being honest about that; the other half is one click
+        // to the exact lines, and where the originals went.
+        changesButton = SettingsChrome.smallButton("See what changed…", target: self,
+                                                   action: #selector(showChanges))
+        changesButton.isHidden = true
+
         showBox = NSButton(checkboxWithTitle: "Show this window on launch",
                            target: self, action: #selector(toggleShowOnLaunch))
 
@@ -274,10 +282,11 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         buttons.translatesAutoresizingMaskIntoConstraints = false
         buttons.widthAnchor.constraint(equalToConstant: Self.rowWidth).isActive = true
 
-        let col = NSStackView(views: [wiredLabel, showBox, buttons])
+        let col = NSStackView(views: [wiredLabel, changesButton, showBox, buttons])
         col.orientation = .vertical
         col.alignment = .leading
         col.spacing = 10
+        col.setCustomSpacing(6, after: wiredLabel)
         col.setCustomSpacing(16, after: showBox)
         return col
     }
@@ -339,6 +348,9 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
             ? "Setting up hooks…"
             : "Hooks wired up for: " + names.joined(separator: ", ")
                 + ". New sessions show up from now on; ones already open started before the hooks."
+        // Only once there is something to show: a machine where every file was
+        // already wired has no diff, and a button that opens an empty sheet is noise.
+        changesButton.isHidden = !FileManager.default.fileExists(atPath: ConfigBackup.defaultLog.path)
         // The line can grow after the window is up (the install pass reports late),
         // so the window re-fits rather than clipping it.
         if let w = window, let content = w.contentView {
@@ -360,6 +372,11 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
 
     @objc private func toggleShowOnLaunch() {
         Self.showOnLaunch = showBox.state == .on
+    }
+
+    @objc private func showChanges() {
+        guard let window else { return }
+        ConfigChangesSheet.present(on: window)
     }
 
     @objc private func closeClicked() {

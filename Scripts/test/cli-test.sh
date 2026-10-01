@@ -325,6 +325,11 @@ echo '{broken' > "$HOME/.gemini/settings.json"
 check "unparseable config untouched"   '[ "$(cat "$HOME/.gemini/settings.json")" = "{broken" ]'
 CLAUDE_CONFIG_DIR="$HOME/.claude-custom" "$CLI" install-hooks >/dev/null 2>&1
 check "CLAUDE_CONFIG_DIR wired (contained)" 'grep -q PermissionRequest "$HOME/.claude-custom/settings.json"'
+OUTSIDE="$TESTROOT/outside-home.$$"; mkdir -p "$OUTSIDE"
+CLAUDE_CONFIG_DIR="$OUTSIDE" "$CLI" install-hooks >/dev/null 2>&1
+check "CLAUDE_CONFIG_DIR outside HOME skipped" '[ ! -e "$OUTSIDE/settings.json" ]'
+CLAUDE_CONFIG_DIR="$OUTSIDE" AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1 "$CLI" install-hooks >/dev/null 2>&1
+check "outside HOME wired when allowed"  'grep -q PermissionRequest "$OUTSIDE/settings.json"'
 
 
 # --- plan requests: the hook can't carry a plan approval, so the CLI must say so
@@ -511,6 +516,40 @@ grep -v "^notify = " "$CODEX_CFG" > "$HOME/.codex/c.tmp" && mv "$HOME/.codex/c.t
 check "notify removed for the test"    '! grep -q "^notify = " "$CODEX_CFG"'
 "$CLI" install-hooks >/dev/null 2>&1
 check "notify reinstalled beside block" 'grep -q "^notify = " "$CODEX_CFG" && grep -q "^# >>> agentbar >>>" "$CODEX_CFG"'
+
+# --- backups and the diff: what install-hooks does to a file you wrote -----------
+# The original is kept beside the file before anything is written; a run that
+# changes nothing prints nothing and keeps nothing; only the newest three of
+# AgentBar's own copies stay, and a copy the person named themselves is theirs.
+fresh_home
+mkdir -p "$HOME/.gemini"
+echo '{"theme":"dark"}' > "$HOME/.gemini/settings.json"
+echo 'mine' > "$HOME/.gemini/settings.json.agentbar-bak-mine"
+OUT="$(AGENTBAR_NOW=1790000000 "$CLI" install-hooks 2>&1)"
+GB() { ls "$HOME/.gemini" | grep -c '^settings\.json\.agentbar-bak-[0-9]\{8\}-[0-9]\{6\}' ; }
+check "diff printed before the write"  'echo "$OUT" | grep -q "^-{\"theme\":\"dark\"}" && echo "$OUT" | grep -q "^+++ .*/.gemini/settings.json"'
+check "original kept beside the file"  '[ "$(GB)" = 1 ] && [ "$(cat "$HOME"/.gemini/settings.json.agentbar-bak-2*)" = "{\"theme\":\"dark\"}" ]'
+check "new file is not backed up"      '! ls "$HOME/.claude" | grep -q agentbar-bak'
+OUT="$(AGENTBAR_NOW=1790000100 "$CLI" install-hooks 2>&1)"
+check "no-op prints no diff"           '! echo "$OUT" | grep -q "^+++ "'
+check "no-op keeps no backup"          '[ "$(GB)" = 1 ]'
+for i in 1 2 3 4; do
+  echo "{\"theme\":\"v$i\"}" > "$HOME/.gemini/settings.json"
+  AGENTBAR_NOW=$((1790000000 + i * 100)) "$CLI" install-hooks >/dev/null 2>&1
+done
+check "only the last three backups stay" '[ "$(GB)" = 3 ] && grep -q v4 "$(ls -d "$HOME"/.gemini/settings.json.agentbar-bak-2* | sort | tail -1)"'
+check "a backup you named is yours"    '[ "$(cat "$HOME/.gemini/settings.json.agentbar-bak-mine")" = mine ]'
+# A node that moved changes both Codex keys at once. One write, so one backup of the
+# file as it was — and the repaired notify line must survive the block rewrite.
+fresh_home
+mkdir -p "$HOME/.codex"
+printf 'model = "o3"\n' > "$HOME/.codex/config.toml"
+"$CLI" install-hooks >/dev/null 2>&1
+sed -i.tmp "s|\"[^\"]*node\"|\"$HOME/gone/node\"|; s|\\\\\"[^\\\\]*node\\\\\"|\\\\\"$HOME/gone/node\\\\\"|g" "$HOME/.codex/config.toml" && rm -f "$HOME/.codex/config.toml.tmp"
+check "codex dead node seeded in both" 'grep -q "^notify = \[\"$HOME/gone/node\"" "$HOME/.codex/config.toml" && grep -q "gone/node.*hook.js" "$HOME/.codex/config.toml"'
+AGENTBAR_NOW=1790009999 "$CLI" install-hooks >/dev/null 2>&1
+check "codex both keys repaired in one run" '! grep -q "gone/node" "$HOME/.codex/config.toml"'
+check "codex one backup per run"       '[ "$(ls "$HOME/.codex" | grep -c agentbar-bak)" = 2 ]'
 
 # --- the record, as something you can hand to somebody ---------------------------
 fresh_home

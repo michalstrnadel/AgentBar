@@ -33,6 +33,8 @@ main() {
   echo "  • wire Codex / Cursor / Gemini / Antigravity / Qwen / Copilot / OpenCode hooks — only for the tools you already use"
   echo "    (Codex asks you once, in its own prompt, before it runs any of them)"
   echo "  • launch AgentBar in the background from the SessionStart hook"
+  echo "  • keep each settings file as it was, beside it (*.agentbar-bak-<time>, the last three),"
+  echo "    before writing into it — Settings ▸ Diagnostics ▸ Show changes… has the diff"
   echo "No network calls, no telemetry. Uninstall steps are in the README."
   # Under `curl … | bash`, stdin is the script itself — read the answer from the
   # controlling terminal so the consent prompt works in the canonical install path.

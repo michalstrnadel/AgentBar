@@ -13,6 +13,9 @@ check() {
   if eval "$2"; then echo "ok   $1"; pass=$((pass+1)); else echo "FAIL $1"; fail=$((fail+1)); fi
 }
 
+# The tests borrow HOME; an inherited CLAUDE_CONFIG_DIR would still point at the
+# runner's real Claude config.
+unset CLAUDE_CONFIG_DIR
 TESTROOT="$(mktemp -d)"
 trap 'rm -rf "$TESTROOT"' EXIT
 

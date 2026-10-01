@@ -4,6 +4,9 @@ import Foundation
 /// version; configs are only rewritten when the content actually changes). Copies the
 /// bundled hook scripts to `~/.agentbar/hooks/` and wires them into each agent's own
 /// hook mechanism. Never blocks the UI; failures are logged and retried on next launch.
+/// A config write that changes anything first keeps a dated copy of the file beside
+/// it and records the diff (`ConfigBackup`); `preview` answers what the next pass
+/// would write, from the same code, without writing it.
 enum HookInstaller {
     private static let home = FileManager.default.homeDirectoryForCurrentUser
     private static var hooksDir: URL { home.appendingPathComponent(".agentbar/hooks", isDirectory: true) }
@@ -27,9 +30,47 @@ enum HookInstaller {
     /// Called on the main queue when the install pass finishes.
     static var onFinish: (() -> Void)?
 
-    private static func note(_ agentID: String) {
-        DispatchQueue.main.async {
-            if !wired.contains(agentID) { wired.append(agentID) }
+    /// One run over every integration: either the real one (launch, **Re-install
+    /// hooks**), or a preview that works out every config write and makes none.
+    ///
+    /// The preview exists so "what would AgentBar change?" is answered by the same
+    /// code that changes it, not by a second description of it that drifts. Every
+    /// per-agent function below builds its bytes exactly as before and hands them to
+    /// `write` instead of to disk; only the side effects that are not a config
+    /// write — copying the scripts, pinning a shebang, creating a directory, the
+    /// "wired" note — are skipped when previewing.
+    private final class Pass {
+        let preview: Bool
+        /// What a preview pass would write, in pass order. Touched only on the
+        /// pass's own queue.
+        private(set) var planned: [ConfigBackup.Record] = []
+
+        init(preview: Bool) { self.preview = preview }
+
+        /// An agent's config: backed up and recorded (`ConfigBackup`) when real,
+        /// collected when previewing. A write that changes nothing is neither.
+        func write(_ data: Data, to url: URL) throws {
+            if preview {
+                if let r = ConfigBackup.preview(data, for: url) { planned.append(r) }
+                return
+            }
+            guard let r = try ConfigBackup.write(data, to: url) else { return }
+            // The launch that rewrote a file says so where a launch can: one line,
+            // naming the copy it kept. The diff itself is in the record.
+            NSLog("AgentBar: wrote \(r.path)"
+                  + (r.backup.map { " (the previous version is kept as \($0))" } ?? " (new file)"))
+        }
+
+        func createDirectory(_ url: URL) throws {
+            guard !preview else { return }
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+
+        func note(_ agentID: String) {
+            guard !preview else { return }
+            DispatchQueue.main.async {
+                if !wired.contains(agentID) { wired.append(agentID) }
+            }
         }
     }
 
@@ -41,18 +82,37 @@ enum HookInstaller {
                 DispatchQueue.main.async { onFinish?() }
                 return
             }
-            for dir in claudeConfigDirs() {
-                _ = step("claude (\(dir.path))") { try installClaude(configDir: dir) }
-            }
-            _ = step("codex", installCodex)
-            _ = step("cursor", installCursor)
-            _ = step("gemini", installGemini)
-            _ = step("antigravity", installAntigravity)
-            _ = step("qwen", installQwen)
-            _ = step("copilot", installCopilot)
-            _ = step("opencode", installOpenCode)
+            run(Pass(preview: false))
             DispatchQueue.main.async { onFinish?() }
         }
+    }
+
+    /// Every config write the next install pass would make, as diffs, without making
+    /// any — for the changes sheet. `done` runs on the main queue. Empty means a
+    /// re-install would leave every file exactly as it is.
+    static func preview(_ done: @escaping ([ConfigBackup.Record]) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let pass = Pass(preview: true)
+            run(pass)
+            let planned = pass.planned
+            DispatchQueue.main.async { done(planned) }
+        }
+    }
+
+    private static func run(_ pass: Pass) {
+        for dir in claudeConfigDirs() {
+            _ = step("claude (\(dir.path))") { try installClaude(configDir: dir, pass) }
+        }
+        _ = step("codex") { try installCodex(pass) }
+        _ = step("cursor") { try installCursor(pass) }
+        _ = step("gemini") { try installGemini(pass) }
+        _ = step("antigravity") { try installAntigravity(pass) }
+        _ = step("qwen") { try installQwen(pass) }
+        _ = step("copilot") { try installCopilot(pass) }
+        // Not previewed and not backed up: the plugin is AgentBar's own code,
+        // copied verbatim, not a setting of the user's — a diff of it would be a
+        // diff of our release, and an old copy beside it is nothing to go back to.
+        if !pass.preview { _ = step("opencode") { try installOpenCode(pass) } }
     }
 
     /// Each integration is independent: one agent's config blowing up must not cost the
@@ -124,6 +184,10 @@ enum HookInstaller {
     /// Atomic write, skipped when the file already has exactly this content — avoids
     /// mtime churn (tools watch these configs) and shrinks the window for racing a
     /// tool that is writing its own settings at the same moment.
+    ///
+    /// Only for files that are AgentBar's own code (the OpenCode plugin). An agent's
+    /// *settings* go through `Pass.write`, which does the same skip and also keeps a
+    /// backup and a diff — see `ConfigBackup`.
     private static func writeIfChanged(_ data: Data, to url: URL) throws {
         if let existing = try? Data(contentsOf: url), existing == data { return }
         try data.write(to: url, options: .atomic)
@@ -197,11 +261,10 @@ enum HookInstaller {
 
     // MARK: - Claude Code (<configDir>/settings.json)
 
-    private static func installClaude(configDir: URL) throws {
+    private static func installClaude(configDir: URL, _ pass: Pass) throws {
         guard let node = nodePath else { NSLog("AgentBar: node not found, Claude hooks skipped"); return }
         let settingsURL = configDir.appendingPathComponent("settings.json")
-        let fm = FileManager.default
-        try fm.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try pass.createDirectory(settingsURL.deletingLastPathComponent())
 
         guard var root = readConfig(at: settingsURL) else { return }
         var hooks = root["hooks"] as? [String: Any] ?? [:]
@@ -248,14 +311,14 @@ enum HookInstaller {
         }
         root["hooks"] = hooks
 
-        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-        try writeIfChanged(data, to: settingsURL) // never leave settings.json half-written
-        note("claude")
+        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        try pass.write(data, to: settingsURL) // never leave settings.json half-written
+        pass.note("claude")
     }
 
     // MARK: - Codex (~/.codex/config.toml: the hooks block, and the notify bridge)
 
-    private static func installCodex() throws {
+    private static func installCodex(_ pass: Pass) throws {
         guard let node = nodePath else { NSLog("AgentBar: node not found, Codex hooks skipped"); return }
         let codexDir = home.appendingPathComponent(".codex")
         guard FileManager.default.fileExists(atPath: codexDir.path) else { return } // not a Codex user
@@ -280,8 +343,10 @@ enum HookInstaller {
                                                      dir: hooksDir.path) {
             text = next
         }
-        if text != config { try text.write(to: configURL, atomically: true, encoding: .utf8) }
-        note("codex")
+        // One write for both keys, so a pass that repairs the notify line *and* the
+        // block leaves one backup of the file as it was, not one of a halfway state.
+        if text != config { try pass.write(Data(text.utf8), to: configURL) }
+        pass.note("codex")
     }
 
     /// The events Codex fires, and which shared script answers each.
@@ -421,14 +486,14 @@ enum HookInstaller {
 
     // MARK: - Cursor CLI (~/.cursor/hooks.json)
 
-    private static func installCursor() throws {
+    private static func installCursor(_ pass: Pass) throws {
         // ~/.cursor also exists for IDE-only users; that's intentional — the same
         // hooks.json drives IDE agent sessions, and the bridge is observe-only.
         let cursorDir = home.appendingPathComponent(".cursor")
         guard FileManager.default.fileExists(atPath: cursorDir.path) else { return } // not a Cursor user
         let cfgURL = cursorDir.appendingPathComponent("hooks.json")
         let scriptURL = hooksDir.appendingPathComponent("cursor/cursor.js")
-        try pinNodeShebang(of: scriptURL)
+        if !pass.preview { try pinNodeShebang(of: scriptURL) }
 
         guard var root = readConfig(at: cfgURL) else { return }
         root["version"] = root["version"] ?? 1
@@ -446,9 +511,9 @@ enum HookInstaller {
             hooks[event] = rules
         }
         root["hooks"] = hooks
-        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-        try writeIfChanged(data, to: cfgURL)
-        note("cursor")
+        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        try pass.write(data, to: cfgURL)
+        pass.note("cursor")
     }
 
     /// Cursor runs the script directly via its shebang, and a GUI-launched Cursor
@@ -473,13 +538,13 @@ enum HookInstaller {
     /// customization dir. Top level is named rule groups; we own exactly one key
     /// ("agentbar") and never touch the rest. The script runs via its shebang, so
     /// the node path is pinned the same way as Cursor's bridge.
-    private static func installAntigravity() throws {
+    private static func installAntigravity(_ pass: Pass) throws {
         let scriptURL = hooksDir.appendingPathComponent("antigravity/antigravity.js")
         let dirs = ["antigravity", "antigravity-cli"].map {
             home.appendingPathComponent(".gemini/\($0)", isDirectory: true)
         }.filter { FileManager.default.fileExists(atPath: $0.path) }
         guard !dirs.isEmpty else { return } // not an Antigravity user
-        try pinNodeShebang(of: scriptURL)
+        if !pass.preview { try pinNodeShebang(of: scriptURL) }
 
         // Observational events only; PreToolUse stays decision-free (no stdout).
         // The stdin payload carries no event name, so it rides along as an argument.
@@ -496,9 +561,9 @@ enum HookInstaller {
             let cfgURL = dir.appendingPathComponent("hooks.json")
             guard var root = readConfig(at: cfgURL) else { continue }
             root["agentbar"] = group
-            let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-            try writeIfChanged(data, to: cfgURL)
-            note("antigravity")
+            let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+            try pass.write(data, to: cfgURL)
+            pass.note("antigravity")
         }
     }
 
@@ -509,7 +574,7 @@ enum HookInstaller {
     /// Observational events only: its PermissionRequest decision contract is
     /// unverified against permission.js, and a blocking hook must never be wired
     /// on faith. Timeouts here are milliseconds (Qwen), not seconds (Claude).
-    private static func installQwen() throws {
+    private static func installQwen(_ pass: Pass) throws {
         guard let node = nodePath else { NSLog("AgentBar: node not found, Qwen hooks skipped"); return }
         let qwenDir = home.appendingPathComponent(".qwen")
         guard FileManager.default.fileExists(atPath: qwenDir.path) else { return } // not a Qwen user
@@ -554,9 +619,9 @@ enum HookInstaller {
             hooks[e.event] = rules
         }
         root["hooks"] = hooks
-        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-        try writeIfChanged(data, to: cfgURL)
-        note("qwen")
+        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        try pass.write(data, to: cfgURL)
+        pass.note("qwen")
     }
 
     // MARK: - GitHub Copilot CLI (~/.copilot/hooks/agentbar.json)
@@ -578,7 +643,7 @@ enum HookInstaller {
     ///
     /// AgentBar owns the whole file: Copilot loads every `*.json` in the hooks dir,
     /// so our entries live in ours and the user's live in theirs.
-    private static func installCopilot() throws {
+    private static func installCopilot(_ pass: Pass) throws {
         guard let node = nodePath else { NSLog("AgentBar: node not found, Copilot hooks skipped"); return }
         // COPILOT_HOME wins when set, exactly as the CLI resolves it.
         let copilotDir = ProcessInfo.processInfo.environment["COPILOT_HOME"].flatMap {
@@ -586,7 +651,7 @@ enum HookInstaller {
         } ?? home.appendingPathComponent(".copilot")
         guard FileManager.default.fileExists(atPath: copilotDir.path) else { return } // not a Copilot user
         let hooksFileDir = copilotDir.appendingPathComponent("hooks", isDirectory: true)
-        try FileManager.default.createDirectory(at: hooksFileDir, withIntermediateDirectories: true)
+        try pass.createDirectory(hooksFileDir)
         let dir = hooksDir.appendingPathComponent("claude").path
 
         let events: [(event: String, script: String, arg: String?)] = [
@@ -620,30 +685,30 @@ enum HookInstaller {
                                        "timeoutSec": 630,
                                        "env": ["AGENTBAR_AGENT": "copilot"]]]
         let root: [String: Any] = ["version": 1, "hooks": hooks]
-        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-        try writeIfChanged(data, to: hooksFileDir.appendingPathComponent("agentbar.json"))
-        note("copilot")
+        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        try pass.write(data, to: hooksFileDir.appendingPathComponent("agentbar.json"))
+        pass.note("copilot")
     }
 
     // MARK: - OpenCode (~/.config/opencode/plugins/agentbar.js)
 
     /// OpenCode loads JS plugins from its config dir; ours observes the event bus
     /// and mirrors it into state files. The copy refreshes with the app version.
-    private static func installOpenCode() throws {
+    private static func installOpenCode(_ pass: Pass) throws {
         let configDir = home.appendingPathComponent(".config/opencode")
         guard FileManager.default.fileExists(atPath: configDir.path) else { return } // not an OpenCode user
         let pluginsDir = configDir.appendingPathComponent("plugins", isDirectory: true)
-        try FileManager.default.createDirectory(at: pluginsDir, withIntermediateDirectories: true)
+        try pass.createDirectory(pluginsDir)
         let src = hooksDir.appendingPathComponent("opencode/agentbar.js")
         let dest = pluginsDir.appendingPathComponent("agentbar.js")
         let data = try Data(contentsOf: src)
         try writeIfChanged(data, to: dest)
-        note("opencode")
+        pass.note("opencode")
     }
 
     // MARK: - Gemini CLI (~/.gemini/settings.json)
 
-    private static func installGemini() throws {
+    private static func installGemini(_ pass: Pass) throws {
         guard let node = nodePath else { NSLog("AgentBar: node not found, Gemini hooks skipped"); return }
         let geminiDir = home.appendingPathComponent(".gemini")
         guard FileManager.default.fileExists(atPath: geminiDir.path) else { return } // not a Gemini user
@@ -670,8 +735,8 @@ enum HookInstaller {
             hooks[event] = groups
         }
         root["hooks"] = hooks
-        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
-        try writeIfChanged(data, to: cfgURL)
-        note("gemini")
+        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        try pass.write(data, to: cfgURL)
+        pass.note("gemini")
     }
 }

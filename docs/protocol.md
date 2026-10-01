@@ -18,6 +18,7 @@ locks. All timestamps (`ts`) are Unix seconds.
   history.jsonl  one line per ended session     (writer: frontends only)
   decisions.jsonl one line per permission decision (writer: frontends only)
   history-seen.json  the CLI's previous tick, so one-shot commands can diff
+  config-changes.json  the macOS installer's last settings writes, as diffs (writer: the app only; mode 0600)
   hooks/       installed copies of the hook scripts (refreshed by the installer)
   claude-config-dir  optional hint: custom CLAUDE_CONFIG_DIR path (one line)
 ```
