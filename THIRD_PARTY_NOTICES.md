@@ -7,12 +7,11 @@ tool a session belongs to — and remain the property of their respective owners
 - **OpenAI logo** (shown for Codex sessions) — trademark of OpenAI. Vector sourced from
   the public simple-icons collection (icons released under CC0; the trademark itself is not).
   The animated Codex mark pairs it with a generic braille dot-matrix (not a trademark).
-- **GitHub Copilot logo and pixel-art mascot head** — trademarks of GitHub, Inc. The
-  animated Copilot mark is a faithful pixel-by-pixel reproduction of GitHub's official
-  pixel-art Copilot mascot; logo vector sourced from simple-icons (CC0).
+- **GitHub Copilot pixel-art mascot head** — trademark of GitHub, Inc. The animated
+  Copilot mark is a faithful pixel-by-pixel reproduction of GitHub's official pixel-art
+  Copilot mascot.
 - **Google Antigravity logo** — trademark of Google LLC. The animated Antigravity mark
-  is a faithful pixel-by-pixel reproduction of the official pixel rainbow arch; static
-  vector sourced from svgl.app.
+  is a faithful pixel-by-pixel reproduction of the official pixel rainbow arch.
 - **Cursor logo** — trademark of Anysphere Inc. Shown for Cursor CLI sessions as the
   official cube app icon (sourced from cursor.com), used nominatively to identify the tool.
 - **Google Gemini CLI logo** — trademark of Google LLC. Shown for Gemini CLI sessions as

@@ -87,8 +87,9 @@ with `[ "$(uname)" != "Darwin" ] ||` because on Linux the spawn never happens.
 
 ## CI
 
-`.github/workflows/ci.yml` runs all four portable suites twice — on
-`macos-14` and on `ubuntu-latest` (Node 20) — builds the universal app bundle on
+`.github/workflows/ci.yml` runs all five portable suites, and the
+cloud poller's `node --test` run, twice — on `macos-14` and on `ubuntu-latest`
+(Node 20) — builds the universal app bundle on
 macOS (`./Scripts/build.sh`), which is what compiles every Swift change, and runs
 `swift test` on `macos-15`. A PR is green only when all four jobs pass.
 
@@ -171,8 +172,9 @@ minute and has found three real bugs:
 - what counts as a session ending, and what a weight has to contain to exist
 - the ids `doctor` reports, against `Diagnostics.run`
 
-Three ids legitimately differ and are meant to: `app.accessibility` and
-`app.singleInstance` are macOS notions with no Linux counterpart, and
+Five ids legitimately differ and are meant to: `app.accessibility`,
+`app.singleInstance` and `app.islandPin` are macOS notions with no Linux
+counterpart, `claude.configDir` is checked by the app only, and
 `frontend.present` asks whether a frontend is running, which the app already knows
 about itself. Everything else matching is the contract.
 

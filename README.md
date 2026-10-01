@@ -65,12 +65,12 @@ That's the whole loop. More install options below; troubleshooting at the bottom
 
 ### What the installer changes (and how to undo it)
 
-AgentBar is local-only — no telemetry, and it makes exactly two network calls, one of
-which is off until you switch it on: the daily update check against GitHub Releases, and
-— only if you tick **Settings ▸ Usage** — a request to Anthropic for Claude's own quota,
-using the login Claude Code already stored. That switch reports what came back, in a
-sentence under itself, including every way it can fail; **Check now** asks again on the
-spot. The simplest way in is **Sign in to Claude…**, which opens claude.ai's own login
+AgentBar is local-only — no telemetry, and it talks to three places, two of which stay
+silent until you switch them on: the daily update check against GitHub Releases, and
+— only if you tick **Settings ▸ Usage** — Claude's own quota, from `api.anthropic.com`
+using the login Claude Code already stored, or from `claude.ai` if you sign in there.
+That switch reports what came back, in a sentence under itself, including every way it
+can fail; **Check now** asks again on the spot. The simplest way in is **Sign in to Claude…**, which opens claude.ai's own login
 page in a window and keeps the session in AgentBar — no terminal, no token, and no
 reading of your browser's cookies, which AgentBar does not do. If your sessions run under their own `CLAUDE_CONFIG_DIR`, that login is somewhere
 AgentBar cannot read — **Use a token…** takes one from `claude setup-token` and keeps it
@@ -172,7 +172,7 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   destructive git or `rm`, anything reaching off this Mac, a path outside that
   directory, or anything that touches how permission itself is configured comes back
   to you. No setting turns that off. Every firing writes a row naming the rule, so
-  **Settings ▸ Approvals** and `agentbar rules` can tell you what each one has
+  **Settings ▸ Rules** and `agentbar rules` can tell you what each one has
   actually done. Nothing in the file applies while any of it is wrong, and
   Diagnostics says so — because a rule that silently stopped working looks exactly
   like AgentBar working normally.
@@ -630,11 +630,12 @@ the hook as an explicit "refine this first".
 
 Tiny hook scripts (Node.js) write one JSON file per session to `~/.agentbar/state.d/`.
 The app watches that folder and renders. No sockets, no daemons; the only network
-traffic is the update check against GitHub Releases.
+traffic is the update check against GitHub Releases — plus, only if you switch
+**Settings ▸ Usage** on, Claude's quota from `api.anthropic.com` or `claude.ai`.
 Permission approvals use two more folders of the same protocol: the blocking hook
 writes `requests.d/`, the app answers into `answers.d/`. The contract is
 [docs/protocol.md](docs/protocol.md); everything outside the Swift app (hooks,
-bridges, the OpenCode plugin, the CLI) is covered by four bash test suites that
+bridges, the OpenCode plugin, the CLI) is covered by five bash test suites that
 run on Linux and macOS — see [docs/testing.md](docs/testing.md).
 
 ## Troubleshooting

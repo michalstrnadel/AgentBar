@@ -17,8 +17,11 @@ Thanks for your interest! AgentBar is intentionally small — please keep it tha
 4. **Adding an agent** = one entry in `Agents.swift`, a sprite in
    `Sources/AgentBar/Sprites/`, optionally a hook dir in `Scripts/hooks/<agent>/`
    plus its installer step in `HookInstaller.swift` and the Linux CLI's
-   `install-hooks`, and the agent id in the `docs/protocol.md` list and the README
-   agent table (same checklist as `CLAUDE.md`). Nothing else should need touching.
+   `install-hooks`, and the agent id in the `docs/protocol.md` list, the README
+   agent table and the agent list in `CLAUDE.md`. If it gets hooks it also needs a
+   row in the `Diagnostics.integrations` table and the Linux `doctor`'s, or
+   diagnostics reports a clean bill of health for an integration it never looked
+   at (same checklist as `CLAUDE.md` rule 5). Nothing else should need touching.
 5. Third-party marks belong in `THIRD_PARTY_NOTICES.md`.
 
 ## Developing
@@ -167,7 +170,10 @@ universal bundle, and it is signed locally.
 2. Commit as `chore: release X.Y.Z — …` and push. Wait for CI to go green.
 3. Download the bundle CI built and verified, then sign it here:
    ```bash
-   RID=$(gh run list --workflow ci.yml --limit 1 --json databaseId -q '.[0].databaseId')
+   # The selector release-provenance.yml uses: the successful push run of this
+   # commit, never just the newest run of any event or branch.
+   RID=$(gh run list --workflow ci.yml --commit "$(git rev-parse HEAD)" --event push \
+     --status success --limit 1 --json databaseId -q '.[0].databaseId')
    gh run download "$RID" -n AgentBar-app-universal -D /tmp/rel
    cd /tmp/rel && ditto -xk AgentBar.app.zip .
    codesign --force --deep -s "AgentBar Local Signing" AgentBar.app

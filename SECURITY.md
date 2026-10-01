@@ -13,10 +13,11 @@ guarantees worth knowing when auditing:
 
 - Everything is same-user, local filesystem — the app ↔ hook protocol is JSON
   files under `~/.agentbar/`, and nothing about a session ever leaves the machine.
-- Two outbound calls exist, both in the app and neither on the approval path: the
-  daily update check against GitHub Releases, and — **only** while
-  **Settings ▸ Usage** is ticked, off by default — a `GET` to
-  `api.anthropic.com/api/oauth/usage` for Claude's own quota. That one reads the
+- Three destinations exist, all in the app and none on the approval path: the
+  daily update check against GitHub Releases; and — **only** while
+  **Settings ▸ Usage** is ticked, off by default — Claude's own quota, either a `GET`
+  to `api.anthropic.com/api/oauth/usage` or, after **Sign in to Claude…**, `claude.ai`
+  (described below). That one reads the
   OAuth token Claude Code stored (Keychain item `Claude Code-credentials`, so macOS
   raises its own consent dialog the first time — and **only ever in answer to
   *Check now***: that record belongs to another application, its dialog returns
@@ -50,7 +51,7 @@ guarantees worth knowing when auditing:
   allow (`Scripts/hooks/claude/permission.js`).
 - **Rules (1.28.0 and later) are the only thing that answers without a click**, and
   every property below is load-bearing. A rule is created only by the user, in
-  Settings ▸ Approvals or by editing `~/.agentbar/rules.json`; it is never derived
+  Settings ▸ Rules or by editing `~/.agentbar/rules.json`; it is never derived
   from a `ruleSuggestion`, because that is produced by the agent being guarded. A
   rule that **denies** may be broad. A rule that **approves** must name one
   directory, and matching its `shape` is not enough on its own — `RuleEngine.refusal`

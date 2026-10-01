@@ -54,7 +54,7 @@ open "build/AgentBar.app"
    releases the rule was absolute: every decision came from a click, and
    `DecisionLedger` said so in three places. Since 1.28.0 one thing answers without a
    click, and the amendment is deliberate, the way 1.18.0's was for notifications:
-   a rule the **human** typed in Settings ▸ Approvals may answer a permission
+   a rule the **human** typed in Settings ▸ Rules may answer a permission
    request, and four conditions earn that, not one.
    The rule was written by the person and never derived from anything the agent
    produced (a `ruleSuggestion` may never become one); **every firing writes a ledger
