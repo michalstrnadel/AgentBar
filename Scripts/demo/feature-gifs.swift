@@ -49,7 +49,7 @@ enum Stage {
         NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius)
     }
 
-    /// Rounded below, square above — the island, flush with the notch.
+    /// Rounded below, square above — the hardware notch the island hangs from.
     static func flushTop(_ r: CGRect, _ radius: CGFloat) -> NSBezierPath {
         let p = NSBezierPath()
         p.move(to: NSPoint(x: r.minX, y: r.maxY))
@@ -62,6 +62,52 @@ enum Stage {
         p.line(to: NSPoint(x: r.maxX, y: r.maxY))
         p.close()
         return p
+    }
+
+    /// The island's own outline, as `IslandShape` cuts it, in canvas pixels: `r` is
+    /// the frame, ears included, and `ear` is in points. The pill passes 0.
+    static func island(_ r: NSRect, ear: CGFloat) -> CGPath {
+        let p = IslandShape.path(in: CGSize(width: r.width / 2, height: r.height / 2),
+                                 corner: IslandContentView.corner, ear: ear, flushTop: true)
+        var t = CGAffineTransform(translationX: r.minX, y: r.minY).scaledBy(x: 2, y: 2)
+        return p.copy(using: &t)!
+    }
+    static func fill(_ p: CGPath, _ color: NSColor) {
+        let cg = NSGraphicsContext.current!.cgContext
+        cg.addPath(p); cg.setFillColor(color.cgColor); cg.fillPath()
+    }
+    static func clip(_ p: CGPath) {
+        let cg = NSGraphicsContext.current!.cgContext
+        cg.addPath(p); cg.clip()
+    }
+
+    /// The pill's height in points — `IslandController.pillHeight`, which the ears
+    /// are measured up from.
+    static let pillHeight: CGFloat = 30
+
+    /// The open panel the way `IslandController` lays it out on a notched display:
+    /// flush on top, ears allowed, and a frame one ear wider on each side so the rows
+    /// keep the 460 pt they were laid out for.
+    static func openPanel(_ rows: [NSView]) -> IslandContentView {
+        let content = IslandContentView(frame: NSRect(x: 0, y: 0, width: 460, height: 100))
+        content.flushTop = true
+        content.earWidth = IslandShape.earWidth
+        content.collapsedHeight = pillHeight
+        content.topInset = 10
+        content.setRows(rows)
+        content.setFrameSize(NSSize(width: IslandShape.panelWidth(body: 460, ear: IslandShape.earWidth),
+                                    height: content.contentHeight + 6))
+        return content
+    }
+
+    /// The island part of the way between the pill (`t` 0) and the open panel (1),
+    /// hanging from `topY`: its frame, and the ear that height earns — the one rule
+    /// that lets the ears unfurl with the frame in the app.
+    static func growing(pill: NSRect, panel: NSRect, t: CGFloat, topY: CGFloat) -> (NSRect, CGFloat) {
+        let w = pill.width + (panel.width - pill.width) * t
+        let h = pill.height + (panel.height - pill.height) * t
+        let ear = IslandShape.ear(full: IslandShape.earWidth, height: h / 2, collapsedHeight: pillHeight)
+        return (NSRect(x: panel.midX - w / 2, y: topY - h, width: w, height: h), ear)
     }
 
     static func symbol(_ name: String, midX: CGFloat, midY: CGFloat, pt: CGFloat, color: NSColor) {
@@ -198,7 +244,12 @@ enum Stage {
             return nil
         }
         guard let b = find(root) else { return nil }
-        var r = b.convert(b.bounds, to: root)
+        return rect(of: b, in: root)
+    }
+
+    /// Where `view` sits in `root` (bottom-left origin).
+    static func rect(of view: NSView, in root: NSView) -> NSRect {
+        var r = view.convert(view.bounds, to: root)
         if root.isFlipped { r.origin.y = root.bounds.height - r.maxY }
         return r
     }
@@ -241,10 +292,7 @@ enum DenyWithNote {
             let wrap = NSStackView(views: [card])
             wrap.orientation = .horizontal
             wrap.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 0)
-            let content = IslandContentView(frame: NSRect(x: 0, y: 0, width: 460, height: 100))
-            content.topInset = 10
-            content.setRows([hero, wrap])
-            content.setFrameSize(NSSize(width: 460, height: content.contentHeight + 6))
+            let content = Stage.openPanel([hero, wrap])
             return (Stage.snapshot(content), content)
         }
 
@@ -267,8 +315,7 @@ enum DenyWithNote {
         let pillRect = NSRect(x: (W - pillW) / 2, y: topY - pillH, width: pillW, height: pillH)
 
         func pill(_ label: String, color: NSColor, mark: NSImage?) {
-            NSColor.black.setFill()
-            Stage.flushTop(pillRect, 26).fill()
+            Stage.fill(Stage.island(pillRect, ear: 0), .black)
             let t = Stage.text(label, 23, color, weight: .medium, mono: true)
             var x = pillRect.midX - t.size().width / 2
             if let mark {
@@ -337,15 +384,14 @@ enum DenyWithNote {
                 shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
 
                 func drawPanel(_ img: NSImage, t: CGFloat) {
-                    let w = pillW + (panelRect.width - pillW) * t
-                    let h = pillH + (panelRect.height - pillH) * t
-                    let r = NSRect(x: (W - w) / 2, y: topY - h, width: w, height: h)
+                    let (r, ear) = Stage.growing(pill: pillRect, panel: panelRect, t: t, topY: topY)
+                    let outline = Stage.island(r, ear: ear)
                     NSGraphicsContext.saveGraphicsState(); shadow.set()
-                    NSColor.black.setFill(); Stage.flushTop(r, 26).fill()
+                    Stage.fill(outline, .black)
                     NSGraphicsContext.restoreGraphicsState()
                     if t > 0.5 {
                         NSGraphicsContext.saveGraphicsState()
-                        Stage.flushTop(r, 26).addClip()
+                        Stage.clip(outline)
                         img.draw(in: panelRect, from: .zero, operation: .sourceOver, fraction: (t - 0.5) / 0.5)
                         NSGraphicsContext.restoreGraphicsState()
                     }
@@ -504,12 +550,29 @@ enum Tour {
         let wrap = NSStackView(views: [card])
         wrap.orientation = .horizontal
         wrap.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 0)
-        let content = IslandContentView(frame: NSRect(x: 0, y: 0, width: 460, height: 100))
-        content.topInset = 10
-        content.setRows([row(claude, .hero), wrap, row(codex, .compact), row(copilot, .compact)])
-        content.setFrameSize(NSSize(width: 460, height: content.contentHeight + 6))
+        let content = Stage.openPanel([row(claude, .hero), wrap, row(codex, .compact), row(copilot, .compact)])
         let panelImg = Stage.snapshot(content)
         let allow = Stage.button("Allow", in: content)!
+
+        // Scene 1b: later, the island hidden while you were away — the peek, and
+        // Clawd poked in the open panel. The same three sessions, Claude now pushing.
+        let pushing = session("tour-claude-push", ["agent": "claude", "state": "tool",
+            "label": "Bash: git push origin main", "project": "webshop", "started_at": now - 1700,
+            "prompt": "ship the checkout fix", "model": "claude-opus-5", "term_program": "iTerm.app"])
+        let hero = IslandRowView(session: pushing, mark: mark("claude"), style: .hero, onClick: { _ in })
+        hero.translatesAutoresizingMaskIntoConstraints = false
+        hero.widthAnchor.constraint(equalToConstant: rowW).isActive = true
+        let busy = Stage.openPanel([hero, row(codex, .compact), row(copilot, .compact)])
+        let busyImg = Stage.snapshot(busy)
+        let mascot = hero.mascot
+        let markAt = Stage.rect(of: mascot, in: busy)
+        // The panel once more with the mark's pixels blank, for the reacting mark to
+        // be drawn over: an empty image of the same size leaves the layout alone.
+        let restMark = mascot.image
+        mascot.image = restMark.map { NSImage(size: $0.size) }
+        let blankImg = Stage.snapshot(busy)
+        mascot.image = restMark
+        let pokes = Poke.record(mascot, session: pushing.id)
 
         let topY = H - Stage.barH
         let panelRect = NSRect(x: (W - panelImg.size.width) / 2, y: topY - panelImg.size.height,
@@ -521,9 +584,18 @@ enum Tour {
         shadow.shadowOffset = NSSize(width: 0, height: -8)
         shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
 
-        func pill(_ label: String, color: NSColor, mark: NSImage?, count: Int) {
+        func pill(_ label: String, color: NSColor, mark: NSImage?, count: Int, alpha: CGFloat = 1,
+                  drop: CGFloat = 0) {
+            // A peek is the hide played backwards: fading in while it drops the last
+            // few points out of the notch (`IslandController.hideSlide`, 6 pt).
+            let cg = NSGraphicsContext.current!.cgContext
+            cg.saveGState()
+            cg.setAlpha(alpha)
+            cg.translateBy(x: 0, y: drop)
+            cg.beginTransparencyLayer(auxiliaryInfo: nil)
+            defer { cg.endTransparencyLayer(); cg.restoreGState() }
             NSGraphicsContext.saveGraphicsState(); shadow.set()
-            NSColor.black.setFill(); Stage.flushTop(pillRect, 26).fill()
+            Stage.fill(Stage.island(pillRect, ear: 0), .black)
             NSGraphicsContext.restoreGraphicsState()
             let t = Stage.text(label, 23, color, weight: .medium, mono: true)
             let badge = Stage.text("\(count)", 19, Stage.rgb(0xFFFFFF, 0.65), weight: .semibold, mono: true)
@@ -588,30 +660,72 @@ enum Tour {
             sidebar[p] = SettingsWindow.shared.sidebarFrame(of: p)
         }
 
-        func scene(_ f: Int) -> CGImage {
-            Stage.frame(W, H) {
+        /// Opening from the pill (0) to the panel (1), the outline recut every step.
+        func openIsland(_ img: NSImage, _ t: CGFloat) {
+            let panelRect = NSRect(x: (W - img.size.width) / 2, y: topY - img.size.height,
+                                   width: img.size.width, height: img.size.height)
+            let (r, ear) = Stage.growing(pill: pillRect, panel: panelRect, t: t, topY: topY)
+            let outline = Stage.island(r, ear: ear)
+            NSGraphicsContext.saveGraphicsState(); shadow.set()
+            Stage.fill(outline, .black)
+            NSGraphicsContext.restoreGraphicsState()
+            if t > 0.5 {
+                NSGraphicsContext.saveGraphicsState(); Stage.clip(outline)
+                img.draw(in: panelRect, from: .zero, operation: .sourceOver, fraction: (t - 0.5) / 0.5)
+                NSGraphicsContext.restoreGraphicsState()
+            }
+        }
+
+        let peekLength = 76
+        let start = NSPoint(x: W - 180, y: 300), notchPt = NSPoint(x: W / 2 + 30, y: topY - 20)
+        func scene(_ frame: Int) -> CGImage {
+            // Everything after the peek scene runs on the clock it had before it.
+            let f = frame >= 96 + peekLength ? frame - peekLength : frame
+            return Stage.frame(W, H) {
                 Stage.wallpaper(W, H)
                 let mk = sprite.colorFrames.isEmpty ? sprite.restingColor
-                                                    : sprite.colorFrames[f % sprite.colorFrames.count]
+                                                    : sprite.colorFrames[frame % sprite.colorFrames.count]
                 var cur: NSPoint?
                 var pressed = false
-                if f < 96 {
+                if frame >= 96, frame < 96 + peekLength {
+                    let p = frame - 96
+                    Stage.menuBar(W, H, app: "iTerm2", notch: true)
+                    caption(p < 30 ? "Hidden while you're away · reach for the notch and it's back"
+                                   : "Poke the mascot (opt-in) · three quick clicks and it's dizzy")
+                    let busyRect = NSRect(x: (W - busyImg.size.width) / 2, y: topY - busyImg.size.height,
+                                          width: busyImg.size.width, height: busyImg.size.height)
+                    let markPt = NSPoint(x: busyRect.minX + markAt.midX * 2,
+                                         y: busyRect.minY + markAt.midY * 2)
+                    let pokeAt = [42, 47, 52]
+                    // The hover zone is the menu-bar strip over the notch, not the pill.
+                    let zonePt = NSPoint(x: W / 2 + 30, y: topY + 30)
+                    switch p {
+                    case 0..<12:                    // nothing under the notch; the pointer arrives
+                        cur = Stage.lerp(start, zonePt, Stage.smooth(CGFloat(p) / 11))
+                    case 12..<22:                   // the pill peeks back, then stays
+                        let t = Stage.smooth(CGFloat(p - 12) / 3)
+                        pill("Pushing…", color: .white, mark: mk, count: 3, alpha: t, drop: 12 * (1 - t))
+                        cur = zonePt
+                    case 22..<30: openIsland(busyImg, Stage.smooth(CGFloat(p - 22) / 8)); cur = zonePt
+                    default:
+                        // The last poke that has landed, and how far into its reaction.
+                        if let i = pokeAt.lastIndex(where: { p >= $0 }),
+                           let img = pokes[i].frame(at: Double(p - pokeAt[i]) * 0.085) {
+                            openIsland(blankImg, 1)
+                            img.draw(in: NSRect(x: markPt.x - img.size.width / 2,
+                                                y: busyRect.minY + markAt.minY * 2 - Poke.pad * 2,
+                                                width: img.size.width, height: img.size.height))
+                        } else {
+                            openIsland(busyImg, 1)
+                        }
+                        let aim = NSPoint(x: markPt.x + 14, y: markPt.y - 10)
+                        cur = Stage.lerp(zonePt, aim, Stage.smooth(CGFloat(p - 30) / 10))
+                        pressed = pokeAt.contains { p >= $0 - 2 && p < $0 }
+                    }
+                } else if f < 96 {
                     Stage.menuBar(W, H, app: "iTerm2", notch: true)
                     caption("Allow or deny from the notch · Claude, Codex, Copilot and more")
-                    func open(_ t: CGFloat) {
-                        let w = pillW + (panelRect.width - pillW) * t
-                        let h = pillH + (panelRect.height - pillH) * t
-                        let r = NSRect(x: (W - w) / 2, y: topY - h, width: w, height: h)
-                        NSGraphicsContext.saveGraphicsState(); shadow.set()
-                        NSColor.black.setFill(); Stage.flushTop(r, 26).fill()
-                        NSGraphicsContext.restoreGraphicsState()
-                        if t > 0.5 {
-                            NSGraphicsContext.saveGraphicsState(); Stage.flushTop(r, 26).addClip()
-                            panelImg.draw(in: panelRect, from: .zero, operation: .sourceOver, fraction: (t - 0.5) / 0.5)
-                            NSGraphicsContext.restoreGraphicsState()
-                        }
-                    }
-                    let start = NSPoint(x: W - 180, y: 300), notchPt = NSPoint(x: W / 2 + 30, y: topY - 20)
+                    func open(_ t: CGFloat) { openIsland(panelImg, t) }
                     switch f {
                     case 0..<20:
                         pill("approve?", color: .white, mark: mk, count: 3)
@@ -668,7 +782,7 @@ enum Tour {
         }
 
         var frames: [CGImage] = []
-        let total = 280
+        let total = 280 + peekLength
         for f in 0..<total { frames.append(scene(f)) }
         // Soften the two cuts between scenes: four frames of cross-fade each.
         func blend(_ a: CGImage, _ b: CGImage, _ t: CGFloat) -> CGImage {
@@ -678,10 +792,124 @@ enum Tour {
                     .draw(in: NSRect(x: 0, y: 0, width: W, height: H), from: .zero, operation: .sourceOver, fraction: t)
             }
         }
-        for cut in [96, 176] {
+        for cut in [96, 96 + peekLength, 176 + peekLength] {
             let a = frames[cut - 1], b = frames[cut]
             for i in 0..<4 { frames[cut - 4 + i] = blend(a, b, CGFloat(i + 1) / 5) }
         }
         Stage.writeGIF(frames, delay: 0.085, to: url)
+    }
+}
+
+// MARK: - The poked mascot
+
+/// Clawd's reactions in the open panel, played by the app's own code and read back
+/// a frame at a time. `cacheDisplay` never sees Core Animation, so the snapshot
+/// draws the mark at rest; this pokes the real `IslandMascotView` through
+/// `IslandMascot` — the decision, squish or dizzy, is `MascotPersonality.Pokes`'s —
+/// then takes the animations the view added off its layers and evaluates them at
+/// the frame's time, setting each value on the model layer and rendering the tree.
+struct Poke {
+    /// Room around the view for a squish wider than the mark and stars over its head.
+    static let pad: CGFloat = 14
+
+    private let view: IslandMascotView
+    private let tracks: [(layer: CALayer, animation: CAAnimation)]
+    private let length: TimeInterval
+
+    /// Three pokes in a row, the way a hand would land them: squish, squish, dizzy.
+    /// The personality is off by default and this process's defaults are its own
+    /// domain (Scripts/demo/README.md), so it is switched on here for the picture
+    /// and the value cleared again before anything else is drawn.
+    static func record(_ view: IslandMascotView, session id: String) -> [Poke] {
+        MascotPersonality.Prefs.enabled = true
+        defer { UserDefaults.standard.removeObject(forKey: MascotPersonality.Prefs.key) }
+        let personality = IslandMascot()
+        personality.attach(view, session: id)
+        guard view.onPoke != nil else { fatalError("the mascot will not take a poke — Reduce Motion is on?") }
+        let click = NSEvent.mouseEvent(with: .leftMouseUp, location: .zero, modifierFlags: [], timestamp: 0,
+                                       windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1,
+                                       pressure: 0)!
+        var out: [Poke] = []
+        for _ in 0..<3 {
+            view.mouseUp(with: click)
+            var tracks: [(CALayer, CAAnimation)] = []
+            func collect(_ l: CALayer) {
+                for key in l.animationKeys() ?? [] {
+                    if let a = l.animation(forKey: key) { tracks.append((l, a)) }
+                    l.removeAnimation(forKey: key)
+                }
+                for s in l.sublayers ?? [] { collect(s) }
+            }
+            if let root = view.layer { collect(root) }
+            out.append(Poke(view: view, tracks: tracks, length: tracks.map(\.1.duration).max() ?? 0))
+        }
+        return out
+    }
+
+    /// The view as it looks `t` seconds into this reaction, at 2x, padded by `pad`;
+    /// nil once the reaction is over and the mark is back at rest.
+    func frame(at t: TimeInterval) -> NSImage? {
+        guard t < length, let root = view.layer else { return nil }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        // A transform track starts from rest, so a squish's last value does not
+        // carry into the dizzy beat. Only those layers: the ring's flattening is a
+        // transform the view set, not one it animates.
+        for (layer, a) in tracks where (a as? CAPropertyAnimation)?.keyPath?.hasPrefix("transform") == true {
+            layer.transform = CATransform3DIdentity
+        }
+        for (layer, a) in tracks {
+            guard let path = (a as? CAPropertyAnimation)?.keyPath else { continue }
+            let p = max(0, min(1, t / a.duration))
+            if let k = a as? CAKeyframeAnimation, let values = k.values {
+                let times = k.keyTimes?.map(\.doubleValue)
+                    ?? values.indices.map { Double($0) / Double(max(1, values.count - 1)) }
+                let i = max(0, (times.lastIndex { $0 <= p } ?? 0))
+                let j = min(values.count - 1, i + 1)
+                let u = times[j] > times[i] ? (p - times[i]) / (times[j] - times[i]) : 0
+                layer.setValue(Self.mix(values[i], values[j], u), forKeyPath: path)
+            } else if let b = a as? CABasicAnimation, let from = b.fromValue, let to = b.toValue {
+                layer.setValue(Self.mix(from, to, p), forKeyPath: path)
+            }
+        }
+        CATransaction.commit()
+
+        let size = NSSize(width: view.bounds.width + Self.pad * 2, height: view.bounds.height + Self.pad * 2)
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2),
+                                   pixelsHigh: Int(size.height * 2), bitsPerSample: 8, samplesPerPixel: 4,
+                                   hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                   bytesPerRow: 0, bitsPerPixel: 0)!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        let cg = NSGraphicsContext.current!.cgContext
+        cg.scaleBy(x: 2, y: 2)
+        cg.translateBy(x: Self.pad, y: Self.pad)
+        // `render(in:)` draws CGImage contents but not the wrapper AppKit puts in a
+        // layer for an NSImage, so the image layer holds the same picture as a
+        // CGImage for the render and gets its own contents back after.
+        let held = root.sublayers?.first { $0.contents != nil }
+        let original = held?.contents
+        held?.contents = view.image?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        root.render(in: cg)
+        held?.contents = original
+        NSGraphicsContext.restoreGraphicsState()
+        let img = NSImage(size: NSSize(width: size.width * 2, height: size.height * 2))
+        img.addRepresentation(rep)
+        return img
+    }
+
+    /// Linear between two keyframe values: numbers, or the squish's scale matrices.
+    private static func mix(_ a: Any, _ b: Any, _ u: Double) -> Any {
+        if let x = a as? NSNumber, let y = b as? NSNumber {
+            return NSNumber(value: x.doubleValue + (y.doubleValue - x.doubleValue) * u)
+        }
+        if let x = (a as? NSValue)?.caTransform3DValue, let y = (b as? NSValue)?.caTransform3DValue {
+            let m = CGFloat(u)
+            var r = x
+            r.m11 += (y.m11 - x.m11) * m; r.m22 += (y.m22 - x.m22) * m; r.m33 += (y.m33 - x.m33) * m
+            r.m41 += (y.m41 - x.m41) * m; r.m42 += (y.m42 - x.m42) * m
+            return NSValue(caTransform3D: r)
+        }
+        return u < 0.5 ? a : b
     }
 }
