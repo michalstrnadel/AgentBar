@@ -8,33 +8,44 @@
 
 **One approval queue for every AI coding agent.**
 
-Your agents stop and ask before they run something. AgentBar is where they ask —
-all of them, in one place, without a terminal to hunt for.
-
 <p align="center">
-  <img src="docs/assets/demo-claude-codex.gif?v=2026-09-23" width="640" alt="AgentBar demo: Claude session works, needs approval, one-click Allow, then a Codex session takes over the bar">
-  <br><sub><b>Menu bar mode</b></sub>
+  <img src="docs/assets/agentbar-tour.gif?v=2026-10-01" width="640" alt="AgentBar tour: the island under the notch opens on a Claude permission request for git push origin main with Codex and Copilot sessions listed below, one click on Allow; then the welcome window's Menu bar / Dynamic Island / Both choice, then a walk through Settings">
 </p>
 
-<p align="center">
-  <img src="docs/assets/demo-island.gif?v=2026-09-23" width="640" alt="AgentBar as a Dynamic Island: the pill under the notch says approve?, opens on hover into the session panel with the mini-diff, one click on Allow, and the pill flashes ✓ Allowed">
-  <br><sub><b>Dynamic Island mode</b> — pick either (or both) in the welcome window</sub>
-</p>
+**Why.** Your agents stop and ask before they run something, and the question waits
+in whichever terminal tab they happen to be in. AgentBar is where they ask — every
+agent, every session, in the menu bar or under the notch — so you answer in a click
+instead of hunting for the window. Nothing is answered behind your back: only you
+do, or a rule you wrote yourself, and every answer is written down.
 
-AgentBar is a lightweight, native macOS app that sits in the permission path of
-your AI coding sessions — Claude Code and Claude Cowork, Codex, Cursor CLI, Gemini CLI,
-Qwen Code, OpenCode, plus GitHub Copilot and Google Antigravity. When one of them wants
-to run a command or write a file, you see exactly what it asked for and answer it in a
-click; the rest of the time it shows you which session is working and which is waiting.
-Nothing decides on your behalf, ever. Each agent gets its own mark built from its
-real identity — Clawd the crab for Claude, the OpenAI knot with a braille dot-matrix
-for Codex, the official pixel-art head for Copilot, the pixel rainbow arch for
-Antigravity — and it always surfaces the session that needs you most.
-Live in the **menu bar**, as a **Dynamic Island** pill under the notch, or both —
-you pick on first launch.
-On Linux, the same protocol drives the [`agentbar` CLI](#linux-cli).
-On Windows, [AgentBar for Windows](https://github.com/michalstrnadel/AgentBar-Windows) is a
-native system-tray counterpart that shares the same `~/.agentbar` hook protocol.
+### Things to try
+
+| Do this | AgentBar does that |
+|---|---|
+| Give Claude Code, Codex or Copilot a task that runs a command | A **needs approval** card with the exact command (a mini-diff for an edit); **Allow** or **Deny** in one click, no terminal switch |
+| Click **Deny with a note…** and type *"use pnpm here, not npm"* | The agent reads the note as the reason and changes course instead of trying the next thing |
+| Push the pointer up to the notch | The island opens: every session, what it is doing, and the one that needs you on top |
+| Click a session row | Jumps to the exact tab or pane — iTerm2, Terminal, WezTerm, tmux — or brings forward the app it runs in |
+| Answer the same prompt the same way five times | The card offers to write it down as a rule; a new rule starts out **watching** and answers nothing until you let it |
+| Type `git push --force origin main` into a rule's test field | Says on the spot whether that rule would have taken it, and which clause stopped it |
+| Switch on ⌥⌘A / ⌥⌘D in **Settings ▸ Shortcuts** | Allows or denies the newest request from any app |
+| **New task…** in the menu (or ⌥⌘N, once switched on) | A project, an agent and one line of what you want; the agent opens in a terminal with the prompt given |
+| Turn on **Hide the island when nothing is running** (or **…while you're away**) | The pill slips out of sight; push the pointer up to the notch to peek. Anything waiting on you keeps it up |
+| **Settings ▸ Diagnostics ▸ Show changes…** | Every write AgentBar made into an agent's settings, as a unified diff, with the copy it kept beside the file |
+| `open agentbar://focus` from Shortcuts or Raycast | Jumps to the session waiting on you — and no link can approve or deny anything |
+
+**What it covers.** Agents: Claude Code and Claude Cowork, Codex, Cursor CLI, Gemini
+CLI, GitHub Copilot, Google Antigravity, Qwen Code and OpenCode — plus Cursor cloud
+agents, Devin and Codex cloud tasks, and sessions on your own machines over ssh.
+Terminals: any — the exact tab in iTerm2, Terminal, WezTerm and tmux, best effort in
+kitty, Ghostty and VS Code, Cursor or Zed, and anything else (Warp included) comes
+forward as the app the agent runs in. Sessions: as many at once as you run, the one
+that needs you first. Approvals: a per-repo history of what you decided, and rules
+you wrote, every firing on record. Surfaces: the menu bar, a Dynamic Island under
+the notch, or both, pinned to the display you pick. Elsewhere: the
+[`agentbar` CLI](#linux-cli) on Linux, and
+[AgentBar for Windows](https://github.com/michalstrnadel/AgentBar-Windows), a native
+system-tray counterpart on the same `~/.agentbar` hook protocol.
 
 ## Quick start
 
@@ -80,15 +91,33 @@ The install touches exactly these, all reversible (see [Uninstall](#uninstall)):
   **only if you use Copilot** — a separate file, so your own hooks stay untouched.
 - Copies a plugin to `~/.config/opencode/plugins/agentbar.js` **only if you use OpenCode**.
 - The SessionStart hook launches AgentBar in the background when an agent session begins.
+- **Before it writes into any of those settings files it keeps the file as it was, beside
+  it** — `settings.json.agentbar-bak-20261001-142233` (local time) — and keeps only the
+  newest three of its own copies per file. A launch that would change nothing writes
+  nothing and keeps nothing, so the copies only appear when something actually moved.
+  **Settings ▸ Diagnostics ▸ Show changes…** (or **See what changed…** in the welcome
+  window) shows every write as a unified diff with the copy it kept, and what a re-install
+  would change right now before you let it. On Linux, `agentbar install-hooks` prints the
+  same diff for each file before writing it and keeps the same copies.
 - Nothing else is granted automatically: the exact-tab jump-back asks for
   **Automation** access the first time you click a row, and approving a plan
   (or a Codex/Copilot prompt) asks for **Accessibility**. Decline either and
   AgentBar falls back to bringing the app forward and letting you answer there.
 
 The installer prints this summary before doing anything, and never modifies a tool you
-don't use. Hooks are snapshotted per session — start a new agent session afterward.
+don't use. To undo a single change, copy the `.agentbar-bak-…` file back over the original. Hooks are snapshotted per session — start a new agent session afterward.
 
 ## Features
+
+<p align="center">
+  <img src="docs/assets/demo-claude-codex.gif?v=2026-09-23" width="640" alt="AgentBar demo: Claude session works, needs approval, one-click Allow, then a Codex session takes over the bar">
+  <br><sub><b>Menu bar mode</b></sub>
+</p>
+
+<p align="center">
+  <img src="docs/assets/demo-island.gif?v=2026-09-23" width="640" alt="AgentBar as a Dynamic Island: the pill under the notch says approve?, opens on hover into the session panel with the mini-diff, one click on Allow, and the pill flashes ✓ Allowed">
+  <br><sub><b>Dynamic Island mode</b> — pick either (or both) in the welcome window</sub>
+</p>
 
 - **Two surfaces, your pick** — the classic **menu bar** item, a **Dynamic Island**
   pill under the notch, or **both**. Pick it in the welcome window on first launch,
@@ -397,10 +426,16 @@ rm -rf ~/.agentbar
 rm -f ~/.copilot/hooks/agentbar.json
 rm -f ~/.config/opencode/plugins/agentbar.js
 ./Scripts/cloud/install.sh uninstall   # only if you installed the cloud poller
+# the copies AgentBar kept of each settings file before writing it (newest three each);
+# copy one back over the original instead if you want that version, then delete the rest:
+# (find rather than a glob: zsh refuses a pattern that matches nothing)
+find ~/.claude ~/.codex ~/.cursor ~/.gemini ~/.gemini/antigravity ~/.gemini/antigravity-cli \
+     ~/.qwen ~/.copilot/hooks ${CLAUDE_CONFIG_DIR:+"$CLAUDE_CONFIG_DIR"} \
+     -maxdepth 1 -name '*.agentbar-bak-*' -delete 2>/dev/null
 ```
 
 Wiping `~/.agentbar` takes `cloud.json` (and its API keys) with it; the poller's
-launchd agent has to be booted out separately, which is what the last line does.
+launchd agent has to be booted out separately, which is what the `cloud/install.sh uninstall` line does.
 
 ## Agent support
 
@@ -464,6 +499,14 @@ the notch:
   what it's doing, plus a count once two or more sessions are live. Nothing running,
   and it shrinks to the mark alone. It never grows on its own: even a pending
   approval stays a pill that says *approve?*.
+- **Or out of sight until you want it** *(both off by default)* — **Settings ▸
+  General ▸ Hide the island when nothing is running** lets the pill slip away and
+  come back with the next session; **…while you're away** hides it after three
+  minutes without keyboard or mouse, even with agents working, and the first touch
+  brings it back. Push the pointer up to the notch and a hidden pill peeks out, which
+  is also how Settings stays reachable in Island-only mode. Anything waiting on you
+  keeps it up — a pending approval, question or plan — and it still never opens by
+  itself.
 - **Push the pointer up to the notch and it opens** — whatever needs you leads as
   a boxed hero row: what you asked for ("You: fix the auth bug in middleware"), a
   coloured status line, and chips naming the agent, model, the terminal (or app)
@@ -488,6 +531,14 @@ the notch:
   duration, tokens and what changed in its repo. Both are off until you ask, because
   the strip costs height and a day spent in a single agent draws one long bar that
   does not earn it.
+- **A mascot with a little life in it** *(off by default)* — on the island only,
+  never in the menu bar. At rest, Clawd's eyes follow the pointer as it comes near and blink now and then;
+  click a mark in the open panel and it squishes (three quick clicks make it dizzy)
+  — the mark is for poking, the rest of the row still jumps to the session. A long
+  task finishing gets a short sparkle in the pill: only after a minute and a half of
+  work, at most once per session every fifteen minutes, so a conversation of quick
+  turns never sets it off. No sounds of its own. **Settings ▸ General ▸ Let the
+  mascot react** turns it on, and Reduce Motion keeps it off whatever the switch says.
 - **It scrolls when it must** — the panel is sized to its content, and past the
   screen limit the rows scroll while the day's strip, the **⋯** menu and the quota
   line stay pinned along the bottom.

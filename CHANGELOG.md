@@ -3,6 +3,103 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **AgentBar keeps a copy before it touches an agent's settings, and shows you the
+  change.** Every launch rewires the hooks, and until now the only record of what
+  that did to `~/.claude/settings.json` or `~/.codex/config.toml` was the file
+  itself. Now each write first copies the file as it was to
+  `settings.json.agentbar-bak-20261001-142233` (local time) beside it, keeps the
+  newest three of those per file, and appends the change as a unified diff to
+  `~/.agentbar/config-changes.json` (the last twenty writes, readable only by you,
+  because a diff quotes settings lines). A write that would change nothing does
+  nothing — no backup, no record, not even a new modified time — so a quiet launch
+  leaves no trail. **Settings ▸ Diagnostics ▸ Show changes…**, and **See what
+  changed…** in the welcome window once something has been written, open a sheet
+  with both halves: what a re-install would change right now, worked out by the
+  installer's own code without writing a byte, with **Write it now**; and every past
+  write with its diff, where the copy went and **Show in Finder**. The backup name
+  ends in a timestamp, never `.json`, so an agent that loads every `*.json` in a
+  folder never picks one up; rotation removes only names it wrote itself, so a
+  `settings.json.agentbar-bak-mine` of yours is left alone. The diff is stored
+  rather than worked out later because the agent may edit its own settings in
+  between, and then it would no longer be AgentBar's change. On a first install into
+  a hand-formatted JSON file the diff shows the whole file rewritten: that has always
+  happened, it is only visible now, and the copy keeps your formatting. The Linux
+  CLI's `install-hooks` prints the same diff before each write and keeps the same
+  three copies. The OpenCode plugin is AgentBar's own file and is not copied.
+- **The island can step aside — and you can always get it back.** Two switches on
+  **Settings ▸ General**, both off: **Hide the island when nothing is running**, and
+  the new **Hide the island while you're away**, which hides it after three minutes
+  without keyboard or mouse, even with agents working, and brings it back on the
+  first touch. Three minutes, not the two the notifier waits, because a pill that
+  vanishes while it is still being read looks like a bug. What makes hiding safe is
+  the **peek**: push the pointer up to the notch and a hidden pill comes back, a
+  moment longer opens it as usual, and moving away lets it slip off again. A pointer
+  already parked there summons nothing — it has to arrive. Anything waiting on you —
+  an approval, a question, a plan — keeps the pill up whatever the switches say, and
+  it still never opens by itself; so does an open panel, a note half typed, and the
+  **✓ Allowed** flash.
+- **A mascot with a little life in it** *(off by default)*. On the island only, never
+  in the menu bar: at rest Clawd's eyes follow the pointer as it comes within reach
+  and blink now and then; a mark clicked in the open panel squishes, three quick
+  clicks make it dizzy; and a long task finishing gets a one-second sparkle in the
+  pill. The sparkle is throttled the way the notifications learned to be — only
+  after ninety seconds of work, at most once per session every fifteen minutes, one
+  for two sessions finishing together — because Claude Code finishes after every
+  turn and a conversation of quick turns must not glitter. No sound of its own. It is
+  opt-in because both of its edges change what you already had: a pill that blinks
+  all day is a wobble in the corner of your eye, and with it on, a click on a row's
+  mark pokes it instead of jumping (the rest of the row still jumps). **Settings ▸
+  General ▸ Let the mascot react**; Reduce Motion keeps it off whatever the switch
+  says. The eyes are found in the artwork rather than at fixed pixels, so a redrawn
+  sprite switches the gaze off instead of drawing eyes in the wrong place.
+
+### Changed
+
+- **Hide the island when nothing is running now works in Island-only mode.** It was
+  shown there and did nothing, because without a menu bar item a hidden island left
+  no way back to Settings. The peek is that way back: the pill, then the panel, then
+  its **⋯**. If you are in Island-only mode and ticked the switch back when it did
+  nothing, the tick is cleared once on the first launch, so your only surface does
+  not disappear after the update; set it again and it stays.
+- **The island moves like it belongs to the notch.** On a notched display the open
+  panel curves into the edge it hangs from — two small concave ears at its top
+  corners — instead of meeting it with square shoulders; the rows keep their width,
+  clicks in the ears' strips reach whatever is underneath, and the collapsed pill
+  has none. The ears grow with the panel's height, so they unfurl and fold with the
+  frame in one animation rather than snapping on. Opening has a slight overshoot,
+  closing none, and the refreshes a working session causes keep the plain curve so a
+  ticking panel never wobbles. Hiding and showing fade and slide a few points into
+  the notch instead of blinking out; an open panel that has to hide folds back into
+  the pill first and stops taking clicks the moment it starts leaving. Under Reduce
+  Motion the island only fades and opens without the overshoot. Screens without a
+  notch look as they did.
+- **The README's first screen says what AgentBar does and what to try.** One tour
+  GIF, why it exists, and a table of things to try, each checked against the app.
+  The old line that nothing ever decides on your behalf is gone: it stopped being
+  true when rules you write began to answer in 1.28.0.
+
+### Fixed
+
+- **The Linux CLI's Codex install no longer undoes its own repair.** It wrote
+  `config.toml` twice, the second time from the original text, so when node had
+  moved, the fixed `notify` path was overwritten by the hooks rewrite and the dead
+  one came back until the next run. Both keys are now built and written once.
+- **`agentbar install-hooks` no longer wires a Claude config outside your HOME.** A
+  run with a borrowed HOME — a test, a sandbox, `HOME=$(mktemp -d)` — still
+  inherited `CLAUDE_CONFIG_DIR`, and wrote the real config's hooks to point at the
+  throwaway directory, so every session started afterwards ran them from there until
+  the app repaired it. A config directory outside HOME is now skipped with a line
+  saying so; `AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1` wires it anyway. The test scripts
+  that borrow HOME now drop the inherited value too.
+- **Settings files the app writes no longer escape every slash.** Hook commands came
+  out as `\"\/opt\/homebrew\/bin\/node\"`, valid but unreadable, and now that every
+  write shows a diff, the noise was the whole diff. The first launch after updating
+  rewrites the file once without them, and keeps the usual backup.
+
 ## 1.30.0 - 2026-09-24
 
 ### Added
