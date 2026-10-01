@@ -46,14 +46,6 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     private var screenLocked = false
     private var quietTimer: Timer?
 
-    /// Seconds since the human last touched the machine. `kCGAnyInputEventType`
-    /// spelled out, because `CGEventType` has no case for it — it is the sentinel
-    /// `0xFFFFFFFF`, not a real event type. Needs no permission and no entitlement.
-    static func inputIdleSeconds() -> TimeInterval {
-        guard let any = CGEventType(rawValue: ~0) else { return 0 }
-        return CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: any)
-    }
-
     // MARK: - Preferences
 
     /// Three switches, all off by default (`bool(forKey:)` gives false), owned here
@@ -355,7 +347,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let now = Date().timeIntervalSince1970
         let (next, announce) = Self.quietStep(
             burst, sessions: sessions, now: now,
-            inputIdle: Self.inputIdleSeconds(),
+            inputIdle: InputIdle.seconds(),
             locked: screenLocked, enabled: Prefs.quiet,
             settle: debug ? 10 : Self.quietSettle, requireAway: !debug)
         burst = next

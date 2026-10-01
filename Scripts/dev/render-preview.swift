@@ -362,6 +362,27 @@ enum RenderPreview {
             renderSlab([sized(hero, rowW), sized(c1, rowW)], name: "04-done-recap")
         }
 
+        // Scene 4b: the open panel hanging off a notch — square on top, with the
+        // ears (`IslandShape`) curving its shoulders into the edge it hangs from.
+        // The frame is one ear wider each side; the strips under the ears are clear.
+        do {
+            let ear = IslandShape.earWidth
+            let width = IslandShape.panelWidth(body: 460, ear: ear)
+            let content = IslandContentView(frame: NSRect(x: 0, y: 0, width: width, height: 100))
+            content.appearance = NSAppearance(named: .darkAqua)
+            content.flushTop = true
+            content.earWidth = ear
+            content.collapsedHeight = 30
+            content.topInset = 10
+            let hero = IslandRowView(session: heroPermission, mark: mark(for: "claude"),
+                                     style: .hero, onClick: { _ in })
+            let c1 = IslandRowView(session: compactWorking, mark: mark(for: "codex"),
+                                   style: .compact, onClick: { _ in })
+            content.setRows([sized(hero, rowW), sized(c1, rowW)])
+            render(content, name: "04b-notch-ears",
+                   size: NSSize(width: width, height: content.contentHeight))
+        }
+
         // Scene 5: the Settings window's content, captured offscreen. Reflection pokes
         // at the private window to avoid ever ordering it onto the user's screen.
         do {

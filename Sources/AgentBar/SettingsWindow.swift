@@ -82,7 +82,10 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var soundFolderButton: NSButton!
     private var soundPackStatus: NSTextField!
     private var hideIslandBox: NSSwitch!
+    private var hideAwayBox: NSSwitch!
+    private var personalityBox: NSSwitch!
     private var diagnostics: DiagnosticsView!
+    private var configChangesButton: NSButton!
     private var claudeQuotaBox: NSSwitch!
     private var quotaStatus: NSTextField!
     private var quotaCheck: NSButton!
@@ -280,6 +283,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         soundPackStatus = SettingsChrome.caption("")
 
         hideIslandBox = SettingsChrome.toggle(target: self, action: #selector(toggleHideIsland))
+        hideAwayBox = SettingsChrome.toggle(target: self, action: #selector(toggleHideAway))
+        personalityBox = SettingsChrome.toggle(target: self, action: #selector(togglePersonality))
 
         enableBox = SettingsChrome.toggle(target: self, action: #selector(toggleEnabled))
         launchBox = SettingsChrome.toggle(target: self, action: #selector(toggleLauncher))
@@ -375,6 +380,10 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
         diagnostics = DiagnosticsView()
         diagnostics.onResize = { [weak self] in self?.refit() }
+        configChangesButton = SettingsChrome.smallButton("Show changes…", target: self,
+                                                         action: #selector(showConfigChanges))
+        configChangesButton.toolTip = "What AgentBar wrote into each agent's settings, as a "
+            + "diff, where it kept the file as it was — and what a re-install would change now."
     }
 
     private func buildPage(_ page: Page) -> NSView {
@@ -408,9 +417,27 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                     SettingsChrome.noteRow(soundPackStatus),
                 ]),
                 SettingsChrome.card([
+                    // One card for both ways the pill can step aside, and one line
+                    // between them on how to call it back — the peek is what makes
+                    // either switch safe in island-only mode.
                     SettingsChrome.row("Hide the island when nothing is running",
-                                       "The pill slips away and returns with the next session.",
+                                       "The pill slips away and returns with the next "
+                                       + "session. Push the pointer up to the notch to "
+                                       + "peek at it.",
                                        control: hideIslandBox),
+                    SettingsChrome.row("Hide the island while you're away",
+                                       "After three minutes without keyboard or mouse, "
+                                       + "even with agents working. Anything waiting on "
+                                       + "you keeps it up; the first touch brings it back.",
+                                       control: hideAwayBox),
+                    // In the island's card because it is the island's alone — the
+                    // menu bar mark never moves for its own amusement.
+                    SettingsChrome.row("Let the mascot react",
+                                       "Island only: Clawd's eyes follow the pointer and "
+                                       + "blink, a long task ends in a sparkle, and clicking "
+                                       + "a row's mark pokes it instead of jumping to the "
+                                       + "session. Never with Reduce Motion.",
+                                       control: personalityBox),
                 ]),
             ])
         case .notifications:
@@ -501,8 +528,19 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         case .diagnostics:
             add([
                 SettingsChrome.card([SettingsChrome.customRow(diagnostics)]),
+                // A row of its own rather than a fifth button in the report's header:
+                // it answers a different question — not "is it working" but "what did
+                // it do to my files" — and the header is already as wide as it gets.
+                // No subtitle: `captionWidth` leaves room for a switch, not for a
+                // button this wide, and the page's footnote says the rest.
+                SettingsChrome.card([
+                    SettingsChrome.row("Changes to your agents' settings",
+                                       control: configChangesButton),
+                ]),
                 SettingsChrome.header("Why an agent isn't showing up: hooks wired, the node "
-                                      + "they point at still there, folders writable."),
+                                      + "they point at still there, folders writable. Before "
+                                      + "AgentBar writes into a settings file it keeps the "
+                                      + "file as it was, beside it."),
             ])
         }
         return column
@@ -590,7 +628,9 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         launchRecorder.reload()
         soundsBox.state = SoundCenter.enabled ? .on : .off
         volumeSlider.doubleValue = SoundCenter.volume
-        hideIslandBox.state = UserDefaults.standard.bool(forKey: "hideIslandWhenEmpty") ? .on : .off
+        hideIslandBox.state = IslandVisibility.Prefs.hideWhenEmpty ? .on : .off
+        hideAwayBox.state = IslandVisibility.Prefs.hideWhenAway ? .on : .off
+        personalityBox.state = MascotPersonality.Prefs.enabled ? .on : .off
         claudeQuotaBox.state = ClaudeQuota.enabled ? .on : .off
         syncQuota()
         rememberBox.state = DecisionLedger.enabled ? .on : .off
@@ -754,6 +794,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     }
 
     @objc private func showRulesPage() { select(.rules) }
+
+    @objc private func showConfigChanges() {
+        guard let window else { return }
+        ConfigChangesSheet.present(on: window)
+    }
 
     @objc private func toggleRules() {
         RulesStore.enabled = rulesBox.state == .on
@@ -923,7 +968,17 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     }
 
     @objc private func toggleHideIsland() {
-        UserDefaults.standard.set(hideIslandBox.state == .on, forKey: "hideIslandWhenEmpty")
+        IslandVisibility.Prefs.hideWhenEmpty = hideIslandBox.state == .on
+        onChange?()
+    }
+
+    @objc private func toggleHideAway() {
+        IslandVisibility.Prefs.hideWhenAway = hideAwayBox.state == .on
+        onChange?()
+    }
+
+    @objc private func togglePersonality() {
+        MascotPersonality.Prefs.enabled = personalityBox.state == .on
         onChange?()
     }
 

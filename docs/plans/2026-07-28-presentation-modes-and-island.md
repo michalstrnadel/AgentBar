@@ -27,6 +27,11 @@ Four decisions were taken before coding, and one was reversed while using it:
    presence, the way the menu bar mark is — mark only when idle, mark + text
    while something works, a count badge from two sessions up. **Only the pointer
    opens it**; even a pending approval stays a pill that names the wait.
+   *(Later: always-on remains the default, but two opt-in switches on Settings ▸
+   General — hide when nothing is running, hide while you're away — let the pill
+   step aside. What answers the objection above is the peek: a pointer pushed up
+   to the notch brings a hidden pill back, and anything waiting on you keeps it
+   up. See `IslandVisibility`.)*
 3. **No protocol change.** The island renders only what `state.d` already
    carries, so the Linux CLI, the Windows port and every hook are untouched.
 4. **Caffeine-shaped welcome window** — icon, one paragraph, the mode picker

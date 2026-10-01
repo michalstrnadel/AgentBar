@@ -17,6 +17,11 @@ final class IslandContentView: NSView {
     private let footerHairline = NSView()
     private var footerHeight: NSLayoutConstraint!
     private var stackTop: NSLayoutConstraint!
+    /// Everything that spans the panel side to side, inset by the ears so nothing —
+    /// the overlay scroller above all — lands in the transparent strip beside the
+    /// body, where the mask would cut it off.
+    private var sideInsets: [NSLayoutConstraint] = []
+    private let outline = CAShapeLayer()
     private var tracking: NSTrackingArea?
 
     /// Pointer entered or left the panel. The controller opens and closes on this.
@@ -24,20 +29,21 @@ final class IslandContentView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        // Layer-backed rather than drawn: square at the top (flush with the screen
-        // edge), rounded below. Filling in `draw(_:)` under a layer-backed tree came
-        // out washed out — the shape belongs to the layer.
+        // Layer-backed rather than drawn: filling in `draw(_:)` under a layer-backed
+        // tree came out washed out — the shape belongs to the layer. What shape, is
+        // `IslandShape`'s to say; the layer is masked with it in `layout()`.
         wantsLayer = true
         // Solid, like the hardware it pretends to extend. Translucency here read as
         // the window behind showing *through the notch*, which is exactly the
         // illusion this panel must never break.
         layer?.backgroundColor = NSColor.black.cgColor
-        layer?.cornerRadius = Self.corner
-        // Clip to the rounded shape: while the panel animates, rows laid out at
-        // their final width must be *revealed* by the growing shape, not hang out
-        // of it. The drop shadow therefore lives on the window (IslandPanel), where
-        // masking can't eat it.
+        // Clip to the outline: while the panel animates, rows laid out at their
+        // final width must be *revealed* by the growing shape, not hang out of it.
+        // The drop shadow therefore lives on the window (IslandPanel), where masking
+        // can't eat it. A path mask rather than `cornerRadius`: a corner radius can
+        // round a corner but never curve one outward, which is what an ear is.
         layer?.masksToBounds = true
+        layer?.mask = outline
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 8
@@ -70,17 +76,19 @@ final class IslandContentView: NSView {
         addSubview(footerHairline)
 
         stackTop = stack.topAnchor.constraint(equalTo: doc.topAnchor, constant: 0)
-        NSLayoutConstraint.activate([
+        sideInsets = [
             scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: footerHost.topAnchor),
             footerHost.leadingAnchor.constraint(equalTo: leadingAnchor),
             footerHost.trailingAnchor.constraint(equalTo: trailingAnchor),
-            footerHost.bottomAnchor.constraint(equalTo: bottomAnchor),
-            footerHeight,
             footerHairline.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.hPad),
             footerHairline.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.hPad),
+        ]
+        NSLayoutConstraint.activate(sideInsets + [
+            scroll.topAnchor.constraint(equalTo: topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: footerHost.topAnchor),
+            footerHost.bottomAnchor.constraint(equalTo: bottomAnchor),
+            footerHeight,
             footerHairline.bottomAnchor.constraint(equalTo: footerHost.topAnchor),
             footerHairline.heightAnchor.constraint(equalToConstant: 1),
             doc.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
@@ -112,12 +120,45 @@ final class IslandContentView: NSView {
     /// no notch keeps the pill fully rounded, because there is nothing there for it
     /// to be continuous with.
     var flushTop = false {
-        didSet {
-            guard flushTop != oldValue else { return }
-            layer?.maskedCorners = flushTop
-                ? [.layerMinXMinYCorner, .layerMaxXMinYCorner]
-                : [.layerMinXMinYCorner, .layerMaxXMinYCorner,
-                   .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        didSet { if flushTop != oldValue { shapeChanged() } }
+    }
+
+    /// The ears an open panel may grow (`IslandShape`), and the height at which they
+    /// start: the collapsed pill's, so a pill never has any. Only the ceiling is set
+    /// here — how much of it shows is read off the current height on every layout
+    /// pass, which is what keeps the ears in step with the frame animation.
+    var earWidth: CGFloat = 0 {
+        didSet { if earWidth != oldValue { shapeChanged() } }
+    }
+    var collapsedHeight: CGFloat = 0 {
+        didSet { if collapsedHeight != oldValue { shapeChanged() } }
+    }
+
+    /// The ear the current frame has, or zero off a notch.
+    private var ear: CGFloat {
+        flushTop ? IslandShape.ear(full: earWidth, height: bounds.height,
+                                   collapsedHeight: collapsedHeight) : 0
+    }
+
+    /// Stepped by the window frame animation, so the insets follow the ears
+    /// before the pass that lays the rows out.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateSideInsets()
+    }
+
+    private func shapeChanged() {
+        updateSideInsets()
+        needsLayout = true
+    }
+
+    private func updateSideInsets() {
+        let e = ear
+        for c in sideInsets {
+            let base: CGFloat = c.firstItem === footerHairline ? Self.hPad : 0
+            let inward = c.firstAttribute == .leading ? 1 : -1
+            let value = CGFloat(inward) * (base + e)
+            if c.constant != value { c.constant = value }
         }
     }
 
@@ -171,6 +212,15 @@ final class IslandContentView: NSView {
 
     override func layout() {
         super.layout()
+        // Recut on every pass, without the implicit fade a free-standing layer
+        // gives a changed path: during the expand the window steps the frame and
+        // the outline has to land on each step, not drift a quarter second behind.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        outline.frame = bounds
+        outline.path = IslandShape.path(in: bounds.size, corner: Self.corner,
+                                        ear: ear, flushTop: flushTop)
+        CATransaction.commit()
         // The hairline earns its keep only when rows pass under the strip.
         let overflowing = stack.fittingSize.height + topInset > scroll.contentView.bounds.height
         footerHairline.alphaValue = (overflowing && footerHeight.constant > 0) ? 1 : 0
@@ -184,6 +234,16 @@ final class IslandContentView: NSView {
                                owner: self, userInfo: nil)
         addTrackingArea(t)
         tracking = t
+    }
+
+    /// Outside the outline is not the island. The window server already lets
+    /// clicks fall through transparent pixels of a non-opaque window; this makes
+    /// AppKit agree, so nothing in the panel claims a click in the ear strips or the
+    /// rounded-off corners.
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let local = superview.map { convert(point, from: $0) } ?? point
+        guard outline.path?.contains(local) ?? true else { return nil }
+        return super.hitTest(point)
     }
 
     override func mouseEntered(with event: NSEvent) { onHover?(true) }
@@ -212,7 +272,9 @@ final class IslandRowView: NSView {
     private let session: Session
     private let style: Style
     private let onClick: (Session) -> Void
-    private let markView = NSImageView()
+    private let markView = IslandMascotView()
+    /// The row's mark, for `IslandMascot` to wire up for pokes.
+    var mascot: IslandMascotView { markView }
     private var tracking: NSTrackingArea?
     private var hovered = false { didSet { needsDisplay = true } }
 
@@ -246,7 +308,6 @@ final class IslandRowView: NSView {
     /// the eye lands here first.
     private func buildHero(mark: NSImage?, chips: NSStackView) {
         markView.image = mark.map { $0.isTemplate ? IconRenderer.tint($0, with: .white) : $0 }
-        markView.imageScaling = .scaleNone
         markView.translatesAutoresizingMaskIntoConstraints = false
 
         let title = NSTextField(labelWithAttributedString: Self.heroTitle(session))
@@ -312,7 +373,6 @@ final class IslandRowView: NSView {
     /// row says who it belongs to; the dot keeps carrying the state colour.
     private func buildCompact(mark: NSImage?, chips: NSStackView) {
         markView.image = mark.map { $0.isTemplate ? IconRenderer.tint($0, with: .white) : $0 }
-        markView.imageScaling = .scaleNone
         markView.translatesAutoresizingMaskIntoConstraints = false
 
         let title = NSTextField(labelWithAttributedString: Self.compactTitle(session))
@@ -1414,7 +1474,7 @@ final class ChipBox: NSView {
 /// verb wobbled in the corner of the eye all day long; the notch never moves,
 /// so neither does its chin. Text swaps in place and truncates when it must.
 final class IslandPillView: NSView {
-    private let markView = NSImageView()
+    private let markView = IslandMascotView()
     private let label = NSTextField(labelWithString: "")
     private let badge = BadgeView()
     private var height: NSLayoutConstraint!
@@ -1422,7 +1482,6 @@ final class IslandPillView: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        markView.imageScaling = .scaleNone
         label.font = .monospacedSystemFont(ofSize: 11.5, weight: .medium)
         label.textColor = NSColor.white.withAlphaComponent(0.9)
         label.lineBreakMode = .byTruncatingTail
@@ -1450,6 +1509,20 @@ final class IslandPillView: NSView {
     func update(mark: NSImage?) {
         markView.image = mark.map { $0.isTemplate ? IconRenderer.tint($0, with: .white) : $0 }
         markView.isHidden = markView.image == nil
+    }
+
+    /// Where the mark is on screen, for the eyes to look from. Nil while it is
+    /// not drawn — no mark, or not in a window yet.
+    var markCenterOnScreen: NSPoint? {
+        guard !markView.isHidden, let window = markView.window else { return nil }
+        let local = NSPoint(x: markView.bounds.midX, y: markView.bounds.midY)
+        return window.convertPoint(toScreen: markView.convert(local, to: nil))
+    }
+
+    /// A long task just finished — see `MascotPersonality.Celebrations` for which.
+    func celebrate() {
+        guard !markView.isHidden else { return }
+        markView.celebrate()
     }
 
     func configure(mark: NSImage?, text: String, count: Int, height h: CGFloat,

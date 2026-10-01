@@ -5,8 +5,10 @@ import Cocoa
 /// answerable in place — when the user puts the pointer on it. It only ever grows
 /// on purpose; nothing unfolds over the screen on its own.
 final class IslandController: NSObject {
-    /// The pill is always on screen — it is the app's presence, the way the menu bar
-    /// mark is. With nothing running it is just the mark; work adds a line of text.
+    /// The pill is on screen by default — it is the app's presence, the way the menu
+    /// bar mark is. With nothing running it is just the mark; work adds a line of
+    /// text. Two opt-in switches can send it away (`IslandVisibility`); the pointer
+    /// can always bring it back.
     private enum Mode {
         case collapsed
         case expanded
@@ -16,6 +18,9 @@ final class IslandController: NSObject {
     private let content = IslandContentView()
     private let pill = IslandPillView()
     private let mascot: MascotDriver
+    /// The island's own touches on the mascot — gaze, pokes, the finish sparkle.
+    /// Fed from here and drawn only here; the menu bar never sees them.
+    private let personality = IslandMascot()
 
     private var sessions: [Session] = []
     private var requests: [ApprovalRequest] = []
@@ -56,6 +61,25 @@ final class IslandController: NSObject {
     private var composing: String?
     /// The app that had the keyboard when a note was opened.
     private var keysCameFrom: NSRunningApplication?
+    /// A fresh arrival at the notch asked for the pill while it was hidden. Set with
+    /// the hover, cleared only by the grace timer on the way out — the same timer
+    /// that closes an open panel — so a pointer crossing a gap doesn't make the pill
+    /// blink, and the exit is exactly as forgiving as the collapse.
+    private var peeking = false
+    /// The last answer to "is the user away", as the pointer poll saw it. Only its
+    /// changes matter: they are what tells the island to re-evaluate, because with
+    /// every session quiet nothing else would tick.
+    private var away = false
+    /// What `rebuild` last decided. `layout` has callers that are not `rebuild` — the
+    /// mascot's rotating verb, above all — and before this every one of them ended
+    /// in `orderFront`, which would pull a hidden pill straight back on screen.
+    private var hidden = false
+    /// A fade-out is running. The panel is still visible, so this is the only way to
+    /// tell a pill on its way out from one that is staying.
+    private var hiding = false
+    /// Bumped by every show and hide, so a fade-out that finishes after the pill was
+    /// asked back can tell it has been overtaken and leave the panel on screen.
+    private var visibilityTurn = 0
 
     private static let expandedWidth: CGFloat = 460
     /// Deliberately small. The collapsed island is a glance, not a panel — anything
@@ -64,12 +88,28 @@ final class IslandController: NSObject {
     private static let rowSpacing: CGFloat = 8
     /// Beyond this the panel would run down the screen; the rest are summarised.
     private static let maxRows = 6
+    /// How far the pill rises into the notch as it fades away, and drops out of it
+    /// coming back. A few points is enough to read as *going somewhere* rather than
+    /// switching off; under a real notch the top of the travel is hidden anyway.
+    private static let hideSlide: CGFloat = 6
+    /// How long the open panel takes to fold back into the pill — `layout`'s
+    /// closing pass, and what `hide` waits out when it has to fold first.
+    private static let closeDuration: TimeInterval = 0.3
+
+    /// Read fresh on every hide and every layout, the way `IslandMascot.plays` is:
+    /// the user can flip it in System Settings while the pill is up, and the next
+    /// move should already respect it.
+    private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 
     init(mascot: MascotDriver) {
         self.mascot = mascot
         super.init()
         panel.contentView = content
         content.autoresizingMask = [.width, .height]
+        // The ears (`IslandShape`) are measured from the pill's height up, so the
+        // pill itself never has any — see `layout` for why it must not.
+        content.earWidth = IslandShape.earWidth
+        content.collapsedHeight = Self.pillHeight
         content.onHover = { [weak self] inside in
             guard let self else { return }
             // Leaving the panel upward into the notch strip is still "on the
@@ -87,6 +127,10 @@ final class IslandController: NSObject {
     }
 
     func start() {
+        // Here rather than at launch: the switch only ever did nothing in
+        // island-only mode, so the question is asked the first time the island is
+        // actually up, in whichever mode that is.
+        IslandVisibility.Prefs.migrate(presentation: .current)
         // Switching desktop or plugging a display changes where the panel belongs,
         // and nothing session-side would trigger a re-layout.
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -117,7 +161,7 @@ final class IslandController: NSObject {
             // mascot look frozen; only the width can actually need revisiting.
             // While a flash is up the pill isn't the mascot's — leave it alone.
             if textChanged { self.layout(animated: true) }
-            else if self.flash == nil { self.pill.update(mark: image) }
+            else if self.flash == nil { self.pill.update(mark: self.personality.decorate(image)) }
         }
         rebuild()
     }
@@ -153,7 +197,11 @@ final class IslandController: NSObject {
         collapseWork?.cancel()
         wantsExpanded = false
         hovered = false
+        peeking = false
+        visibilityTurn += 1
+        hiding = false
         panel.orderOut(nil)
+        panel.alphaValue = 1
     }
 
     /// The Space or the displays changed. Rebuild now for the common case, and once
@@ -172,12 +220,37 @@ final class IslandController: NSObject {
     /// mean "open"), and the dwell in hover() filters drive-bys. The pill's fixed
     /// width matters here too — edges that never move can't sweep across a
     /// stationary pointer and fake an arrival.
+    ///
+    /// It keeps running while the pill is hidden, because that is how a hidden pill
+    /// comes back: the same fresh arrival in the notch strip that would open a
+    /// visible one first summons it (`peeking`), and if the pointer stays, the dwell
+    /// opens it as usual. A pointer parked up there while the pill went away is not
+    /// an arrival and summons nothing. Only the strip counts while hidden — the
+    /// panel's frame is wherever the pill last was, and nothing is drawn there.
     private func checkPointer() {
-        guard Presentation.current.showsIsland, panel.isVisible, flash == nil,
-              let screen = IslandGeometry.screen else { return }
+        guard Presentation.current.showsIsland, let screen = IslandGeometry.screen else { return }
+        // Away is read here and nowhere else on a clock: the poll is already running,
+        // and coming back has to be felt on the first touch, not on the next store
+        // tick — which, with every session quiet, may never come.
+        let hideWhenAway = IslandVisibility.Prefs.hideWhenAway
+        let nowAway = IslandVisibility.away(hideWhenAway: hideWhenAway,
+                                            idleSeconds: hideWhenAway ? InputIdle.seconds() : 0)
+        if nowAway != away {
+            away = nowAway
+            rebuild(animated: true)
+        }
+        guard flash == nil else { personality.rest(); return }
+        let shown = panel.isVisible && !hiding
         let mouse = NSEvent.mouseLocation
+        // The eyes ride this same poll rather than a loop of their own, and only
+        // look from a pill that is on screen and showing its mark.
+        let looking = shown && mode == .collapsed && !hidden
+        if personality.look(pointer: mouse, from: looking ? pill.markCenterOnScreen : nil),
+           mode == .collapsed {
+            pill.update(mark: personality.decorate(mark))
+        }
         let inside = NSMouseInRect(mouse, IslandGeometry.hoverZone(on: screen), false)
-            || NSMouseInRect(mouse, panel.frame, false)
+            || (shown && NSMouseInRect(mouse, panel.frame, false))
         if !inside { lastAway = Date() }
         if inside != hovered {
             if inside, mode == .collapsed, Date().timeIntervalSince(lastAway) > 1.0 { return }
@@ -209,7 +282,13 @@ final class IslandController: NSObject {
         if let c = composing, requestIdentity[c] == nil || approvalCards[c] == nil {
             endComposing()
         }
+        let celebrate = personality.observe(sessions)
         rebuild(animated: true)
+        // Inside the pill or not at all: an open panel, a flash or a pill on its
+        // way out lets the finish pass unmarked.
+        if celebrate, mode == .collapsed, flash == nil, !hidden, panel.isVisible, !hiding {
+            pill.celebrate()
+        }
     }
 
     // MARK: - State
@@ -240,13 +319,26 @@ final class IslandController: NSObject {
     /// plan the user is halfway through reading.
     func usageChanged() { rebuild(animated: false) }
 
-    /// Opt-in: with nothing running, the pill slips away entirely. Only honored
-    /// alongside the menu bar mark — in island-only mode the pill is the app's
-    /// sole surface, and hiding it would leave Settings unreachable. A flash
-    /// ("✓ Allowed" just as the last session ends) finishes before the exit.
+    /// Opt-in, twice: with nothing running, or with nobody at the keyboard, the pill
+    /// slips away entirely. The decision itself is `IslandVisibility`'s; this only
+    /// gathers what it is made from. Honoured in island-only mode too, now that a
+    /// fresh arrival at the notch summons the pill back — before the peek, hiding the
+    /// app's sole surface would have left Settings unreachable. A flash ("✓ Allowed"
+    /// just as the last session ends) finishes before the exit, and a pending request
+    /// keeps the pill up whatever the switches say.
     private var wantsHidden: Bool {
-        sessions.isEmpty && flash == nil && Presentation.current == .both
-            && UserDefaults.standard.bool(forKey: "hideIslandWhenEmpty")
+        let hideWhenAway = IslandVisibility.Prefs.hideWhenAway
+        return !IslandVisibility.shows(.init(
+            presentation: .current,
+            hasSessions: !sessions.isEmpty,
+            hasRequests: !requests.isEmpty,
+            open: wantsExpanded || composing != nil
+                || UserDefaults.standard.bool(forKey: "islandExpandDebug"),
+            flashing: flash != nil,
+            peeking: peeking,
+            hideWhenEmpty: IslandVisibility.Prefs.hideWhenEmpty,
+            hideWhenAway: hideWhenAway,
+            idleSeconds: hideWhenAway ? InputIdle.seconds() : 0))
     }
 
     private func rebuild(animated: Bool = false) {
@@ -263,9 +355,23 @@ final class IslandController: NSObject {
             collapseWork?.cancel()
             wantsExpanded = false
             hovered = false
-            panel.orderOut(nil)
+            peeking = false
+            // Open when the hide came — the pointer left a peek with nothing
+            // running, which in island-only mode is the way to Settings, so it
+            // happens every time. Fading the whole open slab where it stands
+            // ghosts a panel-sized shape over the screen; fold it into the pill
+            // first, the way it always closes, and leave from there.
+            let fold = animated && panel.isVisible && !hiding && lastLaidMode == .expanded
+            if fold {
+                mode = .collapsed
+                panel.ignoresMouseEvents = true
+                layout(animated: true)
+            }
+            hidden = true
+            hide(animated: animated, after: fold ? Self.closeDuration : 0)
             return
         }
+        hidden = false
 
         // Only the pointer opens the panel. Even a pending approval stays a pill —
         // an island that unfolds over the screen on its own is in the way, which is
@@ -282,8 +388,56 @@ final class IslandController: NSObject {
 
     // MARK: - Layout
 
+    /// The way out: a short fade while the pill rises a few points into the notch,
+    /// the reverse of how `layout` brings it back. Snapping it off read as a glitch —
+    /// the pill is in the corner of the eye all day, and a thing that vanishes there
+    /// without moving looks like something broke. Under Reduce Motion it only
+    /// fades: the slide is the motion, the fade is just the pill being gone.
+    ///
+    /// `after` is a fold still playing (see `rebuild`): the fade waits it out
+    /// rather than racing it for the frame. `hiding` is set from the start, so a
+    /// tick in between does not start a second exit, and an un-hide in between
+    /// bumps the turn and the waiting fade never runs.
+    private func hide(animated: Bool, after delay: TimeInterval = 0) {
+        guard panel.isVisible, !hiding else { return }
+        visibilityTurn += 1
+        // Nothing on its way out takes a click: one landing on the fading panel
+        // would be lost on the content underneath.
+        panel.ignoresMouseEvents = true
+        guard animated else {
+            panel.orderOut(nil)
+            panel.alphaValue = 1
+            return
+        }
+        let turn = visibilityTurn
+        hiding = true
+        let fade = { [weak self] in
+            guard let self, self.visibilityTurn == turn else { return }
+            var to = self.panel.frame
+            if !self.reduceMotion { to.origin.y += Self.hideSlide }
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.22
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                ctx.allowsImplicitAnimation = true
+                self.panel.animator().alphaValue = 0
+                self.panel.animator().setFrame(to, display: true)
+            }, completionHandler: { [weak self] in
+                // Asked back while fading: `layout` already took the panel over.
+                guard let self, self.visibilityTurn == turn else { return }
+                self.hiding = false
+                self.panel.orderOut(nil)
+                self.panel.alphaValue = 1
+            })
+        }
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: fade)
+        } else {
+            fade()
+        }
+    }
+
     private func layout(animated: Bool = false, force: Bool = false) {
-        guard let screen = IslandGeometry.screen else { return }
+        guard let screen = IslandGeometry.screen, !hidden else { return }
         // Held still under the caret. Store ticks keep arriving while a note is
         // typed; they are picked up the moment it is sent or dropped.
         if composing != nil, mode == .expanded, lastLaidMode == .expanded, !force { return }
@@ -301,7 +455,7 @@ final class IslandController: NSObject {
             // inward, and a pill matching it to the point leaves little ears
             // sticking past the curve on the real screen.
             let w = IslandGeometry.notch(on: screen).map { $0.width - 10 } ?? 200
-            pill.configure(mark: flash == nil ? mark : nil, text: pillText,
+            pill.configure(mark: flash == nil ? personality.decorate(mark) : nil, text: pillText,
                            count: flash == nil ? visibleSessions.count : 0,
                            height: Self.pillHeight,
                            width: w - IslandContentView.hPad * 2, tint: flash?.tint)
@@ -317,18 +471,64 @@ final class IslandController: NSObject {
             // The panel is sized to its content; when that outgrows the screen it
             // clamps here and the content view scrolls the overflow into reach.
             let maxHeight = screen.visibleFrame.height - 24
-            target = IslandGeometry.frame(width: Self.expandedWidth,
+            // Off a notch the frame pays for the ears on both sides, so the body —
+            // and every row laid out at `expandedWidth` — keeps its width. On a plain
+            // screen edge there is nothing to flow into and the frame stays as it was.
+            let ear = content.flushTop ? IslandShape.earWidth : 0
+            target = IslandGeometry.frame(width: IslandShape.panelWidth(body: Self.expandedWidth,
+                                                                        ear: ear),
                                           height: min(content.contentHeight, maxHeight),
                                           on: screen)
         }
         lastLaidMode = mode
-        if animated, panel.isVisible {
-            // Slow enough to read as one shape inflating out of the notch, quick
-            // enough not to gate the click that follows. Same-shape refreshes only
-            // morph the width, and take less.
+        // Coming back from hidden — or caught halfway out — is its own animation:
+        // the hide played backwards, dropping out of the notch as it fades in.
+        let appearing = !panel.isVisible || hiding
+        let still = reduceMotion
+        if appearing {
+            visibilityTurn += 1
+            hiding = false
+        }
+        if animated, appearing {
+            if !panel.isVisible {
+                var from = target
+                if !still { from.origin.y += Self.hideSlide }
+                panel.setFrame(from, display: false)
+                panel.alphaValue = 0
+            }
+            panel.orderFront(nil)
             NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = modeChanged ? 0.38 : 0.22
+                ctx.duration = 0.26
                 ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1.0, 0.36, 1.0)
+                ctx.allowsImplicitAnimation = true
+                self.panel.animator().alphaValue = 1
+                self.panel.animator().setFrame(target, display: true)
+            }, completionHandler: { [weak self] in self?.panel.invalidateShadow() })
+        } else if animated, panel.isVisible {
+            // One animation carries the whole shape: the frame is the only thing that
+            // moves, and the outline — corners, ears — is recut from it on every step
+            // (`IslandContentView.layout`), so there is no second clock to drift out
+            // of step with it. Slow enough to read as one shape inflating out of the
+            // notch, quick enough not to gate the click that follows.
+            //
+            // Opening overshoots by a hair and settles, the way a thing with a little
+            // mass does; it is what makes the panel read as springing *out of* the
+            // notch rather than being drawn there. Closing does not: a shape that
+            // bounces on its way back into the notch looks like it missed. Same-shape
+            // refreshes (a row added, a card answered) only morph the size, and take
+            // less — they keep the plain settle, because a panel that wobbles every
+            // time a session ticks would never hold still. Under Reduce Motion the
+            // opening settles plainly too: the overshoot is the one part of it that
+            // is there for character rather than to show where the panel came from.
+            let opening = modeChanged && mode == .expanded && !still
+            let closing = modeChanged && mode == .collapsed
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = opening ? 0.4 : closing ? Self.closeDuration : 0.22
+                ctx.timingFunction = opening
+                    ? CAMediaTimingFunction(controlPoints: 0.32, 1.22, 0.42, 1.0)
+                    : closing
+                    ? CAMediaTimingFunction(controlPoints: 0.45, 0.0, 0.2, 1.0)
+                    : CAMediaTimingFunction(controlPoints: 0.22, 1.0, 0.36, 1.0)
                 ctx.allowsImplicitAnimation = true
                 self.panel.animator().setFrame(target, display: true)
             }, completionHandler: { [weak self] in
@@ -340,6 +540,7 @@ final class IslandController: NSObject {
         } else {
             panel.setFrame(target, display: true)
             panel.invalidateShadow()
+            panel.alphaValue = 1
         }
         content.alphaValue = 1
         panel.orderFront(nil)
@@ -358,6 +559,7 @@ final class IslandController: NSObject {
             let row = IslandRowView(session: s, mark: mark, style: style) { [weak self] session in
                 self?.click(session)
             }
+            personality.attach(row.mascot, session: s.id)
             row.translatesAutoresizingMaskIntoConstraints = false
             row.widthAnchor.constraint(equalToConstant: rowW).isActive = true
             out.append(row)
@@ -697,8 +899,9 @@ final class IslandController: NSObject {
         panel.resignKey()
         // Open exactly as far as the pointer says: it may have left long ago (the
         // grace timer was held off while typing), or still be on the panel after
-        // an answer elsewhere asked it to close.
+        // an answer elsewhere asked it to close. A peek ends the same way.
         wantsExpanded = hovered
+        peeking = hovered
         // Keys go back to the app that had them. The panel never activated this
         // app, so that app is still frontmost; activating it again is what hands
         // the key window back rather than leaving keys addressed to the island.
@@ -717,6 +920,13 @@ final class IslandController: NSObject {
         collapseWork?.cancel()
         expandWork?.cancel()
         if inside {
+            // A hidden pill answers the arrival first: back on screen now, so the
+            // pointer has something to dwell on; the dwell below opens it as usual.
+            if !peeking {
+                let wasHidden = hidden
+                peeking = true
+                if wasHidden { rebuild(animated: true) }
+            }
             // Hover intent, not hover: the pill sits where window title bars get
             // clicked and where a Cmd-Tab flick crosses, and a panel that unfolds
             // for every drive-by looks like a bug. A short dwell filters those out
@@ -737,6 +947,7 @@ final class IslandController: NSObject {
             // A note half typed is not abandoned by the pointer drifting off.
             guard let self, !self.hovered, self.composing == nil else { return }
             self.wantsExpanded = false
+            self.peeking = false
             self.rebuild(animated: true)
         }
         collapseWork = work
