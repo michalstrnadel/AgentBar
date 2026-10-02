@@ -236,8 +236,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         terminal.open()
     }
 
-    @objc func chooseColor(_ sender: NSMenuItem) {
-        systemColor = (sender.representedObject as? Bool) ?? false
+    /// Every row of the shared app section (`AppMenuModel`) lands here. The model
+    /// decided what the row says; this only runs it. A sound toggle is followed by
+    /// a refresh so a menu still open somewhere tells the truth.
+    @objc func appMenuClicked(_ sender: NSMenuItem) {
+        guard let action = AppMenuRenderer.action(of: sender) else { return }
+        action.perform()
+        if action == .toggleSounds { refreshOpenMenu() }
     }
 
     @objc func openShortcutSettings(_ sender: NSMenuItem) {
@@ -261,11 +266,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             display: r.display))
     }
 
-    /// Same window; Settings re-runs the checks every time it is shown.
-    @objc func openDiagnostics(_ sender: NSMenuItem) {
-        SettingsWindow.shared.show()
-    }
-
     /// A finished session's project folder. The session itself is gone — there is no
     /// tab to jump back to — so the useful thing left is where the work happened.
     @objc func openPastProject(_ sender: NSMenuItem) {
@@ -274,33 +274,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         NSWorkspace.shared.open(URL(fileURLWithPath: cwd))
     }
 
-    /// The menu's one-click sound toggle. A just-enabled cue set says hello, so
-    /// the click is audibly confirmed; the Settings window (if open) follows.
-    @objc func toggleSounds(_ sender: NSMenuItem) {
-        SoundCenter.enabled.toggle()
-        if SoundCenter.enabled { SoundCenter.shared.preview() }
-        SettingsWindow.shared.refreshIfVisible()
-        refreshOpenMenu()
-    }
-
-    @objc func openWelcome(_ sender: NSMenuItem) {
-        WelcomeWindow.shared.show()
-    }
-
     /// Called by the inline Allow/Always/Deny button strip on permission rows.
     /// A failed write leaves the request in the store, so the next open still
     /// offers the same row.
     @discardableResult
     func answer(_ a: ApprovalAction) -> Bool {
         AgentActions.answer(a)
-    }
-
-    @objc func checkForUpdatesClicked(_ sender: NSMenuItem) {
-        UpdateChecker.shared.check(manual: true)
-    }
-
-    @objc func installUpdateClicked(_ sender: NSMenuItem) {
-        UpdateChecker.shared.installAvailable()
     }
 
     /// Inline strip on keystroke-backed permission rows (Antigravity, Codex, Copilot).
