@@ -1,0 +1,32 @@
+{
+  "about": [
+    "Which agents ~/.agentbar/wire-disabled switches off. `file` is the file's exact text",
+    "(null: no file); `ids` is what it reads as, sorted. Read through the file by",
+    "Tests/AgentBarTests/SharedFixtureTests.swift (WiringPrefs.load) and by",
+    "Scripts/test/shared-fixtures.js (the CLI's loadWireDisabled). docs/protocol.md:",
+    "`#` starts a comment, surrounding blanks are trimmed, ids are lowercased, a line that",
+    "is not ^[a-z0-9][a-z0-9_-]*$ is skipped, an unknown id is kept. `$FEFF` in a file is a raw U+FEFF (see rule-matching)."
+  ],
+  "cases": [
+    {"name": "no file disables nothing", "file": null, "ids": []},
+    {"name": "an empty file", "file": "", "ids": []},
+    {"name": "the header the writers write", "file": "# Agents AgentBar leaves unwired, one id per line.\n# Written by AgentBar (Settings > Diagnostics > Agents) and the agentbar CLI.\ncursor\ngemini\n", "ids": ["cursor", "gemini"]},
+    {"name": "no final newline", "file": "cursor", "ids": ["cursor"]},
+    {"name": "blank lines and comment lines", "file": "\n\n# codex\n  # qwen\ncursor\n\n", "ids": ["cursor"]},
+    {"name": "a trailing comment", "file": "gemini   # a trailing comment too\n", "ids": ["gemini"]},
+    {"name": "a comment glued to the id", "file": "codex#off for now\n", "ids": ["codex"]},
+    {"name": "capitals are lowercased", "file": "CURSOR\nGemini\n", "ids": ["cursor", "gemini"]},
+    {"name": "spaces and tabs around", "file": "  cursor  \n\tqwen\t\n", "ids": ["cursor", "qwen"]},
+    {"name": "CRLF line ends", "file": "cursor\r\ngemini\r\n", "ids": ["cursor", "gemini"]},
+    {"name": "old Mac line ends", "file": "cursor\rgemini\r", "ids": ["cursor", "gemini"]},
+    {"name": "Unicode line separators", "file": "cursor\u2028gemini\u2029qwen\u0085codex\u000bcopilot\u000copencode", "ids": ["codex", "copilot", "cursor", "gemini", "opencode", "qwen"]},
+    {"name": "a repeat reads once", "file": "cursor\ncursor\nCursor\n", "ids": ["cursor"]},
+    {"name": "an id this build does not know is kept", "file": "future-agent\nnew_one\n7z\n", "ids": ["7z", "future-agent", "new_one"]},
+    {"name": "junk is skipped, never trusted", "file": "not an id\n../etc\n-x\n_x\nx.y\nagent/../x\n\u00e9clair\n", "ids": []},
+    {"name": "a byte-order mark in front of the first line", "file": "$FEFFcursor\ngemini\n", "ids": ["cursor", "gemini"]},
+    {"name": "a byte-order mark anywhere else is not a blank", "file": "cursor\n$FEFFgemini\n", "ids": ["cursor"]},
+    {"name": "no-break spaces are blanks", "file": "\u00a0gemini\u00a0\n", "ids": ["gemini"]},
+    {"name": "a zero-width space is a blank to Foundation, so to both", "file": "\u200bgemini\u200b\n", "ids": ["gemini"]},
+    {"name": "the Kelvin sign lowercases to k", "file": "\u212aimi\n", "ids": ["kimi"]}
+  ]
+}

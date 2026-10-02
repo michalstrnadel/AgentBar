@@ -12,7 +12,10 @@ enum HookInstaller {
     /// read these; every per-agent function goes through its pass's `Context`, so a
     /// test can point a whole pass at a temporary home and nothing else.
     private static let realHome = FileManager.default.homeDirectoryForCurrentUser
-    private static var realHooksDir: URL { realHome.appendingPathComponent(".agentbar/hooks", isDirectory: true) }
+    /// Where the scripts are copied. Under `AGENTBAR_HOME` that is the sandbox's own
+    /// folder, so the self-test runs the copy this build shipped without touching
+    /// the installed one.
+    private static var realHooksDir: URL { AgentBarHome.url("hooks", isDirectory: true) }
 
     /// Resolved once per launch: the fallback probes the user's login shell, which can
     /// cost hundreds of ms on nvm/fnm setups — never pay that four times.
@@ -150,6 +153,15 @@ enum HookInstaller {
                 finish()
                 return
             }
+            // A sandbox wires nothing. Its scripts are copied (the self-test runs
+            // them), but every agent config it would write is the person's real one,
+            // and pointing those at a throwaway folder is the leak `AgentBarHome`
+            // exists to stop.
+            guard !AgentBarHome.isSandbox else {
+                NSLog("AgentBar: \(AgentBarHome.variable) is set — not wiring any agent")
+                finish()
+                return
+            }
             run(Pass(preview: false, ctx: .live()))
             finish()
         }
@@ -184,6 +196,9 @@ enum HookInstaller {
     /// requests are still answered, because the app never looks at this file for that.
     static func setWired(_ agent: String, _ wired: Bool,
                          _ done: @escaping (Error?) -> Void) {
+        guard !AgentBarHome.isSandbox else {
+            return done(SandboxRefusal())
+        }
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 try WiringPrefs.set(agent, disabled: !wired, home: realHome)
@@ -193,6 +208,13 @@ enum HookInstaller {
             }
             _ = runPass(.live(), preview: false, only: agent)
             DispatchQueue.main.async { onFinish?(); done(nil) }
+        }
+    }
+
+    /// Why a sandboxed copy's Agents switch did nothing.
+    struct SandboxRefusal: LocalizedError {
+        var errorDescription: String? {
+            "This copy runs with \(AgentBarHome.variable) set, so it does not change any agent's settings."
         }
     }
 
@@ -270,7 +292,7 @@ enum HookInstaller {
         if let env = ctx.environment["CLAUDE_CONFIG_DIR"], !env.isEmpty {
             dirs.append(URL(fileURLWithPath: (env as NSString).expandingTildeInPath))
         }
-        let hint = home.appendingPathComponent(".agentbar/claude-config-dir")
+        let hint = AgentBarHome.url("claude-config-dir", home: home)
         if let raw = try? String(contentsOf: hint, encoding: .utf8) {
             let path = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             if !path.isEmpty { dirs.append(URL(fileURLWithPath: (path as NSString).expandingTildeInPath)) }
@@ -305,7 +327,10 @@ enum HookInstaller {
             NSLog("AgentBar: \(url.path) exists but could not be read (\(error)) — leaving it untouched")
             return nil
         }
-        guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        // A trailing comma is the case the comment above names, and JSONSerialization
+        // accepts it: this installer rewrote such a file while the CLI's left it alone.
+        guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              !StrictJSON.hasTrailingComma(data) else {
             NSLog("AgentBar: \(url.path) exists but is not parseable JSON — leaving it untouched")
             return nil
         }

@@ -15,7 +15,7 @@ check() {
 
 # The tests borrow HOME; an inherited CLAUDE_CONFIG_DIR, COPILOT_HOME or
 # CODEX_HOME would still point at the runner's real config.
-unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME
+unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME AGENTBAR_HOME
 # F11 runs the hook's real liveness check, which an inherited override would pin;
 # every other case sets it on its own command line.
 unset AGENTBAR_FORCE_APP
@@ -1226,6 +1226,30 @@ wait_req
 printf '{"behavior":"deny","message":"not on main"}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 check "copilot note: bare deny + message" 'grep -q "^{\"behavior\":\"deny\",\"message\":\".*not on main" "$HOME/out.json"'
+
+# AGENTBAR_HOME (docs/protocol.md "Where state lives"): the request, the answer and
+# the row all live under the root it names, and ~/.agentbar is never created. The
+# Claude status hooks follow the same root.
+HOME_SEQ=$((HOME_SEQ + 1))
+export HOME="$TESTROOT/home.$$.$HOME_SEQ"; mkdir -p "$HOME"
+ROOT="$TESTROOT/root.$$.$HOME_SEQ"
+AGENTBAR_HOME="$ROOT/" AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=$ANSWER_TIMEOUT "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
+hookpid=$!
+REQ=""
+for _ in $(seq 100); do REQ="$(ls "$ROOT/requests.d/" 2>/dev/null | head -1)"; [ -n "$REQ" ] && break; sleep 0.1; done
+check "AGENTBAR_HOME: request written under the root" '[ -n "$REQ" ]'
+[ -n "$REQ" ] && printf '{"behavior":"allow"}' > "$ROOT/answers.d/$REQ"
+wait "$hookpid"
+check "AGENTBAR_HOME: answer read from the root"      'grep -q "\"behavior\":\"allow\"" "$HOME/out.json"'
+check "AGENTBAR_HOME: row under the root"             '[ -f "$ROOT/state.d/testsess.json" ]'
+printf '{"session_id":"ah-life","cwd":"/tmp/proj"}' | AGENTBAR_HOME="$ROOT" AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/claude/lifecycle.js start
+printf '{"session_id":"ah-upd","cwd":"/tmp/proj","prompt":"x"}' | AGENTBAR_HOME="$ROOT" AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/claude/update.js prompt
+check "AGENTBAR_HOME: lifecycle.js writes the root"   '[ -f "$ROOT/state.d/ah-life.json" ]'
+check "AGENTBAR_HOME: update.js writes the root"      '[ -f "$ROOT/state.d/ah-upd.json" ]'
+check "AGENTBAR_HOME: nothing under ~/.agentbar"      '[ ! -e "$HOME/.agentbar" ]'
+# A relative value is ignored rather than failing the host: default root, exit 0.
+printf '{"session_id":"ah-rel","cwd":"/tmp/proj","prompt":"x"}' | AGENTBAR_HOME=rel AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/claude/update.js prompt; RC=$?
+check "AGENTBAR_HOME relative: update.js uses the default" '[ "$RC" = 0 ] && [ -f "$HOME/.agentbar/state.d/ah-rel.json" ] && [ ! -e rel ]'
 
 echo "---"
 echo "$pass passed, $fail failed"

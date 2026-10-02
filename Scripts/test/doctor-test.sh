@@ -10,7 +10,7 @@ NODE="${NODE:-node}"
 
 # install-hooks honors CLAUDE_CONFIG_DIR, COPILOT_HOME and CODEX_HOME; an
 # inherited value would point the assertions at the runner's real config.
-unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME AGENTBAR_FORCE_APP AGENTBAR_APPROVAL_TIMEOUT
+unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME AGENTBAR_FORCE_APP AGENTBAR_APPROVAL_TIMEOUT AGENTBAR_HOME
 
 pass=0; fail=0
 check() {

@@ -25,6 +25,12 @@ struct ApprovalRequest {
     let pid: Int32                  // the waiting hook's parent (the claude process)
     let hookPid: Int32              // the waiting hook itself; primary liveness handle
     let ts: TimeInterval
+    /// A string in the file began with U+FEFF, which JSONSerialization silently drops
+    /// from the front of every string it decodes — so the command this struct holds
+    /// is not, byte for byte, the one that will run: `\u{FEFF}git status` decodes as
+    /// `git status` and runs a program called `\u{FEFF}git`. A rule may not approve
+    /// anything from such a file (`RuleEngine.refusal`).
+    let droppedInvisible: Bool
 
     /// What's being approved, in enough detail to render inline without the terminal.
     enum Context {
@@ -89,6 +95,11 @@ struct ApprovalRequest {
         pid             = max(0, Int32(exactly: o["pid"] as? Int ?? 0) ?? 0)
         hookPid         = max(0, Int32(exactly: o["hookPid"] as? Int ?? 0) ?? 0)
         ts              = o["ts"] as? TimeInterval ?? 0
+        // Only a string's FIRST character is dropped (it is read as a byte-order mark);
+        // one anywhere else is kept and seen. Raw, or as an escape in any case; an
+        // escaped quote followed by one reads as one too, which costs a prompt.
+        droppedInvisible = data.range(of: Data([0x22, 0xEF, 0xBB, 0xBF])) != nil
+            || String(decoding: data, as: UTF8.self).range(of: "\"\\ufeff", options: .caseInsensitive) != nil
     }
 
     private static func decodeContext(_ c: [String: Any]?) -> Context? {

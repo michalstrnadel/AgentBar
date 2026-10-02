@@ -168,6 +168,7 @@ final class RuleEngine {
         if request.isPlanRequest { return "a plan review is approved in the terminal, not by a rule" }
         if request.questions != nil { return "a question is not a permission" }
         if cwd.isEmpty { return "nobody knows which directory this ran in" }
+        if request.droppedInvisible { return "a request carrying a character the reader drops" }
 
         switch request.context {
         case .bash(let command):
@@ -274,7 +275,11 @@ final class RuleEngine {
         // `DecisionLedger.verb` takes the shape from the FIRST command on the line,
         // so a chained line carries the shape of its head. A rule must never answer
         // for the tail it never saw.
-        for marker in ["|", ";", "&", "\n", "$(", "`", ">", "<"] where line.contains(marker) {
+        // Searched by code unit, never by Character: Swift reads `\r\n` as ONE
+        // Character, so `"ls x\r\nreboot".contains("\n")` is false and the second
+        // command walked past this clause under the first one's shape. A lone `\r` is
+        // refused too — it is a line break to everything that is not bash.
+        for marker in ["|", ";", "&", "\n", "\r", "$(", "`", ">", "<"] where carries(line, marker) {
             return "more than one command, a redirect or a substitution on one line"
         }
         // SECOND: every word below is judged as the literal text it is, and the shell
@@ -283,9 +288,13 @@ final class RuleEngine {
         // glob (`.?/x` is `../x`) is rewritten before the command sees it, so the
         // path and flag clauses would be checking a word that never arrives. A rule
         // does not approve what this code cannot read; the human still can.
-        for marker in ["$", "\\", "{", "*", "?", "["] where line.contains(marker) {
+        for marker in ["$", "\\", "{", "*", "?", "["] where carries(line, marker) {
             return "a word the shell rewrites before the command sees it"
         }
+        // A quote that never closes is a line the shell refuses to run as written —
+        // and the words below were cut on spaces the shell would have read as part of
+        // the quote. Backslashes are already refused above, so no quote is escaped.
+        if hasUnterminatedQuote(line) { return "a command that will not tokenise" }
 
         var words = line.split(whereSeparator: { $0 == " " || $0 == "\t" })
             .map { unquote(String($0)) }
@@ -431,6 +440,23 @@ final class RuleEngine {
     }
 
     // MARK: - Small, dull helpers the table leans on
+
+    /// Whether `marker` occurs in `line`, compared code unit by code unit.
+    static func carries(_ line: String, _ marker: String) -> Bool {
+        (line as NSString).range(of: marker, options: .literal).location != NSNotFound
+    }
+
+    /// A `'` or `"` the line opens and never closes, read the way a POSIX shell
+    /// reads them: inside single quotes nothing is special but the closing `'`,
+    /// inside double quotes a `'` is just a letter.
+    static func hasUnterminatedQuote(_ line: String) -> Bool {
+        var open: Unicode.Scalar?
+        for s in line.unicodeScalars {
+            if let q = open { if s == q { open = nil } }
+            else if s == "'" || s == "\"" { open = s }
+        }
+        return open != nil
+    }
 
     /// A token worth checking as a path: anything with a separator in it, or a
     /// home-relative name. A bare word is an argument, not a place, except that

@@ -14,7 +14,7 @@ check() {
 
 # The tests borrow HOME; an inherited CLAUDE_CONFIG_DIR, COPILOT_HOME or
 # CODEX_HOME would still point at the runner's real config.
-unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME
+unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME AGENTBAR_HOME
 TESTROOT="$(mktemp -d)"
 trap 'rm -rf "$TESTROOT"' EXIT
 
@@ -388,6 +388,32 @@ fresh_home
 printf '{"conversationId":"h6","workspacePaths":["/tmp/proj"],"toolCall":{"name":"edit \ud800 file"}}' \
   | AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/antigravity/antigravity.js PreToolUse >/dev/null
 check "anti: the row it leaves is readable" 'utf16_clean "$HOME/.agentbar/state.d/h6.json" label'
+
+# --- AGENTBAR_HOME (docs/protocol.md "Where state lives") ---------------------
+# Every bridge writes under the root it names, and nothing under ~/.agentbar. A
+# HOME with no ~/.agentbar at all, so one stray write shows up as it existing; a
+# trailing slash on the value is the same root.
+HOME_SEQ=$((HOME_SEQ + 1))
+export HOME="$TESTROOT/home.$$.$HOME_SEQ"; mkdir -p "$HOME"
+ROOT="$TESTROOT/root.$$.$HOME_SEQ"
+printf '{"hook_event_name":"preToolUse","conversation_id":"ah-cur","tool_name":"Shell"}' \
+  | AGENTBAR_HOME="$ROOT/" AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/cursor/cursor.js
+printf '{"hook_event_name":"BeforeAgent","session_id":"ah-gem","cwd":"/tmp/proj","prompt":"x"}' \
+  | AGENTBAR_HOME="$ROOT/" AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/gemini/gemini.js
+printf '{"conversationId":"ah-anti","workspacePaths":["/tmp/proj"]}' \
+  | AGENTBAR_HOME="$ROOT/" AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/antigravity/antigravity.js PreInvocation
+AGENTBAR_HOME="$ROOT/" "$NODE" Scripts/hooks/codex/notify.js '{"type":"agent-turn-complete","thread-id":"ah","cwd":"/tmp/proj"}'
+for f in ah-cur ah-gem ah-anti codex-ah; do
+  check "AGENTBAR_HOME: $f written under the root" '[ -f "$ROOT/state.d/$f.json" ]'
+done
+check "AGENTBAR_HOME: nothing under ~/.agentbar" '[ ! -e "$HOME/.agentbar" ]'
+# A relative value is ignored, never an error: the hook still exits 0 and writes
+# to the default, and nothing appears relative to its working directory.
+mkdir -p "$HOME/cwd"
+RC="$(cd "$HOME/cwd" && printf '{"hook_event_name":"BeforeAgent","session_id":"ah-rel","prompt":"x"}' \
+  | AGENTBAR_HOME=rel/root AGENTBAR_FORCE_APP=1 "$NODE" "$OLDPWD/Scripts/hooks/gemini/gemini.js"; echo $?)"
+check "AGENTBAR_HOME relative: hook exits 0"       '[ "$RC" = 0 ]'
+check "AGENTBAR_HOME relative: falls back to default" '[ -f "$HOME/.agentbar/state.d/ah-rel.json" ] && [ ! -e "$HOME/cwd/rel" ]'
 
 echo "---"
 echo "$pass passed, $fail failed"

@@ -75,7 +75,11 @@ struct Session {
         // never trap — the poisoned file survives on disk, so a trap here is a
         // crash loop that outlives every relaunch.
         pid         = max(0, Int32(exactly: o["pid"] as? Int ?? 0) ?? 0)
-        started     = o["started"] as? Bool ?? true
+        // Only an explicit `false` hides a row (docs/protocol.md). `as? Bool` also
+        // reads the NUMBER 0 as false, which the CLI never did.
+        started     = (o["started"] as? NSNumber).map {
+            CFGetTypeID($0) != CFBooleanGetTypeID() || $0.boolValue
+        } ?? true
         ts          = Self.plausibleTime(o["ts"])
         startedAt   = Self.plausibleTime(o["started_at"])
         prompt      = o["prompt"] as? String ?? ""

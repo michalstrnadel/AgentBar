@@ -10,7 +10,7 @@ NODE="${NODE:-node}"
 # shell would make the test wire hooks into the runner's REAL Claude config,
 # pointing at this suite's throwaway temp dir (learned the hard way). COPILOT_HOME
 # and CODEX_HOME are honoured the same way and would do the same to Copilot/Codex.
-unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME AGENTBAR_FORCE_APP AGENTBAR_APPROVAL_TIMEOUT
+unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME AGENTBAR_FORCE_APP AGENTBAR_APPROVAL_TIMEOUT AGENTBAR_HOME
 
 pass=0; fail=0
 check() {
@@ -908,6 +908,49 @@ printf '# a comment\ncursor\n\n  Gemini   # trailing comment\n\tqwen\r\n#codex\n
 check "wire-disabled parse honours case + comments" '! grep -q agentbar "$HOME/.gemini/settings.json" 2>/dev/null'
 "$CLI" wire cursor >/dev/null 2>&1
 check "wire-disabled rewrite keeps unknown ids, drops junk" '[ "$(WD | grep -v "^#" | tr "\n" " ")" = "future-agent gemini qwen " ]'
+
+# --- AGENTBAR_HOME moves the state root, and only the state root (docs/protocol.md
+# "Where state lives"). A HOME with no ~/.agentbar at all, so a single stray write
+# into the default shows up as the directory existing.
+HOME_SEQ=$((HOME_SEQ + 1))
+export HOME="$TESTROOT/home.$$.$HOME_SEQ"
+ROOT="$TESTROOT/root.$$.$HOME_SEQ"
+mkdir -p "$HOME/work/myproj" "$ROOT/state.d"
+( cd "$HOME/work/myproj" && AGENTBAR_HOME="$ROOT//" "$ABS_CLI" report --agent aider --state tool --label Editing --pid $$ )
+check "report under AGENTBAR_HOME writes there"       '[ -f "$ROOT/state.d/aider-myproj.json" ]'
+check "report under AGENTBAR_HOME leaves ~/.agentbar"  '[ ! -e "$HOME/.agentbar" ]'
+printf '{"agent":"claude","state":"tool","label":"x","project":"p","cwd":"","sessionId":"elsewhere","pid":%s,"started":true,"ts":%s}' \
+  "$$" "$(date +%s)" > "$ROOT/state.d/elsewhere.json"
+OUT="$(AGENTBAR_HOME="$ROOT" "$CLI" status --json)"
+check "status under AGENTBAR_HOME reads that root"     'echo "$OUT" | grep -q "\"id\": \"elsewhere\""'
+check "status under AGENTBAR_HOME leaves ~/.agentbar"  '[ ! -e "$HOME/.agentbar" ]'
+ERR="$( cd "$HOME/work/myproj" && AGENTBAR_HOME=rel/root "$ABS_CLI" report --agent aider --state tool --pid $$ 2>&1 >/dev/null )"; RC=$?
+check "a relative AGENTBAR_HOME is refused"            '[ "$RC" -ne 0 ] && [ "$(printf "%s\n" "$ERR" | wc -l | tr -d " ")" = 1 ] && echo "$ERR" | grep -q AGENTBAR_HOME'
+check "...and writes nothing anywhere"                 '[ ! -e "$HOME/work/myproj/rel" ] && [ ! -e "$HOME/.agentbar" ]'
+AGENTBAR_HOME="~/x" "$CLI" status >/dev/null 2>&1; RC=$?
+check "AGENTBAR_HOME gets no ~ expansion"              '[ "$RC" -ne 0 ] && [ ! -e "$HOME/x" ]'
+OUT="$(AGENTBAR_HOME= "$CLI" status --json)"
+check "an empty AGENTBAR_HOME is the default"          '[ -d "$HOME/.agentbar" ] && ! echo "$OUT" | grep -q elsewhere'
+OUT="$(AGENTBAR_HOME="$ROOT" "$CLI" doctor 2>&1)"
+check "doctor names the root it checked"               'echo "$OUT" | grep -qF "$ROOT/state.d"'
+# install-hooks, wire and unwire write the agents' real configs, which AGENTBAR_HOME
+# does not move: refused, and nothing is touched.
+mkdir -p "$HOME/.claude"
+printf '{"theme":"dark"}' > "$HOME/.claude/settings.json"
+for c in install-hooks "wire claude" "unwire claude"; do
+  AGENTBAR_HOME="$ROOT" "$CLI" $c >/dev/null 2>&1; RC=$?
+  check "$c refused under AGENTBAR_HOME" '[ "$RC" -ne 0 ] && [ "$(cat "$HOME/.claude/settings.json")" = "{\"theme\":\"dark\"}" ] && [ ! -e "$ROOT/hooks" ] && [ ! -e "$ROOT/wire-disabled" ]'
+done
+AGENTBAR_HOME="$HOME/.agentbar/" "$CLI" install-hooks --only claude >/dev/null 2>&1; RC=$?
+check "install-hooks runs when AGENTBAR_HOME is the default spelled out" '[ "$RC" -eq 0 ] && grep -q "/.agentbar/hooks/claude/" "$HOME/.claude/settings.json"'
+
+# --- the fixtures the app's SharedFixtureTests reads too ---------------------------
+# Rule matching, the rules file, wire-disabled, unwiring and session rows: every rule
+# this CLI implements a second time, held to the same answers as the app. A case is
+# added to Tests/Fixtures/*/cases.json, never to one side alone.
+FIXTURES_OUT="$("$NODE" --test Scripts/test/shared-fixtures.test.js 2>&1)"; FIXTURES_RC=$?
+[ "$FIXTURES_RC" -eq 0 ] || echo "$FIXTURES_OUT"
+check "shared fixtures: the CLI answers as the app does" '[ "$FIXTURES_RC" -eq 0 ]'
 
 echo "---"
 echo "$pass passed, $fail failed"

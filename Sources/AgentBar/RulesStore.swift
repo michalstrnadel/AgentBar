@@ -16,8 +16,7 @@ import Foundation
 ///   `Diagnostics` names the file and the reason — and every prompt simply comes
 ///   back to the human, which is where the product lives without rules anyway.
 enum RulesStore {
-    static let fileURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".agentbar/rules.json", isDirectory: false)
+    static let fileURL = AgentBarHome.url("rules.json")
 
     /// The master switch. On by default and inert by default: with no rules file
     /// there is nothing to fire, so "on" costs nothing and the switch exists to
@@ -121,10 +120,15 @@ enum RulesStore {
             if o["mode"] != nil, Mode(rawValue: o["mode"] as? String ?? "") == nil {
                 badMode = o["mode"] as? String ?? "(not a string)"
             }
+            // Present and not text is not "empty": `"agent": 5` read as "" was an
+            // approval for EVERY agent, and `"cwd": null` a denial for every directory.
+            badField = ["agent", "cwd", "note", "tell"].first { o[$0] != nil && !(o[$0] is String) }
         }
 
         /// Set when `mode` was present and unreadable, so `validate` can name it.
         var badMode: String?
+        /// A text field that was present and not text, so `validate` can name it.
+        var badField: String?
     }
 
     // MARK: - Reading
@@ -153,12 +157,26 @@ enum RulesStore {
         guard let data = try? Data(contentsOf: url) else {
             return .invalid("~/.agentbar/rules.json could not be read.")
         }
-        guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        // A trailing comma is not JSON, whatever JSONSerialization says: the CLI
+        // refused the file while the app applied it.
+        guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              !StrictJSON.hasTrailingComma(data) else {
             return .invalid("~/.agentbar/rules.json is not valid JSON.")
         }
-        let v = (o["v"] as? NSNumber)?.intValue ?? 0
-        guard v == version else {
-            return .invalid("~/.agentbar/rules.json says version \(v); this AgentBar reads version \(version).")
+        // Exactly the number 1: `intValue` read `1.5` and `true` as 1, which the CLI
+        // (and every other JSON reader) does not.
+        let n = o["v"] as? NSNumber
+        let isBool = n.map { CFGetTypeID($0) == CFBooleanGetTypeID() } ?? false
+        guard let n, !isBool, n.doubleValue == Double(version) else {
+            let said = isBool ? (n?.boolValue == true ? "true" : "false") : (n?.stringValue ?? "none")
+            return .invalid("~/.agentbar/rules.json says version \(said); this AgentBar reads version \(version).")
+        }
+        // A key written twice is two answers to one question, and JSON readers do not
+        // agree which one wins: this one keeps the first, the CLI's keeps the last. A
+        // rule that says `"decision": "deny"` and then `"decision": "allow"` would be
+        // applied as one and listed as the other.
+        if let key = StrictJSON.repeatedKey(data) {
+            return .invalid("~/.agentbar/rules.json repeats the key `\(key)` inside one object.")
         }
         guard let list = o["rules"] as? [[String: Any]] else {
             return .invalid("~/.agentbar/rules.json has no `rules` list.")
@@ -179,6 +197,7 @@ enum RulesStore {
     /// Why a rule is refused. Returns nil when it is fine.
     static func validate(_ r: Rule, index i: Int, seen: Set<String>) -> String? {
         let where_ = "Rule \(i + 1) (\(r.id.isEmpty ? "no id" : r.id)) in ~/.agentbar/rules.json"
+        if let field = r.badField { return "\(where_) has a `\(field)` that is not text." }
         if r.id.isEmpty { return "\(where_) has an empty `id`." }
         if seen.contains(r.id) { return "\(where_) repeats an `id` used above." }
         if r.decision != "allow" && r.decision != "deny" {

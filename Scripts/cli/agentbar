@@ -34,7 +34,24 @@
 "use strict";
 const fs = require("fs"), os = require("os"), path = require("path");
 
-const base = path.join(os.homedir(), ".agentbar");
+// The state root (docs/protocol.md, "Where state lives"): AGENTBAR_HOME when set,
+// ~/.agentbar otherwise. Unlike the hooks, which ignore a relative value because
+// they must never fail their host, the CLI refuses one: a typo in a test must not
+// quietly read and write the real directory. No `~` expansion; trailing slashes go.
+const defaultBase = path.join(os.homedir(), ".agentbar");
+const base = (() => {
+  const v = process.env.AGENTBAR_HOME || "";
+  if (!v) return defaultBase;
+  if (!path.isAbsolute(v)) {
+    console.error(`agentbar: AGENTBAR_HOME must be an absolute path, not "${v}"`);
+    process.exit(2);
+  }
+  return v.replace(/\/+$/, "") || "/";
+})();
+// A root of its own, not ~/.agentbar spelled another way.
+const customBase = path.resolve(base) !== path.resolve(defaultBase);
+// How the root is named in what this prints: unchanged when it is the default.
+const shownBase = customBase ? base : "~/.agentbar";
 const stateDir = path.join(base, "state.d");
 const reqDir = path.join(base, "requests.d");
 const ansDir = path.join(base, "answers.d");
@@ -59,6 +76,28 @@ const writeAtomic = (f, obj, replacer) => {
   fs.writeFileSync(t, JSON.stringify(obj, replacer));
   fs.renameSync(t, f);
 };
+// Foundation's CharacterSet.whitespaces / .whitespacesAndNewlines, member for
+// member (dumped from Foundation: Zs, tab and — Apple's own addition — U+200B),
+// because String.prototype.trim() is neither: it eats U+FEFF and spares U+200B.
+// Everything the two halves both read has to be trimmed the app's way.
+const trimWhitespace = (s) => s.replace(/^[\t\p{Zs}\u200B]+|[\t\p{Zs}\u200B]+$/gu, "");
+const trimWhitespaceAndNewlines = (s) =>
+  s.replace(/^[\t\n\v\f\r\u0085\u2028\u2029\p{Zs}\u200B]+|[\t\n\v\f\r\u0085\u2028\u2029\p{Zs}\u200B]+$/gu, "");
+// JSONSerialization drops ONE leading U+FEFF from every string it decodes, keys
+// included (it reads it as a byte-order mark); JSON.parse keeps it. Whatever the
+// app reads through it, this reads the same way.
+const withoutFeff = (s) => s.replace(/^\uFEFF/, "");
+// User-perceived characters, as Swift's `prefix(n)` counts them.
+const graphemes = (s) => (typeof Intl !== "undefined" && Intl.Segmenter
+  ? [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(s)].map((g) => g.segment)
+  : Array.from(s));
+// Session.displayName, clause for clause: control and format characters dropped
+// (a newline would split a row, an ESC repaint a terminal), trimmed, 24 characters.
+function displayName(raw) {
+  if (typeof raw !== "string") return "";
+  const kept = raw.replace(/[\p{Cc}\p{Cf}]/gu, "");
+  return trimWhitespace(graphemes(trimWhitespaceAndNewlines(kept)).slice(0, 24).join(""));
+}
 const alive = (pid) => {
   if (!pid || pid <= 0) return false;
   try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; }
@@ -78,22 +117,33 @@ function sessions() {
     if (!f.endsWith(".json")) continue;
     const p = path.join(stateDir, f);
     const s = readJSON(p);
-    if (!s) continue;
-    const dead = s.pid > 0 && !alive(s.pid);
-    const stale = s.ts > 0 && now() - s.ts > 86400;
+    // Session(fileURL:) reads only an object; an array or a bare value is skipped.
+    if (!s || typeof s !== "object" || Array.isArray(s)) continue;
+    // Session.pid / Session.plausibleTime: a pid that is not a 32-bit positive
+    // integer is no liveness handle, and a time that is not a time is none. Read
+    // raw, `"pid":"123"` or `"ts":"5"` made this command DELETE a row the app shows
+    // (process.kill throws on them, and "5" > 0 is true in JavaScript).
+    const pid = Number.isInteger(s.pid) && s.pid > 0 && s.pid <= 2147483647 ? s.pid : 0;
+    const ts = plausibleTime(s.ts);
+    const dead = pid > 0 && !alive(pid);
+    const stale = ts > 0 && now() - ts > 86400;
     if (dead || stale) { try { fs.rmSync(p, { force: true }); } catch {} continue; }
     // Only an explicit `false` hides a row (docs/protocol.md). A third-party writer
     // that never heard of the field is showing a live session, and the app has
     // always shown it — this CLI hid it, so the two halves disagreed about one file.
     if (s.started === false) continue;
     s.id = f.slice(0, -".json".length);
+    // Session.displayName: the name a writer chose, cleaned before anything prints
+    // it — raw, an ESC in `agent_name` reached the terminal through `status`.
+    const name = displayName(s.agent_name);
+    if (name) s.agent_name = name; else delete s.agent_name;
     // Antigravity emits no terminal event (2.3.x fires only PostToolUse), so a
     // working session that has gone quiet decays to done instead of running for
     // ever — and the row says it was a watchdog's guess, not a reported finish.
     // Mirrors SessionStore.swift; without it the same session ends in the app and
     // never ends here.
     if (s.agent === "antigravity" && (s.state === "thinking" || s.state === "tool")
-        && s.ts > 0 && now() - s.ts > 90) {
+        && now() - ts > 90) {   // no ts reads as long quiet, as SessionStore reads it
       s.state = "done";
       s.decayed = true;
     }
@@ -294,38 +344,61 @@ const MULTIPLEXERS = new Set(["git", "gh", "npm", "pnpm", "yarn", "bun", "cargo"
   "docker", "kubectl", "brew", "make", "swift", "dotnet", "pip", "pip3", "uv", "poetry",
   "rails", "terraform", "aws", "gcloud", "systemctl", "apt", "apt-get", "flutter"]);
 
+// NSString.lastPathComponent, which the app takes the command's name with:
+// trailing slashes ignored, `/` itself is `/`. path.basename("/") is "".
+function lastPathComponent(w) {
+  const trimmed = w.replace(/\/+$/, "");
+  if (!trimmed) return w ? "/" : "";
+  return trimmed.slice(trimmed.lastIndexOf("/") + 1);
+}
+
 // The first two words that matter, and never an argument: `git push` repeats,
 // `git push origin feature/PR-4113` never does — and arguments are where a path,
 // a URL or an accidentally typed secret would be.
+//
+// DecisionLedger.verb, clause for clause, because a rule matches on this string:
+// the head is the first NON-EMPTY piece (`;git push` is git push, not nothing),
+// `\r` cuts it like `\n` does, and words split on space and tab only — `\s` also
+// split on a no-break space, which the shell (and the app) read as a letter.
 function decisionVerb(command) {
-  const head = String(command || "").split(/[|;&\n]/)[0];
-  let words = head.split(/\s+/).filter(Boolean);
+  const line = typeof command === "string" ? command : "";
+  const pieces = line.split(/[|;&\r\n]/).filter((p) => p !== "");
+  const head = pieces.length ? pieces[0] : line;
+  let words = head.split(/[ \t]+/).filter(Boolean);
   while (words.length && (words[0] === "sudo" || words[0] === "command" || words[0] === "env"
         || (words[0].includes("=") && !words[0].startsWith("-")))) words.shift();
   if (!words.length) return "";
-  const name = path.basename(words[0]);
+  const name = lastPathComponent(words[0]);
   if (!MULTIPLEXERS.has(name)) return name;
   const next = words.slice(1).find((w) => !w.startsWith("-"));
   return next ? `${name} ${next}` : name;
 }
 
+// A string field or nothing — ApprovalRequest reads every field `as? String`.
+const textField = (v) => (typeof v === "string" ? withoutFeff(v) : "");
+
 function decisionShape(r) {
-  const ctx = r.context || {};
-  if (ctx.kind === "bash") return "bash:" + decisionVerb(ctx.command);
+  const ctx = r.context && typeof r.context === "object" ? r.context : {};
+  if (ctx.kind === "bash") return "bash:" + decisionVerb(textField(ctx.command));
   // The hook's own field first: toolInputPretty is cut at 4 KB, and a cut is
   // not JSON, so a large edit would otherwise lose its shape.
-  let input = null;
-  if (!r.filePath) { try { input = JSON.parse(r.toolInputPretty || "null"); } catch {} }
-  const p = r.filePath
-    || (input && (input.file_path || input.notebook_path || input.path || input.filePath));
-  if (p) {
-    const parts = String(p).split("/").filter(Boolean);
-    const dir = parts.length > 1 ? parts[parts.length - 2] : "";
-    const ext = path.extname(String(p)).replace(/^\./, "");
-    const suffix = ext ? `*.${ext}` : "*";
-    return `${String(r.toolName || "").toLowerCase()}:${dir ? dir + "/" + suffix : suffix}`;
+  let p = textField(r.filePath);
+  if (!p) {
+    let input = null;
+    try { input = JSON.parse(textField(r.toolInputPretty)); } catch {}
+    if (input && typeof input === "object" && !Array.isArray(input)) {
+      p = ["file_path", "notebook_path", "path", "filePath"].map((k) => textField(input[k])).find(Boolean) || "";
+    }
   }
-  return "tool:" + (r.toolName || "");
+  const tool = textField(r.toolName);
+  if (p) {
+    const parts = p.split("/").filter(Boolean);
+    const dir = parts.length > 1 ? parts[parts.length - 2] : "";
+    const ext = path.extname(p).replace(/^\./, "");
+    const suffix = ext ? `*.${ext}` : "*";
+    return `${tool.toLowerCase()}:${dir ? dir + "/" + suffix : suffix}`;
+  }
+  return "tool:" + tool;
 }
 
 function recordDecision(r, decision) {
@@ -644,39 +717,92 @@ function plainCwd(p) {
   return "/" + out.join("/");
 }
 
-function readRules() {
+// RulesStore.repeatedKey, clause for clause: the first key any object in this
+// (already parsed) JSON repeats, or null. JSON.parse keeps the LAST of two equal
+// keys and JSONSerialization the FIRST, so a rule that says "deny" and then
+// "allow" was applied as one and listed as the other. Both now refuse the file.
+function repeatedKey(raw) {
+  const stack = [];
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < raw.length && raw[j] !== '"') j += raw[j] === "\\" ? 2 : 1;
+      const top = stack[stack.length - 1];
+      if (top && top.isObject && top.wantKey && j < raw.length) {
+        let key = "";
+        try { key = withoutFeff(JSON.parse(raw.slice(i, j + 1))); } catch {}
+        if (top.keys.has(key)) return key;
+        top.keys.add(key);
+        top.wantKey = false;
+      }
+      i = j;
+    } else if (ch === "{") stack.push({ keys: new Set(), isObject: true, wantKey: true });
+    else if (ch === "[") stack.push({ keys: new Set(), isObject: false, wantKey: false });
+    else if (ch === "}" || ch === "]") stack.pop();
+    else if (ch === ",") { const top = stack[stack.length - 1]; if (top && top.isObject) top.wantKey = true; }
+  }
+  return null;
+}
+
+// RulesStore.load + RulesStore.validate, check for check and in the same order, so
+// the two halves name the same reason for the same file. The app refuses the WHOLE
+// file on any of them: a check missing here is a file this command lists as in
+// force while the app applies none of it — told to the one person asking why a
+// rule stopped firing. Tests/Fixtures/rules-file is the contract both read.
+function readRules(file = rulesFile) {
   let raw;
-  try { raw = fs.readFileSync(rulesFile, "utf8"); } catch { return { state: "none", rules: [] }; }
+  try { raw = fs.readFileSync(file, "utf8"); } catch { return { state: "none", rules: [] }; }
+  // JSONSerialization reads past a UTF-8 byte-order mark; JSON.parse does not, and
+  // this command said "no rules are in force" about a file the app was applying.
+  if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+  const bad = (why) => ({ state: "invalid", why, rules: [] });
+  // What JSONSerialization refuses and JSON.parse takes: a number too large to be
+  // one (1e400 is Infinity here) and half a surrogate pair. U+FEFF it drops.
+  const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+  const strict = (k, v) => {
+    if ((typeof v === "number" && !Number.isFinite(v)) || lone.test(k) || (typeof v === "string" && lone.test(v)))
+      throw new Error("not JSON");
+    return v;
+  };
+  const clean = (v) => (typeof v === "string" ? withoutFeff(v)
+    : Array.isArray(v) ? v.map(clean)
+    : isPlainObject(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [withoutFeff(k), clean(x)]))
+    : v);
   let o;
-  try { o = JSON.parse(raw); } catch { return { state: "invalid", why: "not valid JSON", rules: [] }; }
-  if (!o || o.v !== 1) return { state: "invalid", why: `version ${o && o.v}, not 1`, rules: [] };
-  if (!Array.isArray(o.rules)) return { state: "invalid", why: "no `rules` list", rules: [] };
-  // Every refusal the app makes, because the app refuses the WHOLE file on any of
-  // them: a check missing here is a file this command lists as in force while the
-  // app applies none of it — told to the one person asking why a rule stopped firing.
+  try { o = clean(JSON.parse(raw, strict)); } catch { return bad("not valid JSON"); }
+  if (!isPlainObject(o)) return bad("not valid JSON");
+  if (o.v !== 1) return bad(`version ${JSON.stringify(o.v)}, not 1`);
+  const twice = repeatedKey(raw);
+  if (twice !== null) return bad(`repeats the key \`${twice}\` inside one object`);
+  if (!Array.isArray(o.rules) || !o.rules.every(isPlainObject)) return bad("no `rules` list");
   const ids = new Set();
   for (const r of o.rules) {
-    if (!r || !r.id || !r.shape) return { state: "invalid", why: "a rule with no id or shape", rules: [] };
-    if (ids.has(r.id)) return { state: "invalid", why: `rule ${r.id}: repeats an id used above`, rules: [] };
+    if (typeof r.id !== "string" || typeof r.decision !== "string" || typeof r.shape !== "string")
+      return bad("a rule is missing `id`, `decision` or `shape`");
+    const field = ["agent", "cwd", "note", "tell"].find((k) => r[k] !== undefined && typeof r[k] !== "string");
+    if (field) return bad(`rule ${r.id}: has a \`${field}\` that is not text`);
+    if (!r.id) return bad("a rule with an empty id");
+    if (ids.has(r.id)) return bad(`rule ${r.id}: repeats an id used above`);
     ids.add(r.id);
     if (r.decision !== "allow" && r.decision !== "deny")
-      return { state: "invalid", why: `rule ${r.id}: decision is not allow or deny`, rules: [] };
-    if (r.decision === "allow" && !r.cwd)
-      return { state: "invalid", why: `rule ${r.id}: approves without naming a directory`, rules: [] };
-    if (r.cwd && !String(r.cwd).startsWith("/"))
-      return { state: "invalid", why: `rule ${r.id}: cwd is not an absolute path`, rules: [] };
+      return bad(`rule ${r.id}: decision is not allow or deny`);
+    if (!r.shape) return bad(`rule ${r.id}: has an empty shape`);
+    const cwd = r.cwd || "";
+    if (r.decision === "allow" && !cwd) return bad(`rule ${r.id}: approves without naming a directory`);
+    if (cwd && !cwd.startsWith("/")) return bad(`rule ${r.id}: cwd is not an absolute path`);
     // Refused rather than tidied, exactly as RulesStore.validate does: the engine
     // compares directories as text, so `/x/repo/` would never match a session in
     // `/x/repo`, and `/x/repo/../other` names somewhere the person did not write
     // down. Rewriting either would make the file say one thing and the app another.
-    if (r.cwd && plainCwd(String(r.cwd)) !== String(r.cwd))
-      return { state: "invalid", why: `rule ${r.id}: has a \`cwd\` that is not written plainly — no trailing \`/\`, \`//\`, \`.\` or \`..\`. Write it as ${plainCwd(String(r.cwd))}`, rules: [] };
+    if (cwd && plainCwd(cwd) !== cwd)
+      return bad(`rule ${r.id}: has a \`cwd\` that is not written plainly — no trailing \`/\`, \`//\`, \`.\` or \`..\`. Write it as ${plainCwd(cwd)}`);
+    if (r.decision === "allow" && trimWhitespaceAndNewlines(r.tell || ""))
+      return bad(`rule ${r.id}: approves and carries tell; only a denial says anything`);
     // An unreadable mode is never read as "on": a typo must not start a rule
     // answering. Same refusal the app makes.
     if (r.mode !== undefined && !["on", "watch", "off"].includes(r.mode))
-      return { state: "invalid", why: `rule ${r.id}: mode is not on, watch or off`, rules: [] };
-    if (r.decision === "allow" && typeof r.tell === "string" && r.tell.trim())
-      return { state: "invalid", why: `rule ${r.id}: approves and carries tell; only a denial says anything`, rules: [] };
+      return bad(`rule ${r.id}: mode is not on, watch or off`);
   }
   return { state: "rules", rules: o.rules };
 }
@@ -1408,7 +1534,7 @@ function doctor(json) {
 
   for (const [name, dir] of [["state.d", stateDir], ["requests.d", reqDir], ["answers.d", ansDir]]) {
     if (!there(dir)) {
-      add(`dirs.${name}`, `~/.agentbar/${name}`, "fail", "Missing.",
+      add(`dirs.${name}`, `${shownBase}/${name}`, "fail", "Missing.",
           "Run `agentbar install-hooks`, or start any agent session — the hooks create these.");
       continue;
     }
@@ -1417,7 +1543,7 @@ function doctor(json) {
     const probe = path.join(dir, ".doctor." + process.pid);
     let wrote = false;
     try { fs.writeFileSync(probe, ""); fs.rmSync(probe, { force: true }); wrote = true; } catch {}
-    add(`dirs.${name}`, `~/.agentbar/${name}`, wrote ? "ok" : "fail",
+    add(`dirs.${name}`, `${shownBase}/${name}`, wrote ? "ok" : "fail",
         wrote ? null : "Exists but is not writable — hooks cannot report anything.",
         wrote ? null : `chmod u+w ${dir}`);
   }
@@ -1557,7 +1683,7 @@ function doctor(json) {
       add("rules.file", "Rules", "skipped", "None written — every prompt comes to you.");
     } else if (loaded.state === "invalid") {
       add("rules.file", "Rules", "fail", `${loaded.why}. No rule is being applied.`,
-          "Fix ~/.agentbar/rules.json, or move it aside and write the rules again. "
+          `Fix ${shownBase}/rules.json, or move it aside and write the rules again. `
           + "Nothing is applied while any of it is wrong.");
     } else {
       const titles = { on: "answering", watch: "watching", off: "off" };
@@ -1579,7 +1705,7 @@ function doctor(json) {
     });
     if (old.length) stale.push(`${old.length} in ${name}`);
   }
-  add("orphans", "No leftovers in ~/.agentbar", stale.length ? "warn" : "ok",
+  add("orphans", `No leftovers in ${shownBase}`, stale.length ? "warn" : "ok",
       stale.length ? `Past their pruning window: ${stale.join(", ")}.` : null,
       stale.length ? "Harmless — frontends skip them. They clear on the next pass." : null);
 
@@ -1790,13 +1916,17 @@ const WIRABLE = INTEGRATIONS.map((i) => i.id);
 function parseWireDisabled(text) {
   const out = new Set();
   for (const raw of String(text).split(/\r\n|[\n\r\u000B\u000C\u0085\u2028\u2029]/)) {
-    const id = raw.split("#")[0].trim().toLowerCase();
+    // WiringPrefs trims `.whitespaces` (spaces and tabs), not everything trim() eats:
+    // a stray U+FEFF made a line an id here and junk in the app.
+    const id = trimWhitespace(raw.split("#")[0]).toLowerCase();
     if (id && WIRE_ID.test(id)) out.add(id);
   }
   return out;
 }
 function loadWireDisabled() {
-  try { return parseWireDisabled(fs.readFileSync(wireDisabledFile, "utf8")); } catch { return new Set(); }
+  // String(contentsOf:encoding:) drops a leading byte-order mark; so does this.
+  try { return parseWireDisabled(fs.readFileSync(wireDisabledFile, "utf8").replace(/^\uFEFF/, "")); }
+  catch { return new Set(); }
 }
 // An empty set removes the file, so "nothing disabled" has one spelling on disk.
 function saveWireDisabled(ids) {
@@ -1985,6 +2115,19 @@ function unwireAgent(id, claudeDirs) {
       break;
     }
   }
+}
+
+// install-hooks, wire and unwire write into the agents' own configs, which
+// AGENTBAR_HOME does not move: ~/.claude, ~/.codex and the rest are this HOME's. Run
+// under a root of its own they would point the person's real agents at hooks under
+// that root — a test sandbox, as often as not — and those hooks, started later by
+// the agent, never see AGENTBAR_HOME, so they would report into ~/.agentbar from a
+// copy that is deleted with the sandbox. Borrowing HOME moves both, consistently.
+function refuseUnderCustomBase(cmd) {
+  if (!customBase) return;
+  console.error(`agentbar ${cmd}: not under AGENTBAR_HOME=${base} — it writes the real agent configs `
+    + "in this HOME, which would point at hooks under that root; unset it, or borrow HOME instead (HOME=$(mktemp -d))");
+  process.exit(2);
 }
 
 // `agentbar wire <id>` / `agentbar unwire <id>`: the choice is saved first — so the
@@ -2511,7 +2654,13 @@ function reportSession(argv) {
 
 const [cmd, ...argv] = process.argv.slice(2);
 const json = argv.includes("--json");
-switch (cmd) {
+// Required rather than run — by Scripts/test/shared-fixtures.js, which holds this
+// file's half of every rule the app implements too to Tests/Fixtures — nothing
+// runs; the functions the fixtures pin are handed over instead.
+if (require.main !== module) {
+  module.exports = { readRules, decisionShape, decisionVerb, parseWireDisabled, loadWireDisabled,
+                     displayName, sessions, plausibleTime };
+} else switch (cmd) {
   case "status": case undefined: printStatus(json); break;
   case "requests": printRequests(json); break;
   case "approve": case "allow": decide("allow", argv); break;
@@ -2525,12 +2674,12 @@ switch (cmd) {
   case "rules": printRules(json); break;
   case "forget": forget(); break;
   case "doctor": doctor(json); break;
-  case "install-hooks": installHooks({ args: argv }); break;
-  case "wire": setWired(argv, true); break;
-  case "unwire": setWired(argv, false); break;
+  case "install-hooks": refuseUnderCustomBase(cmd); installHooks({ args: argv }); break;
+  case "wire": refuseUnderCustomBase(cmd); setWired(argv, true); break;
+  case "unwire": refuseUnderCustomBase(cmd); setWired(argv, false); break;
   case "report": reportSession(argv); break;
   case "--help": case "help": default:
-    console.log(`agentbar — AI coding agents' status & remote approval (file protocol: ~/.agentbar)
+    console.log(`agentbar — AI coding agents' status & remote approval (file protocol: ${shownBase})
 
   agentbar [status] [--json]      live sessions
   agentbar requests [--json]      pending approvals with detail

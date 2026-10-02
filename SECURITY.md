@@ -121,6 +121,8 @@ clause whose test nobody can find is a clause somebody can delete.
 | F16 | The rules file is malformed, or its version is newer than this build | The whole file is void, never partly applied |
 | F17 | A rule's `mode` cannot be read | Void — never read as "answering" |
 | F18 | The live command trips the refusal table | Falls through, and no setting turns that table off |
+| F19 | The request file carries a string starting with U+FEFF, which the app's JSON reader drops | The command the engine would check is not the one that runs |
+| F20 | The rules file repeats a key, has a trailing comma, or a field of the wrong type | as F16 — the app and the CLI used to read such a file differently |
 
 The asymmetry in F16 and F17 is deliberate: an unreadable policy file must fail
 towards asking, never towards allowing.

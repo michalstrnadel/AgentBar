@@ -16,7 +16,7 @@ check() {
 
 # The tests borrow HOME; an inherited CLAUDE_CONFIG_DIR, COPILOT_HOME or
 # CODEX_HOME would still point at the runner's real config.
-unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME
+unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME AGENTBAR_HOME
 TESTROOT="$(mktemp -d)"
 trap 'rm -rf "$TESTROOT"' EXIT
 
@@ -158,6 +158,15 @@ check "session.deleted removes row"   '[ ! -e "$HOME/.agentbar/state.d/oc1.json"
 
 fresh_home; drive unknown
 check "unknown event writes nothing"  '[ -z "$(ls "$HOME/.agentbar/state.d/")" ]'
+
+# AGENTBAR_HOME (docs/protocol.md "Where state lives"): the plugin writes under the
+# root it names and leaves ~/.agentbar alone.
+HOME_SEQ=$((HOME_SEQ + 1))
+export HOME="$TESTROOT/home.$$.$HOME_SEQ"; mkdir -p "$HOME"
+ROOT="$TESTROOT/root.$$.$HOME_SEQ"
+AGENTBAR_HOME="$ROOT/" drive basic
+check "AGENTBAR_HOME: row under the root"        '[ -f "$ROOT/state.d/oc1.json" ]'
+check "AGENTBAR_HOME: nothing under ~/.agentbar" '[ ! -e "$HOME/.agentbar" ]'
 
 echo "---"
 echo "$pass passed, $fail failed"

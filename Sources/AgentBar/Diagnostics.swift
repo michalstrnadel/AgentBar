@@ -64,8 +64,7 @@ enum Diagnostics {
     /// callers run it off the main thread.
     @discardableResult
     static func apply(_ repair: Repair,
-                      base: URL = FileManager.default.homeDirectoryForCurrentUser
-                          .appendingPathComponent(".agentbar", isDirectory: true)) -> Bool {
+                      base: URL = AgentBarHome.root()) -> Bool {
         let fm = FileManager.default
         switch repair {
         case .reinstallHooks:
@@ -183,7 +182,7 @@ enum Diagnostics {
 
     static func run(home: URL = FileManager.default.homeDirectoryForCurrentUser,
                     now: TimeInterval = Date().timeIntervalSince1970) -> [Check] {
-        let base = home.appendingPathComponent(".agentbar", isDirectory: true)
+        let base = AgentBarHome.root(home: home)
         // The agents the user switched off (`WiringPrefs`): unwired on purpose, so
         // nothing about them is a failure or something to repair.
         let off = WiringPrefs.load(home: home)
@@ -465,7 +464,7 @@ enum Diagnostics {
     }
 
     private static func claudeConfigDirCheck(home: URL) -> [Check] {
-        let hint = home.appendingPathComponent(".agentbar/claude-config-dir")
+        let hint = AgentBarHome.url("claude-config-dir", home: home)
         let stored = (try? String(contentsOf: hint, encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let live = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"]
