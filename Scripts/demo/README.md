@@ -7,7 +7,7 @@ recording permission.
 
 | Output | Generator | How it draws |
 |---|---|---|
-| `agentbar-tour.gif`, `deny-with-note.gif`, `rules-try-it.gif` | `feature-gifs.swift` via `make-gifs.sh` | **the app's own views**, compiled in |
+| `agentbar-tour.gif` / `.mp4` / `.jpg`, `deny-with-note.gif`, `rules-try-it.gif` | `feature-gifs.swift` via `make-gifs.sh` | **the app's own views**, compiled in |
 | `demo-claude-codex.gif` | `demo-gif.swift` | hand-drawn stage, mascot frames from the sprite sources |
 | `demo-island.gif` | `demo-island-gif.swift` | hand-drawn stage and island |
 | `social-preview.png` | `social-preview.swift` | the banner, from the 1024 icon master |
@@ -48,6 +48,27 @@ panel is 920 px wide on a 1200 px frame, the same scale the other demos use.
 4. Register it in `FeatureGIFs.main`, then `Scripts/demo/make-gifs.sh /tmp/gifs` and
    look at a few frames before writing into `docs/assets`.
 
+### Outputs and encoding
+
+The tour is written three ways from one set of frames:
+
+- `agentbar-tour.gif` — `Stage.writeGIF`, ImageIO, looping, 0.085 s a frame.
+  Budget: about 2.2 MB. A full-frame cross-fade is the most expensive thing in
+  it (every pixel changes for four frames), so cuts that keep the same subject
+  in place, like the hello into the approval, are hard cuts.
+- `agentbar-tour.mp4` — `Stage.writeMP4`, AVFoundation (`AVAssetWriter` with a
+  pixel-buffer adaptor): H.264 High, ~320 kbit/s, BGRA in and 4:2:0 out, even
+  dimensions, `moov` at the front for streaming. Frame `i` shows at `i × delay`
+  and the last one is held for its own delay, so it runs exactly as long as the
+  GIF. Keep it under ~1.5 MB; `ffprobe` should say `h264`, `yuv420p`, 1200×1000.
+- `agentbar-tour.jpg` — the poster for the `<video>`: the island open on the
+  approval with the pointer on its way to Allow.
+
+The tour opens on Clawd's launch hello, the real `MascotEyes.waveFrames` on the
+pill's resting mark, each of its frames held for `Greeting.frameLength`; its open
+panel carries an `aider` row with `agent_name`, which the real row draws as a
+generic agent with a monogram. Keep the whole loop under ~34 s.
+
 Timing: 0.08–0.085 s a frame (about 12 fps) keeps a 15-second story under ~600 KB.
 Hold the frame that carries the point — the verdict, the answer — for 2 seconds or
 more; a viewer scrolling past needs it to still be there.
@@ -61,7 +82,7 @@ leaves it out for that reason.
 The generator is an unbundled process, which has two consequences worth knowing:
 its `UserDefaults` are **its own domain**, not AgentBar's, so the tour can switch
 settings on for the picture without touching yours (and a value it wrote stays for
-the next run — clear what you set); and anything that needs a bundle, such as the
+the next run — clear what you set, as `Tour` and `Poke.record` do); and anything that needs a bundle, such as the
 notification center, raises. Keep the notification switches off in a scene, or the
 Notifications page asks for its status and the run aborts.
 

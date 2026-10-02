@@ -8,5 +8,8 @@ BIN="$(mktemp -d)/feature-gifs"
 mkdir -p "$OUT"
 swiftc -target arm64-apple-macos12.0 \
   $(find Sources/AgentBar -name "*.swift" ! -name "main.swift") \
-  Scripts/demo/feature-gifs.swift -o "$BIN"
+  Scripts/demo/feature-gifs.swift -framework AVFoundation -o "$BIN"
 "$BIN" "$OUT"
+# AVAssetWriter's network-optimise pass leaves its scratch copy beside the MP4
+# (`agentbar-tour.mp4.sb-…`); it is not an output and must not reach the repo.
+find "$OUT" -maxdepth 1 -name '*.mp4.sb-*' -delete

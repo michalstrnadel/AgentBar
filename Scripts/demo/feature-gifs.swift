@@ -8,13 +8,17 @@
 //                        terminal changes course.
 //   rules-try-it.gif   — a rule you wrote, and the field that answers "would it
 //                        have taken *that*?" for three real commands.
-//   agentbar-tour.gif  — the whole app in one loop: Allow from the island with
-//                        three agents running, the menu bar / island / both
-//                        choice, and a walk through Settings.
+//   agentbar-tour.gif  — the whole app in one loop: Clawd's launch hello, Allow
+//                        from the island with four agents running (one of them
+//                        a third-party agent with its own monogram), the menu
+//                        bar / island / both choice, and a walk through Settings.
+//                        Also written as agentbar-tour.mp4 (H.264) and a poster,
+//                        agentbar-tour.jpg.
 //
 // Run: Scripts/demo/make-gifs.sh [out-dir]. How it works and how to add a GIF:
 // Scripts/demo/README.md.
 import AppKit
+import AVFoundation
 import UniformTypeIdentifiers
 
 @main
@@ -25,7 +29,7 @@ enum FeatureGIFs {
         NSApp.setActivationPolicy(.prohibited)
         DenyWithNote.write(to: URL(fileURLWithPath: out).appendingPathComponent("deny-with-note.gif"))
         RulesTryIt.write(to: URL(fileURLWithPath: out).appendingPathComponent("rules-try-it.gif"))
-        Tour.write(to: URL(fileURLWithPath: out).appendingPathComponent("agentbar-tour.gif"))
+        Tour.write(to: URL(fileURLWithPath: out).appendingPathComponent("agentbar-tour"))
     }
 }
 
@@ -225,6 +229,71 @@ enum Stage {
         }
         CGImageDestinationFinalize(dest)
         print("wrote \(url.path) (\(frames.count) frames)")
+    }
+
+    /// The same frames as an H.264 MP4: frame `i` shows at `i × delay` and the last
+    /// one is held for its own `delay`, so the clip runs as long as the GIF. Frames
+    /// go in as BGRA and the encoder stores 4:2:0, which every player decodes; the
+    /// canvas is cut to even dimensions, which 4:2:0 needs.
+    static func writeMP4(_ frames: [CGImage], delay: Double, to url: URL, bitRate: Int = 320_000) {
+        guard let first = frames.first else { return }
+        let w = first.width & ~1, h = first.height & ~1
+        try? FileManager.default.removeItem(at: url)
+        let writer = try! AVAssetWriter(outputURL: url, fileType: .mp4)
+        writer.shouldOptimizeForNetworkUse = true
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: w, AVVideoHeightKey: h,
+            AVVideoCompressionPropertiesKey: [
+                AVVideoAverageBitRateKey: bitRate,
+                AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
+                AVVideoMaxKeyFrameIntervalKey: 120,
+                AVVideoAllowFrameReorderingKey: true,
+            ] as [String: Any],
+        ])
+        input.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: w, kCVPixelBufferHeightKey as String: h,
+        ])
+        writer.add(input)
+        guard writer.startWriting() else { fatalError("mp4: \(String(describing: writer.error))") }
+        writer.startSession(atSourceTime: .zero)
+        let scale: CMTimeScale = 1000
+        func time(_ i: Int) -> CMTime { CMTime(value: CMTimeValue((Double(i) * delay * Double(scale)).rounded()), timescale: scale) }
+        for (i, f) in frames.enumerated() {
+            while !input.isReadyForMoreMediaData { usleep(2000) }
+            var buffer: CVPixelBuffer?
+            guard let pool = adaptor.pixelBufferPool,
+                  CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess, let buffer
+            else { fatalError("mp4: no pixel buffer") }
+            CVPixelBufferLockBaseAddress(buffer, [])
+            let ctx = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: w, height: h,
+                                bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                                    | CGBitmapInfo.byteOrder32Little.rawValue)!
+            ctx.setFillColor(CGColor(gray: 0, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            ctx.draw(f, in: CGRect(x: 0, y: h - f.height, width: f.width, height: f.height))
+            CVPixelBufferUnlockBaseAddress(buffer, [])
+            guard adaptor.append(buffer, withPresentationTime: time(i)) else {
+                fatalError("mp4: append failed at \(i): \(String(describing: writer.error))")
+            }
+        }
+        input.markAsFinished()
+        writer.endSession(atSourceTime: time(frames.count))   // the last frame keeps its delay
+        let done = DispatchSemaphore(value: 0)
+        writer.finishWriting { done.signal() }
+        done.wait()
+        guard writer.status == .completed else { fatalError("mp4: \(String(describing: writer.error))") }
+        print("wrote \(url.path) (\(frames.count) frames, \(String(format: "%.1f", Double(frames.count) * delay)) s)")
+    }
+
+    static func writeJPEG(_ image: CGImage, quality: Double = 0.85, to url: URL) {
+        let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        CGImageDestinationFinalize(dest)
+        print("wrote \(url.path)")
     }
 
     static func tmp(_ name: String, _ obj: [String: Any]) -> URL {
@@ -501,7 +570,9 @@ enum RulesTryIt {
 enum Tour {
     static let W: CGFloat = 1200, H: CGFloat = 1000
 
-    static func write(to url: URL) {
+    /// `base` without an extension: the tour goes out as `.gif`, `.mp4` and a `.jpg`
+    /// poster, all from the same frames.
+    static func write(to base: URL) {
         NSApp.appearance = NSAppearance(named: .aqua)
         // This process has no bundle, so its icon is a folder and its defaults are
         // its own domain — not AgentBar's. Both are set for the picture: the real
@@ -514,6 +585,11 @@ enum Tour {
         }
         for key in ["soundsEnabled", "globalApprovalShortcut", "launcherShortcut"] {
             UserDefaults.standard.set(true, forKey: key)
+        }
+        defer {   // the next run, and anything else this domain draws, starts clean
+            for key in ["soundsEnabled", "globalApprovalShortcut", "launcherShortcut"] {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
         }
         let now = Int(Date().timeIntervalSince1970)
         func session(_ id: String, _ o: [String: Any]) -> Session {
@@ -529,6 +605,11 @@ enum Tour {
             "project": "api", "started_at": now - 540, "prompt": "speed up the orders query"])
         let copilot = session("tour-copilot", ["agent": "copilot", "state": "done", "label": "",
             "project": "docs", "started_at": now - 3000, "recap": "Rewrote the install guide for Linux"])
+        // An agent AgentBar has no entry for, the way `agentbar report` writes one:
+        // it shows as itself, a monogram in a hue of its own, named by the row.
+        let aider = session("tour-aider", ["agent": "aider", "agent_name": "Aider", "state": "tool",
+            "label": "Editing invoices.py", "project": "billing", "started_at": now - 260,
+            "prompt": "retry failed invoice syncs"])
         let request = ApprovalRequest(fileURL: Stage.tmp("tour-claude-p1", [
             "sessionId": "tour-claude", "agent": "claude", "toolName": "Bash",
             "display": "Bash: git push origin main",
@@ -537,10 +618,10 @@ enum Tour {
             "pid": 1, "hookPid": 1, "ts": now, "cwd": "/tmp/agentbar-demo-tour-claude"]))!
 
         let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
-        func mark(_ id: String) -> NSImage { IconRenderer.shared.sprite(for: Agent.byID(id)).restingColor }
+        func mark(_ s: Session) -> NSImage { IconRenderer.shared.sprite(for: s.agent).restingColor }
         let rowW: CGFloat = 460 - IslandContentView.hPad * 2
         func row(_ s: Session, _ style: IslandRowView.Style) -> NSView {
-            let r = IslandRowView(session: s, mark: mark(s.agentID), style: style, onClick: { _ in })
+            let r = IslandRowView(session: s, mark: mark(s), style: style, onClick: { _ in })
             r.translatesAutoresizingMaskIntoConstraints = false
             r.widthAnchor.constraint(equalToConstant: rowW).isActive = true
             return r
@@ -550,7 +631,8 @@ enum Tour {
         let wrap = NSStackView(views: [card])
         wrap.orientation = .horizontal
         wrap.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 0)
-        let content = Stage.openPanel([row(claude, .hero), wrap, row(codex, .compact), row(copilot, .compact)])
+        let content = Stage.openPanel([row(claude, .hero), wrap, row(codex, .compact), row(aider, .compact),
+                                       row(copilot, .compact)])
         let panelImg = Stage.snapshot(content)
         let allow = Stage.button("Allow", in: content)!
 
@@ -559,10 +641,10 @@ enum Tour {
         let pushing = session("tour-claude-push", ["agent": "claude", "state": "tool",
             "label": "Bash: git push origin main", "project": "webshop", "started_at": now - 1700,
             "prompt": "ship the checkout fix", "model": "claude-opus-5", "term_program": "iTerm.app"])
-        let hero = IslandRowView(session: pushing, mark: mark("claude"), style: .hero, onClick: { _ in })
+        let hero = IslandRowView(session: pushing, mark: mark(pushing), style: .hero, onClick: { _ in })
         hero.translatesAutoresizingMaskIntoConstraints = false
         hero.widthAnchor.constraint(equalToConstant: rowW).isActive = true
-        let busy = Stage.openPanel([hero, row(codex, .compact), row(copilot, .compact)])
+        let busy = Stage.openPanel([hero, row(codex, .compact), row(aider, .compact), row(copilot, .compact)])
         let busyImg = Stage.snapshot(busy)
         let mascot = hero.mascot
         let markAt = Stage.rect(of: mascot, in: busy)
@@ -601,10 +683,11 @@ enum Tour {
             let badge = Stage.text("\(count)", 19, Stage.rgb(0xFFFFFF, 0.65), weight: .semibold, mono: true)
             let mh: CGFloat = 34, mw = mark.map { mh * $0.size.width / max(1, $0.size.height) } ?? 0
             let bw = count > 0 ? badge.size().width + 18 : 0
-            let total = (mark == nil ? 0 : mw + 12) + t.size().width + (count > 0 ? 12 + bw : 0)
+            let tw = label.isEmpty ? 0 : t.size().width
+            let total = (mark == nil ? 0 : mw + (tw > 0 ? 12 : 0)) + tw + (count > 0 ? 12 + bw : 0)
             var x = pillRect.midX - total / 2
             if let mark { mark.draw(in: NSRect(x: x, y: pillRect.midY - mh / 2, width: mw, height: mh)); x += mw + 12 }
-            t.draw(at: NSPoint(x: x, y: pillRect.midY - t.size().height / 2)); x += t.size().width + 12
+            if tw > 0 { t.draw(at: NSPoint(x: x, y: pillRect.midY - t.size().height / 2)); x += tw + 12 }
             if count > 0 {
                 Stage.rgb(0xFFFFFF, 0.12).setFill()
                 Stage.rounded(NSRect(x: x, y: pillRect.midY - 15, width: bw, height: 30), 8).fill()
@@ -724,7 +807,7 @@ enum Tour {
                     }
                 } else if f < 96 {
                     Stage.menuBar(W, H, app: "iTerm2", notch: true)
-                    caption("Allow or deny from the notch · Claude, Codex, Copilot and more")
+                    caption("Allow or deny from the notch · every agent you run, in one list")
                     func open(_ t: CGFloat) { openIsland(panelImg, t) }
                     switch f {
                     case 0..<20:
@@ -781,8 +864,30 @@ enum Tour {
             }
         }
 
-        var frames: [CGImage] = []
-        let total = 280 + peekLength
+        // Scene 0: the launch hello. The pill comes up idle and Clawd waves from it,
+        // the real `MascotEyes.waveFrames` (six frames of `Greeting.frameLength`)
+        // on the resting mark the pill shows — opt-in personality, once a launch.
+        let rest = sprite.restingColor
+        guard let wave = MascotEyes.waveFrames(of: rest) else { fatalError("no claw to wave") }
+        let delay = 0.085
+        let perWave = max(1, Int((MascotPersonality.Greeting.frameLength / delay).rounded()))
+        let helloLead = 3, helloTail = 4
+        var hello: [CGImage] = []
+        for i in 0..<(helloLead + wave.count * perWave + helloTail) {
+            let w = i - helloLead
+            let img = w >= 0 && w / perWave < wave.count ? wave[w / perWave] : rest
+            hello.append(Stage.frame(W, H) {
+                Stage.wallpaper(W, H)
+                Stage.menuBar(W, H, app: "Finder", notch: true)
+                caption("Opt-in personality · Clawd says hello")
+                // It drops out of the notch first: the launch's pill appearing.
+                let t = Stage.smooth(CGFloat(i + 1) / CGFloat(helloLead + 1))
+                pill("", color: .white, mark: img, count: 0, alpha: t, drop: 12 * (1 - t))
+            })
+        }
+
+        var frames: [CGImage] = hello
+        let total = 270 + peekLength   // Shortcuts, the last page, holds ~3 s
         for f in 0..<total { frames.append(scene(f)) }
         // Soften the two cuts between scenes: four frames of cross-fade each.
         func blend(_ a: CGImage, _ b: CGImage, _ t: CGFloat) -> CGImage {
@@ -792,11 +897,18 @@ enum Tour {
                     .draw(in: NSRect(x: 0, y: 0, width: W, height: H), from: .zero, operation: .sourceOver, fraction: t)
             }
         }
-        for cut in [96, 96 + peekLength, 176 + peekLength] {
+        // No fade out of the hello: the same pill, in the same place, starts asking —
+        // and a full-frame fade costs the GIF more than the whole beat.
+        let o = hello.count
+        for cut in [o + 96, o + 96 + peekLength, o + 176 + peekLength] {
             let a = frames[cut - 1], b = frames[cut]
             for i in 0..<4 { frames[cut - 4 + i] = blend(a, b, CGFloat(i + 1) / 5) }
         }
-        Stage.writeGIF(frames, delay: 0.085, to: url)
+        Stage.writeGIF(frames, delay: delay, to: base.appendingPathExtension("gif"))
+        Stage.writeMP4(frames, delay: delay, to: base.appendingPathExtension("mp4"))
+        // The poster: the island open on the approval, the pointer on its way to Allow
+        // and not yet covering it.
+        Stage.writeJPEG(frames[o + 36], to: base.appendingPathExtension("jpg"))
     }
 }
 
