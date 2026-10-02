@@ -23,9 +23,13 @@
 //                                   write one session row for ANY agent, the
 //                                   bridge for agents AgentBar has no hooks for.
 //                                   Status only: it can never create an approval
-//   agentbar install-hooks          wire agent hooks (Claude/Codex/Cursor/Antigravity/
+//   agentbar install-hooks [--skip a,b] [--only a,b]
+//                                   wire agent hooks (Claude/Codex/Cursor/Antigravity/
 //                                   Gemini/Qwen/Copilot/OpenCode) —
-//                                   the Linux equivalent of the macOS app's installer
+//                                   the Linux equivalent of the macOS app's installer.
+//                                   Agents listed in ~/.agentbar/wire-disabled are
+//                                   unwired instead; --skip/--only update that list
+//   agentbar unwire <id> / wire <id> take one agent out / put it back
 
 "use strict";
 const fs = require("fs"), os = require("os"), path = require("path");
@@ -1340,12 +1344,18 @@ function doctor(json) {
   add("hooks.copied", "Hook scripts installed", missing.length ? "fail" : "ok",
       missing.length ? `Missing: ${missing.join(", ")}.` : null,
       missing.length ? "Run `agentbar install-hooks` from a repo checkout." : null);
-  const relevant = Object.entries(SHEBANG_SCRIPTS).filter(([agent]) =>
+  // The agents the person switched off (~/.agentbar/wire-disabled): unwired on
+  // purpose, so nothing about them is a failure or something to repair.
+  const turnedOff = loadWireDisabled();
+  const installed = Object.entries(SHEBANG_SCRIPTS).filter(([agent]) =>
     (INTEGRATIONS.find((i) => i.id === agent) || { presence: [] }).presence
-      .some((d) => there(path.join(H, d)))).map(([, rel]) => rel);
+      .some((d) => there(path.join(H, d))));
+  // Turned off, install-hooks stops pinning that script, and that is fine.
+  const relevant = installed.filter(([agent]) => !turnedOff.has(agent)).map(([, rel]) => rel);
   if (!relevant.length) {
     add("hooks.shebang", "Scripts that run themselves name a real node", "skipped",
-        "Neither Cursor nor Antigravity is installed here.");
+        installed.length ? "Turned off by you — AgentBar leaves those agents alone."
+                         : "Neither Cursor nor Antigravity is installed here.");
   } else {
     const unpinned = relevant.filter((rel) => (read(path.join(hooks, rel)) || "").startsWith("#!/usr/bin/env")).sort();
     add("hooks.shebang", "Scripts that run themselves name a real node", unpinned.length ? "warn" : "ok",
@@ -1368,6 +1378,12 @@ function doctor(json) {
       : i.configs.map((rel) => path.join(H, rel));
     if (!i.presence.some((d) => there(path.join(H, d))) && !extra.some(there)) {
       add(`agent.${i.id}`, i.name, "skipped", "Not installed here.");
+      continue;
+    }
+    // Unwired because the person asked: not a failure, no fix, and no "has not
+    // reported for a fortnight" — of course it has not.
+    if (turnedOff.has(i.id)) {
+      add(`agent.${i.id}`, i.name, "skipped", "Turned off by you — AgentBar leaves its settings alone.");
       continue;
     }
     const needsAll = i.id === "claude";
@@ -1649,7 +1665,305 @@ function writeConfig(file, data) {
   return true;
 }
 
-function installHooks() {
+// A file AgentBar owns outright (Copilot's hooks/agentbar.json, OpenCode's plugin)
+// taken away when its agent is switched off: the diff printed, the file kept beside
+// itself exactly as a rewrite would keep it, then deleted — the path itself, not
+// what a link points at, since removing the link is what takes it out of the
+// directory the agent scans. Nothing there is nothing to do. Returns whether it acted.
+function removeConfig(file) {
+  let before;
+  try { before = fs.readFileSync(file, "utf8"); } catch { return false; }
+  const diff = unifiedDiff(before, "", file, "/dev/null");
+  for (const line of diff.replace(/\n$/, "").split("\n")) {
+    console.log(line.startsWith("+++") || line.startsWith("---") ? bold(line)
+      : line.startsWith("@@") ? blue(line) : line.startsWith("-") ? red(line) : dim(line));
+  }
+  const stamp = file + BACKUP_MARK + backupStamp(nowMs());
+  let backup = stamp;
+  for (let n = 1; fs.existsSync(backup); n++) backup = `${stamp}-${n}`;
+  fs.copyFileSync(file, backup);
+  fs.rmSync(file, { force: true });
+  const ours = backupsOf(file);
+  for (const old of ours.slice(0, Math.max(0, ours.length - BACKUP_KEEP)))
+    fs.rmSync(path.join(path.dirname(file), old), { force: true });
+  console.log(dim(`kept it as ${backup}`));
+  backupsKept++;
+  return true;
+}
+
+// MARK: - Which agents to leave alone (~/.agentbar/wire-disabled)
+
+// The same file, and the same reading rules, as the macOS app's WiringPrefs: one
+// agent id per line, `#` starts a comment, blanks go, a token that is not shaped
+// like an id is skipped, and an id this build does not know is kept on rewrite —
+// so a newer app's agent survives this CLI saving the file. Missing or unreadable
+// means nothing is disabled, which is exactly the behaviour before the file existed.
+const wireDisabledFile = path.join(base, "wire-disabled");
+const WIRE_HEADER = ["# Agents AgentBar leaves unwired, one id per line.",
+                     "# Written by AgentBar (Settings > Diagnostics > Agents) and the agentbar CLI."];
+const WIRE_ID = /^[a-z0-9][a-z0-9_-]*$/;
+// Every agent install-hooks knows how to wire — what `--only` speaks for.
+const WIRABLE = INTEGRATIONS.map((i) => i.id);
+function parseWireDisabled(text) {
+  const out = new Set();
+  for (const raw of String(text).split(/\r\n|[\n\r\u000B\u000C\u0085\u2028\u2029]/)) {
+    const id = raw.split("#")[0].trim().toLowerCase();
+    if (id && WIRE_ID.test(id)) out.add(id);
+  }
+  return out;
+}
+function loadWireDisabled() {
+  try { return parseWireDisabled(fs.readFileSync(wireDisabledFile, "utf8")); } catch { return new Set(); }
+}
+// An empty set removes the file, so "nothing disabled" has one spelling on disk.
+function saveWireDisabled(ids) {
+  if (!ids.size) { fs.rmSync(wireDisabledFile, { force: true }); return; }
+  fs.mkdirSync(base, { recursive: true });
+  const t = wireDisabledFile + "." + process.pid + ".tmp";
+  fs.writeFileSync(t, WIRE_HEADER.concat([...ids].sort()).join("\n") + "\n");
+  fs.chmodSync(t, 0o644);
+  fs.renameSync(t, wireDisabledFile);
+}
+// `a,b` (or repeated flags) into known agent ids; an unknown one is a typo, not an
+// agent to switch off, so it stops the run before anything is written.
+function wireIds(list, flag) {
+  const ids = list.flatMap((v) => String(v).split(",")).map((s) => s.trim().toLowerCase()).filter(Boolean);
+  const bad = ids.filter((id) => !WIRABLE.includes(id));
+  if (bad.length || !ids.length) {
+    console.error(`agentbar ${flag}: ${bad.length ? `unknown agent ${bad.join(", ")}` : "needs an agent id"}`
+      + ` (one of ${WIRABLE.join(", ")})`);
+    process.exit(2);
+  }
+  return ids;
+}
+
+// MARK: - Shared by wiring and unwiring
+
+// Present-but-unparseable (JSONC comments, trailing comma, torn write) is skipped,
+// never overwritten: rewriting from {} would silently destroy the person's config.
+function readConfigFile(file) {
+  if (!fs.existsSync(file)) return {};
+  const parsed = readJSON(file);
+  if (!parsed || typeof parsed !== "object") {
+    console.error(`skip: ${file} exists but is not parseable JSON — left untouched`);
+    return null;
+  }
+  return parsed;
+}
+const sortedStringify = (v) => JSON.stringify(v, (k, val) =>
+  val && typeof val === "object" && !Array.isArray(val)
+    ? Object.keys(val).sort().reduce((o, kk) => ((o[kk] = val[kk]), o), {})
+    : val, 2);
+const isPlainObject = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+
+// Missing is a fresh install; present-and-unreadable or present-and-not-UTF-8 is
+// not empty. Read as "", it planned a fresh file and replaced the person's whole
+// config.toml with AgentBar's two keys — with no backup worth having, since the
+// backup reads the same bytes. The rule readConfigFile keeps for the JSON configs,
+// and the one HookInstaller.installCodex keeps on macOS.
+function readCodexConfig(file) {
+  let buf;
+  try { buf = fs.readFileSync(file); } catch (e) {
+    if (e && e.code === "ENOENT") return "";
+    console.error(`skip: ${file} exists but could not be read (${(e && e.code) || e}) — left untouched`);
+    return null;
+  }
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch {
+    console.error(`skip: ${file} is not UTF-8 — left untouched`);
+    return null;
+  }
+}
+const CODEX_BEGIN = "# >>> agentbar >>> written by AgentBar; edit outside these two lines";
+const CODEX_END = "# <<< agentbar <<<";
+
+// MARK: - Unwiring (an agent the person switched off)
+
+// The rules in `hooks` that run one of our scripts, gone, and any event left empty
+// with them — HookInstaller.strippingOurs. A rule is ours when the marker is in its
+// own `command` (Cursor's flat shape) or in any nested `hooks[].command` (Claude,
+// Qwen, Gemini). A value that is not a list of rules is left exactly as it is.
+function strippingOurs(hooks, marker) {
+  const has = (v) => typeof v === "string" && v.includes(marker);
+  const ours = (rule) => has(rule.command) ||
+    (Array.isArray(rule.hooks) && rule.hooks.every(isPlainObject) ? rule.hooks : []).some((h) => has(h.command));
+  const out = Object.assign({}, hooks);
+  let removed = false;
+  for (const [event, value] of Object.entries(hooks)) {
+    if (!Array.isArray(value) || !value.every(isPlainObject)) continue;
+    const rules = value.filter((r) => !ours(r));
+    if (rules.length === value.length) continue;
+    removed = true;
+    if (rules.length) out[event] = rules; else delete out[event];
+  }
+  return { hooks: out, removed };
+}
+
+// Our rules out of a config that keeps them among the person's under `hooks`; an
+// emptied `hooks` goes; serialized exactly the way install-hooks serializes. A file
+// holding nothing of ours is not rewritten at all — unwiring must never reformat a
+// file it had no part in. Returns whether it wrote.
+function unwireHooksJSON(file, marker) {
+  if (!fs.existsSync(file)) return false;
+  const root = readConfigFile(file);
+  if (!isPlainObject(root) || !isPlainObject(root.hooks)) return false;
+  const { hooks, removed } = strippingOurs(root.hooks, marker);
+  if (!removed) return false;
+  if (Object.keys(hooks).length) root.hooks = hooks; else delete root.hooks;
+  return writeConfig(file, sortedStringify(root) + "\n");
+}
+
+// The config without AgentBar's hooks block and without AgentBar's own `notify`
+// line — HookInstaller.codexUnwired, the inverse of what install-hooks writes, so
+// wiring and then unwiring a file gives back the file (bar a final newline the
+// install had to add). Someone else's notify is never touched, and neither is our
+// marker in a shape the notify pattern cannot read (a comment, say).
+function codexUnwired(config) {
+  let text = config;
+  const b = text.indexOf(CODEX_BEGIN);
+  const e = b < 0 ? -1 : text.indexOf(CODEX_END, b + CODEX_BEGIN.length);
+  if (b >= 0 && e >= 0) {
+    let lower = b, upper = e + CODEX_END.length;
+    if (upper < text.length && text[upper] === "\n") upper++;
+    // The blank line install-hooks put above the block.
+    if (text.slice(0, lower).endsWith("\n\n")) lower--;
+    text = text.slice(0, lower) + text.slice(upper);
+  }
+  const line = /^[ \t]*notify[ \t]*=[ \t]*\[[^\]]*\/\.agentbar\/hooks\/codex\/[^\]]*\]/m.exec(text);
+  if (line) {
+    let end = line.index + line[0].length;
+    if (end < text.length && text[end] === "\n") end++;
+    text = text.slice(0, line.index) + text.slice(end);
+  }
+  return text;
+}
+
+const CLAUDE_MARK = "/.agentbar/hooks/claude/";
+// One agent's settings without AgentBar in them. Each prints what it wrote (or
+// that there was nothing of ours) under the same column install-hooks uses.
+function unwireAgent(id, claudeDirs) {
+  const H = os.homedir();
+  const said = (name, changed) => console.log(`${changed ? "unwired" : "off    "}  ${name}`);
+  switch (id) {
+    case "claude":
+      for (const d of claudeDirs) {
+        const file = path.join(d, "settings.json");
+        said(`claude  ${file}`, unwireHooksJSON(file, CLAUDE_MARK));
+      }
+      break;
+    case "qwen": {
+      const file = path.join(H, ".qwen", "settings.json");
+      said(`qwen    ${file}`, unwireHooksJSON(file, CLAUDE_MARK));
+      break;
+    }
+    case "gemini": {
+      const file = path.join(H, ".gemini", "settings.json");
+      said(`gemini  ${file}`, unwireHooksJSON(file, "/.agentbar/hooks/gemini/"));
+      break;
+    }
+    // `version` stays: install-hooks adds it only when missing, and Cursor wants it.
+    case "cursor": {
+      const file = path.join(H, ".cursor", "hooks.json");
+      said(`cursor  ${file}`, unwireHooksJSON(file, "/.agentbar/hooks/cursor/"));
+      break;
+    }
+    // We own exactly one top-level key in each Antigravity hooks.json.
+    case "antigravity":
+      for (const d of ["antigravity", "antigravity-cli"].map((x) => path.join(H, ".gemini", x))) {
+        const file = path.join(d, "hooks.json");
+        if (!fs.existsSync(d) || !fs.existsSync(file)) continue;
+        const root = readConfigFile(file);
+        let changed = false;
+        if (isPlainObject(root) && Object.prototype.hasOwnProperty.call(root, "agentbar")) {
+          delete root.agentbar;
+          changed = writeConfig(file, sortedStringify(root) + "\n");
+        }
+        said(`antigr  ${file}`, changed);
+      }
+      break;
+    // The whole file is ours, so the whole file goes — kept beside itself first.
+    case "copilot": {
+      const file = path.join(process.env.COPILOT_HOME || path.join(H, ".copilot"), "hooks", "agentbar.json");
+      said(`copilot ${file}`, removeConfig(file));
+      break;
+    }
+    case "opencode": {
+      const file = path.join(H, ".config", "opencode", "plugins", "agentbar.js");
+      said(`opencode ${file}`, removeConfig(file));
+      break;
+    }
+    // Same refusals as wiring: unreadable or not UTF-8 is left alone.
+    case "codex": {
+      const file = path.join(H, ".codex", "config.toml");
+      if (!fs.existsSync(file)) { said(`codex   ${file}`, false); break; }
+      const text = readCodexConfig(file);
+      if (text === null) break;
+      const next = codexUnwired(text);
+      said(`codex   ${file}`, next !== text && writeConfig(file, next));
+      break;
+    }
+  }
+}
+
+// `agentbar wire <id>` / `agentbar unwire <id>`: the choice is saved first — so the
+// next install-hooks (and the macOS app's next launch) agrees with it even if this
+// run fails part way — and then that one agent is wired or unwired, nobody else.
+function setWired(argv, wired) {
+  const ids = wireIds(argv.filter((a) => !a.startsWith("--")), wired ? "wire" : "unwire");
+  const off = loadWireDisabled();
+  for (const id of ids) { if (wired) off.delete(id); else off.add(id); }
+  saveWireDisabled(off);
+  if (wired) { for (const id of ids) installHooks({ only: id, args: [] }); return; }
+  const claudeDirs = ids.includes("claude") ? claudeConfigDirs((msg) => console.error(msg)) : [];
+  for (const id of ids) unwireAgent(id, claudeDirs);
+  console.log(`Left alone from now on: ${ids.join(", ")} (listed in ${wireDisabledFile}). `
+    + "Sessions already running keep the hooks they started with.");
+  if (backupsKept) console.log(`Each settings file changed above was kept as it was, beside itself (*${BACKUP_MARK}<time>; the last ${BACKUP_KEEP} stay).`);
+}
+
+function installHooks({ only = null, args = [] } = {}) {
+  // --skip a,b adds to ~/.agentbar/wire-disabled; --only a,b makes every other
+  // agent install-hooks knows the disabled set (ids it does not know stay as they
+  // were). The file is updated first and then the run obeys it, like every run.
+  const flag = (name) => {
+    const vals = [];
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === name) {
+        if (i + 1 >= args.length) { console.error(`agentbar install-hooks: ${name} needs a list of agent ids`); process.exit(2); }
+        vals.push(args[++i]);
+      } else if (args[i].startsWith(name + "=")) vals.push(args[i].slice(name.length + 1));
+    }
+    return vals;
+  };
+  const unknown = args.filter((a, i) => a.startsWith("--") && !/^--(skip|only)(=|$)/.test(a)
+    && !(i > 0 && /^--(skip|only)$/.test(args[i - 1])));
+  if (unknown.length) { console.error(`agentbar install-hooks: unknown argument ${unknown[0]}`); process.exit(2); }
+  const skipList = flag("--skip"), onlyList = flag("--only");
+  if (skipList.length || onlyList.length) {
+    let next = loadWireDisabled();
+    if (onlyList.length) {
+      const keep = wireIds(onlyList, "install-hooks --only");
+      next = new Set([...next].filter((id) => !WIRABLE.includes(id))
+        .concat(WIRABLE.filter((id) => !keep.includes(id))));
+    }
+    for (const id of skipList.length ? wireIds(skipList, "install-hooks --skip") : []) next.add(id);
+    saveWireDisabled(next);
+    console.log(next.size ? `Left alone: ${[...next].sort().join(", ")} (${wireDisabledFile})`
+                          : `Nothing left alone (${wireDisabledFile} removed)`);
+  }
+  const disabled = loadWireDisabled();
+  const want = (id) => !only || only === id;
+  const off = (id) => want(id) && disabled.has(id);
+  const on = (id) => want(id) && !disabled.has(id);
+  const claudeDirs = claudeConfigDirs((msg) => console.error(msg));
+  // Switched-off agents are unwired on every run, so a hand-edited wire-disabled
+  // (or the app's) takes effect here too. Unwiring something already unwired
+  // writes nothing.
+  for (const id of WIRABLE) if (off(id)) unwireAgent(id, claudeDirs);
+  if (!WIRABLE.some(on)) {
+    if (backupsKept) console.log(`Each settings file changed above was kept as it was, beside itself (*${BACKUP_MARK}<time>; the last ${BACKUP_KEEP} stay).`);
+    return;
+  }
+
   const srcHooks = path.join(__dirname, "..", "hooks");
   if (!fs.existsSync(srcHooks)) { console.error("hooks/ not found next to this CLI — run from a repo checkout"); process.exit(1); }
   const hooksDir = path.join(base, "hooks");
@@ -1686,28 +2000,16 @@ function installHooks() {
     fs.chmodSync(file, 0o755);
   };
   const cursorJs = path.join(hooksDir, "cursor", "cursor.js");
-  pinNodeShebang(cursorJs);
+  // Only for an agent this run wires — the same rule doctor's hooks.shebang reads.
+  if (on("cursor")) pinNodeShebang(cursorJs);
 
-  const readConfig = (file) => {
-    if (!fs.existsSync(file)) return {};
-    const parsed = readJSON(file);
-    if (!parsed || typeof parsed !== "object") {
-      console.error(`skip: ${file} exists but is not parseable JSON — left untouched`);
-      return null;
-    }
-    return parsed;
-  };
-  const sortedStringify = (v) => JSON.stringify(v, (k, val) =>
-    val && typeof val === "object" && !Array.isArray(val)
-      ? Object.keys(val).sort().reduce((o, kk) => ((o[kk] = val[kk]), o), {})
-      : val, 2);
+  const readConfig = readConfigFile;
   // Every agent's settings go through writeConfig: the diff first, then the backup,
   // then the atomic write — and none of it when the content is already there.
   const writeIfChanged = (file, root) => writeConfig(file, sortedStringify(root) + "\n");
   const report = (name, changed) => console.log(`${changed ? "wired" : "ok   "}  ${name}`);
 
   // Claude Code — <configDir>/settings.json (default + CLAUDE_CONFIG_DIR + hint file)
-  const claudeDirs = claudeConfigDirs((msg) => console.error(msg));
   const dir = path.join(hooksDir, "claude");
   const claudeEvents = [
     ["SessionStart", `"${node}" "${dir}/lifecycle.js" start`, false, null],
@@ -1719,7 +2021,7 @@ function installHooks() {
     ["Stop", `"${node}" "${dir}/update.js" stop`, false, null],
     ["PreCompact", `"${node}" "${dir}/update.js" compact`, false, null],
   ];
-  for (const cfgDir of claudeDirs) {
+  for (const cfgDir of on("claude") ? claudeDirs : []) {
     const file = path.join(cfgDir, "settings.json");
     const root = readConfig(file);
     if (root === null) continue;
@@ -1742,25 +2044,9 @@ function installHooks() {
 
   // Codex — ~/.codex/config.toml notify hook (append-only, never rewrite TOML)
   const codexDir = path.join(os.homedir(), ".codex");
-  // Missing is a fresh install; present-and-unreadable or present-and-not-UTF-8 is
-  // not empty. Read as "", it planned a fresh file and replaced the person's whole
-  // config.toml with AgentBar's two keys — with no backup worth having, since the
-  // backup reads the same bytes. The rule readConfig keeps for the JSON configs,
-  // and the one HookInstaller.installCodex keeps on macOS.
-  const readCodexConfig = (file) => {
-    let buf;
-    try { buf = fs.readFileSync(file); } catch (e) {
-      if (e && e.code === "ENOENT") return "";
-      console.error(`skip: ${file} exists but could not be read (${(e && e.code) || e}) — left untouched`);
-      return null;
-    }
-    try { return new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch {
-      console.error(`skip: ${file} is not UTF-8 — left untouched`);
-      return null;
-    }
-  };
+  // Present-and-unreadable or not UTF-8 is skipped, never read as empty (readCodexConfig).
   const codexFile = path.join(codexDir, "config.toml");
-  const codexText = fs.existsSync(codexDir) ? readCodexConfig(codexFile) : null;
+  const codexText = on("codex") && fs.existsSync(codexDir) ? readCodexConfig(codexFile) : null;
   if (codexText !== null) {
     const file = codexFile;
     let toml = codexText;
@@ -1775,8 +2061,6 @@ function installHooks() {
     // AgentBar's own hooks block, cut out before any "is notify already ours?"
     // question — it carries the same path on every line, and a blind match would
     // read it as a wired notify and never install notify again.
-    const CODEX_BEGIN = "# >>> agentbar >>> written by AgentBar; edit outside these two lines";
-    const CODEX_END = "# <<< agentbar <<<";
     const withoutBlock = (t) => {
       const b = t.indexOf(CODEX_BEGIN);
       if (b < 0) return t;
@@ -1870,7 +2154,7 @@ function installHooks() {
 
   // Cursor — ~/.cursor/hooks.json (command is a single executable path)
   const cursorDir = path.join(os.homedir(), ".cursor");
-  if (fs.existsSync(cursorDir)) {
+  if (on("cursor") && fs.existsSync(cursorDir)) {
     const file = path.join(cursorDir, "hooks.json");
     const root = readConfig(file);
     if (root !== null) {
@@ -1894,7 +2178,7 @@ function installHooks() {
   const antigravityDirs = ["antigravity", "antigravity-cli"]
     .map((d) => path.join(os.homedir(), ".gemini", d))
     .filter((d) => fs.existsSync(d));
-  if (antigravityDirs.length) {
+  if (on("antigravity") && antigravityDirs.length) {
     pinNodeShebang(antigravityJs);
     const group = {};
     for (const ev of ["PreInvocation", "PreToolUse", "PostToolUse", "PostInvocation", "Stop"]) {
@@ -1913,7 +2197,7 @@ function installHooks() {
 
   // Gemini — ~/.gemini/settings.json (timeout in ms)
   const geminiDir = path.join(os.homedir(), ".gemini");
-  if (fs.existsSync(geminiDir)) {
+  if (on("gemini") && fs.existsSync(geminiDir)) {
     const file = path.join(geminiDir, "settings.json");
     const root = readConfig(file);
     if (root !== null) {
@@ -1936,7 +2220,7 @@ function installHooks() {
   // unverified against permission.js, and a blocking hook must never be wired on
   // faith. Timeouts here are milliseconds (Qwen), not seconds (Claude).
   const qwenDir = path.join(os.homedir(), ".qwen");
-  if (fs.existsSync(qwenDir)) {
+  if (on("qwen") && fs.existsSync(qwenDir)) {
     const file = path.join(qwenDir, "settings.json");
     const root = readConfig(file);
     if (root !== null) {
@@ -1980,7 +2264,7 @@ function installHooks() {
   // AgentBar owns this whole file; Copilot loads every *.json in the dir, so the
   // user's own hooks live in theirs and are never touched.
   const copilotDir = process.env.COPILOT_HOME || path.join(os.homedir(), ".copilot");
-  if (fs.existsSync(copilotDir)) {
+  if (on("copilot") && fs.existsSync(copilotDir)) {
     const file = path.join(copilotDir, "hooks", "agentbar.json");
     const copilotEvents = [
       ["SessionStart", "lifecycle.js", "start"],
@@ -2016,7 +2300,7 @@ function installHooks() {
   // like there, not diffed or backed up: it is AgentBar's own code, not a setting
   // of the person's, and an old copy of it is nothing to go back to.
   const opencodeDir = path.join(os.homedir(), ".config", "opencode");
-  if (fs.existsSync(opencodeDir)) {
+  if (on("opencode") && fs.existsSync(opencodeDir)) {
     const file = path.join(opencodeDir, "plugins", "agentbar.js");
     const src = fs.readFileSync(path.join(hooksDir, "opencode", "agentbar.js"), "utf8");
     let changed = true;
@@ -2158,7 +2442,9 @@ switch (cmd) {
   case "rules": printRules(json); break;
   case "forget": forget(); break;
   case "doctor": doctor(json); break;
-  case "install-hooks": installHooks(); break;
+  case "install-hooks": installHooks({ args: argv }); break;
+  case "wire": setWired(argv, true); break;
+  case "unwire": setWired(argv, false); break;
   case "report": reportSession(argv); break;
   case "--help": case "help": default:
     console.log(`agentbar — AI coding agents' status & remote approval (file protocol: ~/.agentbar)
@@ -2184,6 +2470,11 @@ switch (cmd) {
                                   idle|thinking|tool|question|done|error|end (end removes it).
                                   Pass --pid with the agent's pid from a one-shot call.
                                   Status only — never an approval
-  agentbar install-hooks          wire Claude/Codex/Cursor/Antigravity/Gemini/Qwen/Copilot/OpenCode hooks (Linux installer)`);
+  agentbar install-hooks [--skip a,b] [--only a,b]
+                                  wire Claude/Codex/Cursor/Antigravity/Gemini/Qwen/Copilot/OpenCode hooks
+                                  (Linux installer); agents in ~/.agentbar/wire-disabled are unwired instead.
+                                  --skip adds to that list, --only turns off every agent not named
+  agentbar unwire <id>            take one agent out (its settings restored, the choice remembered)
+  agentbar wire <id>              put it back`);
     break;
 }

@@ -21,6 +21,7 @@ locks. All timestamps (`ts`) are Unix seconds.
   config-changes.json  the macOS installer's last settings writes, as diffs (writer: the app only; mode 0600)
   hooks/       installed copies of the hook scripts (refreshed by the installer)
   claude-config-dir  optional hint: custom CLAUDE_CONFIG_DIR path (one line)
+  wire-disabled  agents the installers leave unwired, one id per line (writer: frontends)
 ```
 
 ## state.d — sessions
@@ -481,6 +482,40 @@ the live-request check is one table, and a second implementation of it is a seco
 thing to keep byte-identical in the one place where drifting apart means approving
 something nobody meant to. (`shape` is already normalised twice — in
 `DecisionLedger.swift` and in the CLI — and that is one copy too many already.)
+
+## wire-disabled — agents the person switched off
+
+Optional. `~/.agentbar/wire-disabled` lists the agents both installers — the macOS
+app's on every launch, the CLI's `install-hooks` — must **unwire** instead of wire:
+
+```
+# Agents AgentBar leaves unwired, one id per line.
+# Written by AgentBar (Settings > Diagnostics > Agents) and the agentbar CLI.
+cursor
+gemini   # a trailing comment too
+```
+
+- One agent id per line (the ids above). Everything after `#` is a comment;
+  surrounding blanks are trimmed; ids are lowercased; a line that is not
+  `^[a-z0-9][a-z0-9_-]*$` is skipped, never trusted.
+- An id a reader does not know is **kept** when it rewrites the file, so a newer
+  frontend's agent survives an older one saving it.
+- Missing or unreadable means nothing is disabled — the behaviour before the file
+  existed. Writers write it atomically, mode `0644`, as the two header lines above
+  followed by the ids sorted; saving an empty set **deletes** the file, so "nothing
+  disabled" has one spelling on disk.
+- Unwiring is the inverse of wiring: AgentBar's rules come out of each config (and
+  an event, or `hooks`, left empty goes with them), Antigravity loses its
+  top-level `agentbar` key, Codex loses the marker block and AgentBar's own
+  `notify` line (someone else's stays), and the two files AgentBar owns outright —
+  Copilot's `hooks/agentbar.json`, OpenCode's plugin — are deleted. Every change is
+  backed up beside the file first, exactly like a wiring write; a file holding
+  nothing of AgentBar's is never rewritten. Sessions already running keep the hooks
+  they started with.
+- CLI: `agentbar unwire <id>` / `agentbar wire <id>` change one agent;
+  `install-hooks --skip a,b` adds to the list and `--only a,b` disables every other
+  agent it knows (unknown ids in the file stay). Diagnostics report a listed agent as
+  `skipped`, never as a failure.
 
 ## Adding a frontend or an agent
 

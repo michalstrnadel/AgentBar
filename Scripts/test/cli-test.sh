@@ -695,7 +695,7 @@ rm -f "$HOME/.agentbar/state.d/codex-cacheonly.json"
 "$CLI" status >/dev/null 2>&1
 check "a cache-only codex weight is kept" 'grep -q "\"cacheRead\":4000" "$HOME/.agentbar/history.jsonl"'
 check "and its input is not double-counted" 'grep -q "\"in\":0" "$HOME/.agentbar/history.jsonl"'
-unset CODEX_HOME
+unset CODEX_HOME COPILOT_HOME
 
 # --- a quiet Antigravity session decays, here as well as in the app --------------
 # Antigravity 2.3.x fires only PostToolUse: there is no terminal event at all, so a
@@ -771,6 +771,116 @@ check "report caps agent_name at 24"         'node -e "process.exit(JSON.parse(r
 fresh_home
 printf '{"agent":"claude","state":"tool","pid":%s,"ts":%s}' $$ "$(date +%s)" > "$HOME/.agentbar/state.d/nostarted.json"
 check "a row without started is shown"       '"$CLI" status --json | grep -q "\"id\": \"nostarted\""'
+
+# --- turning an agent off: ~/.agentbar/wire-disabled, unwire, wire -----------------
+# The same file the macOS app's WiringPrefs reads and writes. Unwiring is the
+# inverse of wiring: every config comes back as it was (as the serializer writes
+# it), the person's own entries stay, and AgentBar's own files go — kept first.
+WD() { cat "$HOME/.agentbar/wire-disabled" 2>/dev/null; }
+pretty() { "$NODE" -e '
+const sort = (v) => Array.isArray(v) ? v.map(sort) : v && typeof v === "object"
+  ? Object.keys(v).sort().reduce((o, k) => ((o[k] = sort(v[k])), o), {}) : v;
+process.stdout.write(JSON.stringify(sort(JSON.parse(process.argv[1])), null, 2) + "\n");' "$1"; }
+fresh_home
+mkdir -p "$HOME/.claude" "$HOME/.qwen" "$HOME/.gemini/antigravity" "$HOME/.cursor" "$HOME/.codex" \
+         "$HOME/.copilot/hooks" "$HOME/.config/opencode"
+pretty '{"theme":"dark","hooks":{"Stop":[{"hooks":[{"type":"command","command":"my-stop"}]}]}}' > "$HOME/.claude/settings.json"
+pretty '{"model":"q","hooks":{"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"mine"}]}]}}' > "$HOME/.qwen/settings.json"
+pretty '{"theme":"x"}' > "$HOME/.gemini/settings.json"
+pretty '{"version":1,"hooks":{"stop":[{"command":"/usr/local/bin/my-cursor-hook"}]}}' > "$HOME/.cursor/hooks.json"
+pretty '{"mine":{"Stop":[{"hooks":[{"type":"command","command":"x"}]}]}}' > "$HOME/.gemini/antigravity/hooks.json"
+printf 'model = "o3"\n\n[profiles.fast]\nmodel = "o4-mini"\n' > "$HOME/.codex/config.toml"
+echo '{"version":1,"hooks":{}}' > "$HOME/.copilot/hooks/mine.json"
+for f in .claude/settings.json .qwen/settings.json .gemini/settings.json .cursor/hooks.json .gemini/antigravity/hooks.json .codex/config.toml; do
+  cp "$HOME/$f" "$HOME/$f.orig"
+done
+"$CLI" install-hooks >/dev/null 2>&1
+check "unwire: everything wired first"  'grep -q agentbar "$HOME/.claude/settings.json" && grep -q agentbar "$HOME/.qwen/settings.json" && grep -q agentbar "$HOME/.gemini/settings.json" && grep -q agentbar "$HOME/.cursor/hooks.json" && grep -q agentbar "$HOME/.gemini/antigravity/hooks.json" && grep -q agentbar "$HOME/.codex/config.toml" && [ -f "$HOME/.copilot/hooks/agentbar.json" ] && [ -f "$HOME/.config/opencode/plugins/agentbar.js" ]'
+AGENTBAR_NOW=1790100000 "$CLI" unwire claude >/dev/null 2>&1
+check "unwire claude restores the file"   'cmp -s "$HOME/.claude/settings.json" "$HOME/.claude/settings.json.orig"'
+check "unwire claude records the choice"  '[ "$(WD | grep -v "^#")" = claude ]'
+check "unwire claude touches nobody else" 'grep -q agentbar "$HOME/.qwen/settings.json" && grep -q agentbar "$HOME/.codex/config.toml"'
+AGENTBAR_NOW=1790100000 "$CLI" unwire qwen gemini cursor antigravity codex >/dev/null 2>&1
+check "unwire qwen keeps the person's rule"  'cmp -s "$HOME/.qwen/settings.json" "$HOME/.qwen/settings.json.orig"'
+check "unwire gemini restores the file"      'cmp -s "$HOME/.gemini/settings.json" "$HOME/.gemini/settings.json.orig"'
+check "unwire cursor keeps version + theirs" 'cmp -s "$HOME/.cursor/hooks.json" "$HOME/.cursor/hooks.json.orig"'
+check "unwire antigravity drops our key only" 'cmp -s "$HOME/.gemini/antigravity/hooks.json" "$HOME/.gemini/antigravity/hooks.json.orig"'
+check "unwire codex restores the toml"      'cmp -s "$HOME/.codex/config.toml" "$HOME/.codex/config.toml.orig"'
+check "unwire keeps a backup beside it"     'ls "$HOME/.codex" | grep -q "^config\.toml\.agentbar-bak-" && ls "$HOME/.claude" | grep -q "^settings\.json\.agentbar-bak-"'
+OUT="$(AGENTBAR_NOW=1790100000 "$CLI" unwire copilot opencode 2>&1)"
+check "unwire copilot deletes our file"     '[ ! -e "$HOME/.copilot/hooks/agentbar.json" ] && [ "$(cat "$HOME/.copilot/hooks/mine.json")" = "{\"version\":1,\"hooks\":{}}" ]'
+check "unwire copilot keeps it first"       'ls "$HOME/.copilot/hooks" | grep -q "^agentbar\.json\.agentbar-bak-20" && ! ls "$HOME/.copilot/hooks" | grep "agentbar-bak" | grep -q "\.json$"'
+check "unwire opencode deletes the plugin"  '[ ! -e "$HOME/.config/opencode/plugins/agentbar.js" ] && ls "$HOME/.config/opencode/plugins" | grep -q "^agentbar\.js\.agentbar-bak-"'
+check "unwire prints the removal diff"      'echo "$OUT" | grep -q "^+++ /dev/null"'
+check "wire-disabled lists all, sorted"     '[ "$(WD | grep -v "^#" | tr "\n" " ")" = "antigravity claude codex copilot cursor gemini opencode qwen " ]'
+check "wire-disabled has the app header"    '[ "$(WD | head -2)" = "$(printf "# Agents AgentBar leaves unwired, one id per line.\n# Written by AgentBar (Settings > Diagnostics > Agents) and the agentbar CLI.")" ]'
+check "wire-disabled is 0644"               '[ "$(stat -c %a "$HOME/.agentbar/wire-disabled" 2>/dev/null || stat -f %Lp "$HOME/.agentbar/wire-disabled")" = 644 ]'
+# A switched-off agent is not re-wired by the next install-hooks, and a second
+# unwire of something already unwired writes nothing at all.
+BAKS="$(ls -R "$HOME" | grep -c agentbar-bak)"
+"$CLI" install-hooks >/dev/null 2>&1
+check "install-hooks leaves disabled alone" 'cmp -s "$HOME/.claude/settings.json" "$HOME/.claude/settings.json.orig" && cmp -s "$HOME/.codex/config.toml" "$HOME/.codex/config.toml.orig" && [ ! -e "$HOME/.copilot/hooks/agentbar.json" ] && [ ! -e "$HOME/.config/opencode/plugins/agentbar.js" ]'
+check "unwiring twice writes nothing"       '[ "$(ls -R "$HOME" | grep -c agentbar-bak)" = "$BAKS" ]'
+# wire re-enables exactly one agent; saving the empty set removes the file.
+"$CLI" wire gemini >/dev/null 2>&1
+check "wire re-enables the agent"           'grep -q "/.agentbar/hooks/gemini/" "$HOME/.gemini/settings.json" && ! WD | grep -qx gemini'
+check "wire touches nobody else"            'cmp -s "$HOME/.claude/settings.json" "$HOME/.claude/settings.json.orig"'
+"$CLI" install-hooks --only claude,gemini,qwen,codex,cursor,antigravity,copilot,opencode >/dev/null 2>&1
+check "--only everything removes the file"  '[ ! -e "$HOME/.agentbar/wire-disabled" ] && grep -q agentbar "$HOME/.claude/settings.json"'
+"$CLI" install-hooks --skip cursor --skip=qwen >/dev/null 2>&1
+check "--skip adds to the file"             '[ "$(WD | grep -v "^#" | tr "\n" " ")" = "cursor qwen " ]'
+check "--skip unwires right away"           'cmp -s "$HOME/.cursor/hooks.json" "$HOME/.cursor/hooks.json.orig" && cmp -s "$HOME/.qwen/settings.json" "$HOME/.qwen/settings.json.orig"'
+printf 'future-agent\n' >> "$HOME/.agentbar/wire-disabled"
+"$CLI" install-hooks --only claude >/dev/null 2>&1
+check "--only sets the rest disabled"       '[ "$(WD | grep -v "^#" | tr "\n" " ")" = "antigravity codex copilot cursor future-agent gemini opencode qwen " ]'
+check "--only leaves the named one wired"   'grep -q "/.agentbar/hooks/claude/" "$HOME/.claude/settings.json" && ! grep -q agentbar "$HOME/.gemini/settings.json"'
+"$CLI" install-hooks --skip bogus >/dev/null 2>&1; RC=$?
+check "--skip refuses an unknown agent"     '[ "$RC" -ne 0 ] && ! WD | grep -q bogus'
+"$CLI" unwire >/dev/null 2>&1; RC=$?
+check "unwire needs an id"                  '[ "$RC" -ne 0 ]'
+
+# Foreign entries in the same event survive, and so does someone else's notify.
+fresh_home
+mkdir -p "$HOME/.claude" "$HOME/.codex"
+printf 'notify = ["/usr/bin/my-notifier"]\nmodel = "o3"\n' > "$HOME/.codex/config.toml"
+cp "$HOME/.codex/config.toml" "$HOME/.codex/config.toml.orig"
+"$CLI" install-hooks >/dev/null 2>&1
+"$NODE" -e '
+const fs=require("fs"),f=process.argv[1],j=JSON.parse(fs.readFileSync(f,"utf8"));
+j.hooks.Stop.push({hooks:[{type:"command",command:"theirs"}]});
+fs.writeFileSync(f, JSON.stringify(j));' "$HOME/.claude/settings.json"
+"$CLI" unwire claude codex >/dev/null 2>&1
+check "unwire keeps a foreign rule"         'grep -q "\"theirs\"" "$HOME/.claude/settings.json" && ! grep -q agentbar "$HOME/.claude/settings.json" && [ "$("$NODE" -e "console.log(Object.keys(JSON.parse(require(\"fs\").readFileSync(process.argv[1],\"utf8\")).hooks).join())" "$HOME/.claude/settings.json")" = Stop ]'
+check "unwire codex keeps their notify"     'cmp -s "$HOME/.codex/config.toml" "$HOME/.codex/config.toml.orig"'
+# The app's codexUnwiredIsTheInverseOfBothPlans cases, through the CLI's installer.
+for ORIG in '' 'model = "o3"\n' 'model = "o3"\n\n' 'a = 1\n[t]\nb = 2\n'; do
+  fresh_home
+  mkdir -p "$HOME/.codex"
+  printf "$ORIG" > "$HOME/.codex/config.toml"; cp "$HOME/.codex/config.toml" "$HOME/codex.orig"
+  "$CLI" install-hooks >/dev/null 2>&1
+  W=$(cmp -s "$HOME/codex.orig" "$HOME/.codex/config.toml" && echo same || echo changed)
+  "$CLI" unwire codex >/dev/null 2>&1
+  check "codex wire+unwire round-trips $(printf %q "$ORIG")" '[ "$W" = changed ] && cmp -s "$HOME/codex.orig" "$HOME/.codex/config.toml"'
+done
+# Our marker in a comment is not a line the notify pattern reads: it stays, and a
+# file holding nothing of ours is never rewritten.
+fresh_home
+mkdir -p "$HOME/.codex" "$HOME/.gemini"
+printf '# wired by agentbar: /u/.agentbar/hooks/codex/notify.js\n' > "$HOME/.codex/config.toml"
+printf '{"theme":"dark"}' > "$HOME/.gemini/settings.json"
+"$CLI" unwire codex gemini >/dev/null 2>&1
+check "unwire keeps our marker in a comment" '[ "$(cat "$HOME/.codex/config.toml")" = "# wired by agentbar: /u/.agentbar/hooks/codex/notify.js" ]'
+check "unwire never reformats a foreign file" '[ "$(cat "$HOME/.gemini/settings.json")" = "{\"theme\":\"dark\"}" ] && ! ls "$HOME/.gemini" | grep -q agentbar-bak'
+
+# The file's reading rules, the app's WiringPrefsTests: comments, any case, junk
+# skipped, an unknown id kept — and kept again when the CLI rewrites the file.
+fresh_home
+mkdir -p "$HOME/.gemini"
+printf '# a comment\ncursor\n\n  Gemini   # trailing comment\n\tqwen\r\n#codex\nnot an id\n../etc\nfuture-agent\n' > "$HOME/.agentbar/wire-disabled"
+"$CLI" install-hooks >/dev/null 2>&1
+check "wire-disabled parse honours case + comments" '! grep -q agentbar "$HOME/.gemini/settings.json" 2>/dev/null'
+"$CLI" wire cursor >/dev/null 2>&1
+check "wire-disabled rewrite keeps unknown ids, drops junk" '[ "$(WD | grep -v "^#" | tr "\n" " ")" = "future-agent gemini qwen " ]'
 
 echo "---"
 echo "$pass passed, $fail failed"

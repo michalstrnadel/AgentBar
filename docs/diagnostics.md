@@ -60,7 +60,7 @@ failure hooks hit most often — they have nowhere to report it to.
 | id | asserts |
 |---|---|
 | `hooks.copied` | every hook directory survived the copy into `~/.agentbar/hooks/` |
-| `hooks.shebang` | `cursor.js` and `antigravity.js` name a real node rather than `#!/usr/bin/env node`. Checked **only for agents that are installed** — the installer pins a script when it wires that agent, so an unpinned copy on a machine without Cursor is fine |
+| `hooks.shebang` | `cursor.js` and `antigravity.js` name a real node rather than `#!/usr/bin/env node`. Checked **only for agents that are installed** — the installer pins a script when it wires that agent, so an unpinned copy on a machine without Cursor is fine. An agent you turned off is left out too; with none left the row is `skipped` |
 
 ### Per agent
 
@@ -68,7 +68,7 @@ Repeated for each entry in the integration table, `<id>` being the agent id.
 
 | id | asserts |
 |---|---|
-| `agent.<id>` | emitted **only** when the agent is absent, as `skipped` |
+| `agent.<id>` | emitted **only** as `skipped`: when the agent is absent ("Not installed"), or when you turned it off — listed in `~/.agentbar/wire-disabled` by the Settings switch, `agentbar unwire <id>` or `install-hooks --skip/--only` ("Turned off by you — AgentBar leaves its settings alone."). A turned-off agent gets no `wired`, `lastSeen` or other per-agent row and is never a failure: unwired on purpose, there is nothing to repair |
 | `agent.<id>.wired` | AgentBar's marker is in its config |
 | `agent.<id>.parseable` | the config parses (JSON configs only), emitted only when it does not |
 | `agent.<id>.interpreter` | the node path *inside that config* still exists, emitted only when it does not |

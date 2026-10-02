@@ -204,6 +204,20 @@ printf '{"v":1,"rules":[{"id":"r-1","decision":"deny","shape":"bash:curl"},{"id"
   > "$HOME/.agentbar/rules.json"
 check "a repeated id fails"             '[ "$(status_of rules.file)" = fail ]'
 
+# --- an agent the person switched off ----------------------------------------------
+# Unwired on purpose is not a failure: one skipped row, no wired or lastSeen row, and
+# out of hooks.shebang, the same as the app's Diagnostics.
+fresh_home
+mkdir -p "$HOME/.codex" "$HOME/.cursor"
+"$CLI" install-hooks >/dev/null 2>&1
+"$CLI" unwire cursor >/dev/null 2>&1
+check "disabled agent is skipped"       '[ "$(status_of agent.cursor)" = skipped ]'
+check "disabled agent has no wired row" '[ "$(status_of agent.cursor.wired)" = absent ] && [ "$(status_of agent.cursor.lastSeen)" = absent ]'
+check "disabled agent says why"         '"$CLI" doctor | grep -q "Turned off by you — AgentBar leaves its settings alone."'
+check "disabled agent is no failure"    '"$CLI" doctor --json | "$NODE" -e "let s=\"\";process.stdin.on(\"data\",d=>s+=d).on(\"end\",()=>process.exit(JSON.parse(s).some(c=>c.status===\"fail\")?1:0))"'
+check "shebang skipped when all are off" '[ "$(status_of hooks.shebang)" = skipped ]'
+check "the others are still checked"    '[ "$(status_of agent.codex.wired)" = ok ]'
+
 # --- a frontend, judged the way the hook judges it --------------------------------
 # permission.js asks only whether the heartbeat is fresh. `agentbar waybar` stamps
 # its own pid and exits, so a pid test said "nothing is listening" after every poll.

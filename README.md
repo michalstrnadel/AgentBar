@@ -99,6 +99,11 @@ The install touches exactly these, all reversible (see [Uninstall](#uninstall)):
   window) shows every write as a unified diff with the copy it kept, and what a re-install
   would change right now before you let it. On Linux, `agentbar install-hooks` prints the
   same diff for each file before writing it and keeps the same copies.
+- Every agent it finds is wired, unless you turned it off: the switch in **Settings ▸
+  Diagnostics ▸ Agents**, `agentbar unwire <id>` on Linux (or `install-hooks --skip a,b`
+  / `--only a,b`). Turning one off takes AgentBar's entries back out of that agent's
+  settings — backed up and diffed like any other write — and every later run leaves it
+  alone (`~/.agentbar/wire-disabled`). `agentbar wire <id>` or the switch puts it back.
 - Nothing else is granted automatically: the exact-tab jump-back asks for
   **Automation** access the first time you click a row, and approving a plan
   (or a Codex/Copilot prompt) asks for **Accessibility**. Decline either and
@@ -407,6 +412,14 @@ The CLI works on macOS too (same protocol, handy over SSH). A native tray app
 (StatusNotifierItem) may come later if there's demand.
 
 ## Uninstall
+
+To take **one** agent out and keep the rest, don't edit its settings by hand: flip its
+switch in **Settings ▸ Diagnostics ▸ Agents**, or run `agentbar unwire <id>` (e.g.
+`agentbar unwire cursor`). Either one removes exactly AgentBar's entries — keeping a
+copy of the file beside it first — and remembers the choice, so the next launch or
+`install-hooks` doesn't wire it again. `agentbar wire <id>` undoes it.
+
+To remove everything:
 
 ```bash
 osascript -e 'quit app "AgentBar"'
