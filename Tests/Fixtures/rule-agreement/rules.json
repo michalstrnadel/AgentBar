@@ -1,0 +1,27 @@
+{
+  "v": 1,
+  "rules": [
+    {
+      "id": "r-agree",
+      "created": 1788782400,
+      "decision": "allow",
+      "agent": "",
+      "shape": "bash:git status",
+      "cwd": "/work/proj",
+      "note": "",
+      "tell": "",
+      "mode": "watch"
+    },
+    {
+      "id": "r-split",
+      "created": 0,
+      "decision": "deny",
+      "agent": "",
+      "shape": "bash:curl",
+      "cwd": "",
+      "note": "",
+      "tell": "",
+      "mode": "watch"
+    }
+  ]
+}

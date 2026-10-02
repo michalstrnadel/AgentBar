@@ -681,15 +681,82 @@ function readRules() {
   return { state: "rules", rules: o.rules };
 }
 
+// DecisionLedger.agreement, clause for clause: whether YOU, answering the same
+// prompt, did what a watching rule would have done. Each watch row of the rule
+// (no older than `since`, the rule's last save) is paired with the first unclaimed
+// row a person wrote — via not "rule", a verdict (allow / always / deny; defer and
+// answer are not verdicts), the same non-empty session, tool and shape, no earlier
+// than the watch row and within AGREEMENT_WINDOW of it. `always` is an allow. No
+// such row — answered at the terminal, by keystroke, or timed out — is unwitnessed,
+// never agreement. 15 minutes: permission.js waits 600 s by default and then hands
+// the prompt back to the terminal, so a later row is a different prompt.
+const AGREEMENT_WINDOW = 15 * 60;
+// DecisionLedger.letItAnswerAfterAgreements / letItAnswerAcrossDays.
+const LET_IT_ANSWER_AFTER = 10;
+const LET_IT_ANSWER_DAYS = 3;
+
+// Session.plausibleTime: a time that is not a time (a string, NaN, 1e19, past the
+// year 3000) reads as none, so the app and this command count the same rows.
+const plausibleTime = (v) => (typeof v === "number" && Number.isFinite(v) && v > 0 && v < 32503680000 ? v : 0);
+
+function agreement(id, decisions, since) {
+  const byTime = (a, b) => a.r.ts - b.r.ts || a.i - b.i;
+  const indexed = decisions.map((r, i) => ({ r: { ...r, ts: plausibleTime(r.ts) }, i }));
+  const watches = indexed.filter(({ r }) => r.rule === id && r.decision === "watch"
+                                            && r.ts >= since).sort(byTime);
+  const answers = indexed.filter(({ r }) => r.via !== "rule" && r.sessionId
+                                            && ["allow", "always", "deny"].includes(r.decision)).sort(byTime);
+  const claimed = new Set();
+  const days = new Set();
+  const out = { agreed: 0, disagreed: 0, unwitnessed: 0, days: 0, first: 0, last: 0, lastDisagreement: null };
+  for (const { r: w } of watches) {
+    const ts = w.ts;
+    out.first = out.first === 0 ? ts : Math.min(out.first, ts);
+    out.last = Math.max(out.last, ts);
+    const m = w.sessionId ? answers.find(({ r: a, i }) => !claimed.has(i)
+      && a.sessionId === w.sessionId && (a.shape || "") === (w.shape || "") && (a.tool || "") === (w.tool || "")
+      && a.ts >= ts && a.ts - ts <= AGREEMENT_WINDOW) : undefined;
+    if (!m) { out.unwitnessed++; continue; }
+    claimed.add(m.i);
+    const did = m.r.decision === "deny" ? "deny" : "allow";
+    if (did === w.would) {
+      out.agreed++;
+      const d = new Date(ts * 1000);
+      days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+    } else {
+      out.disagreed++;
+      if (m.r.ts >= ((out.lastDisagreement && out.lastDisagreement.ts) || 0)) out.lastDisagreement = m.r;
+    }
+  }
+  out.days = days.size;
+  out.eligible = out.disagreed === 0 && out.agreed >= LET_IT_ANSWER_AFTER && out.days >= LET_IT_ANSWER_DAYS;
+  return out;
+}
+
+// DecisionLedger.agreementClause, word for word (with x for ×, as the rest of
+// this command writes counts).
+function agreementClause(a) {
+  const parts = [];
+  if (a.agreed) parts.push(`you did the same ${a.agreed}x`);
+  if (a.disagreed) parts.push(a.agreed ? `the other way ${a.disagreed}x` : `you went the other way ${a.disagreed}x`);
+  const witnessed = a.agreed + a.disagreed;
+  if (a.unwitnessed > witnessed) parts.push(witnessed ? `${a.unwitnessed}x not answered here` : "none answered here yet");
+  return parts.join(", ");
+}
+
 function printRules(json) {
   const loaded = readRules();
   const decisions = readDecisions();
   // What it did, and — for a watching rule — what it would have done. Two
   // different questions, and a row that says `watch` is not something that
-  // happened, so it is never counted as one.
+  // happened, so it is never counted as one. A watching rule counts from its last
+  // save (`created`), as the app does: rows from before an edit were about a rule
+  // that no longer exists.
   const fired = (id) => decisions.filter((d) => d.rule === id && d.via === "rule"
                                                 && d.decision !== "watch");
-  const wouldHave = (id) => decisions.filter((d) => d.rule === id && d.decision === "watch");
+  const savedAt = (r) => plausibleTime(r.created);
+  const wouldHave = (r) => decisions.filter((d) => d.rule === r.id && d.decision === "watch"
+                                                   && plausibleTime(d.ts) >= savedAt(r));
 
   if (json) {
     console.log(JSON.stringify({
@@ -698,12 +765,19 @@ function printRules(json) {
       applied: false,
       rules: loaded.rules.map((r) => {
         const rows = fired(r.id);
-        const watched = wouldHave(r.id);
-        return { ...r, mode: r.mode || "on",
-                 allowed: rows.filter((d) => d.decision === "allow").length,
-                 denied: rows.filter((d) => d.decision === "deny").length,
-                 wouldHave: watched.length,
-                 last: rows.concat(watched).reduce((m, d) => Math.max(m, d.ts || 0), 0) };
+        const watched = wouldHave(r);
+        const out = { ...r, mode: r.mode || "on",
+                      allowed: rows.filter((d) => d.decision === "allow").length,
+                      denied: rows.filter((d) => d.decision === "deny").length,
+                      wouldHave: watched.length,
+                      last: rows.concat(watched).reduce((m, d) => Math.max(m, d.ts || 0), 0) };
+        if (out.mode === "watch") {
+          const { lastDisagreement, ...a } = agreement(r.id, decisions, savedAt(r));
+          out.agreement = { ...a, lastDisagreement: lastDisagreement
+            ? { ts: lastDisagreement.ts, decision: lastDisagreement.decision, display: lastDisagreement.display || "" }
+            : null };
+        }
+        return out;
       }),
     }, null, 2));
     return;
@@ -723,12 +797,21 @@ function printRules(json) {
     if (mode === "watch") watching++;
     const verb = r.decision === "allow" ? green("allow") : red("deny ");
     const where = r.cwd ? path.basename(r.cwd) : "everywhere";
-    const rows = mode === "watch" ? wouldHave(r.id) : fired(r.id);
+    const rows = mode === "watch" ? wouldHave(r) : fired(r.id);
     const count = rows.length
       ? `${rows.length}x${mode === "watch" ? " would have" : ""}`
       : dim(mode === "watch" ? "nothing matched yet" : "never fired");
     const state = mode === "on" ? "" : dim(` (${mode})`);
-    console.log(`${verb} ${bold(r.shape.padEnd(26))} ${where.padEnd(18)} ${count}${state}`);
+    const a = mode === "watch" && rows.length ? agreement(r.id, decisions, savedAt(r)) : null;
+    const clause = a ? agreementClause(a) : "";
+    console.log(`${verb} ${bold(r.shape.padEnd(26))} ${where.padEnd(18)} ${count}${state}${clause ? " · " + clause : ""}`);
+    if (a && a.lastDisagreement) {
+      const d = a.lastDisagreement;
+      console.log(dim(`      last the other way: you ${d.decision === "deny" ? "denied" : "allowed"} "${d.display || d.shape}" ${new Date(d.ts * 1000).toLocaleString()}`));
+    }
+    // Said, never done: the switch is a click in Settings ▸ Rules, after a
+    // confirmation. Nothing here changes a rule's mode.
+    if (a && a.eligible) console.log(dim(`      matched you ${a.agreed}x over ${a.days} days, never the other way — "Let it answer" is in Settings ▸ Rules`));
     if (typeof r.tell === "string" && r.tell.trim()) console.log(dim(`      tells it: "${r.tell}"`));
   }
   if (watching) {

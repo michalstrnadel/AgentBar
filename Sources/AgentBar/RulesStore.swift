@@ -272,6 +272,27 @@ enum RulesStore {
         }
     }
 
+    /// One rule into the file: replacing the rule with its id, or appended when
+    /// there is none. The whole of "edit" — the sheet that wrote the rule does not
+    /// need to know which it is doing, and neither does "Let it answer".
+    ///
+    /// A file that does not load is not an empty one: it is the person's own text
+    /// with a mistake in it, and every rule in it is switched off until they fix
+    /// it. Saving over it would turn one typo into every rule gone, so a rule
+    /// written while the file is broken is refused and the file is left as it is.
+    @discardableResult
+    static func put(_ rule: Rule, to url: URL = RulesStore.fileURL) -> Bool {
+        let current = load(url: url)
+        if case .invalid = current { return false }
+        var all = current.rules
+        if let i = all.firstIndex(where: { $0.id == rule.id }) {
+            all[i] = rule
+        } else {
+            all.append(rule)
+        }
+        return save(all, to: url)
+    }
+
     /// Short, readable, and unique enough for a file a person edits by hand.
     static func newID() -> String {
         "r-" + String(format: "%06x", Int.random(in: 0..<0x100_0000))

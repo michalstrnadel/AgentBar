@@ -365,6 +365,13 @@ decisions about the same command are two decisions, and counting them is the poi
   its own decision rather than as an `allow` with a flag beside it precisely so
   that every reader already switching on the verdicts skips it without being
   changed. A row saying `allow` when nothing was allowed would be a false record.
+- A `watch` row is **agreed with** when the human's own answer to the same prompt
+  is in the ledger: the first not-yet-paired row with `via` other than `rule`, a
+  verdict (`always` counts as `allow`), the same non-empty `sessionId`, `tool` and
+  `shape`, a `ts` no earlier than the watch row's and at most 15 minutes after it.
+  No such row means the prompt was answered where AgentBar cannot see — the
+  terminal, a keystroke, a timeout — and it is counted as unwitnessed, never as
+  agreement. The app and `agentbar rules` count it the same way.
 - `waited` is seconds between the request's `ts` and the decision — how long the
   agent sat blocked on the human. A request with no `ts`, or one stamped in the
   future, contributes `0` rather than a negative number.

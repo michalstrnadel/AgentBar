@@ -405,6 +405,130 @@ final class DecisionLedger {
         return out
     }
 
+    // MARK: - Whether you agreed with it
+
+    /// What a watching rule's evidence actually says: not how often it matched,
+    /// but whether **you**, answering the same prompt, did what it would have done.
+    struct Agreement: Equatable {
+        /// You answered the prompt the way the rule would have.
+        var agreed = 0
+        /// You answered it the other way.
+        var disagreed = 0
+        /// Nothing in the ledger says what you did: answered at the terminal, by a
+        /// keystroke, or left to time out. Those write no row, so they are counted
+        /// apart and never as agreement — an absence is not a yes.
+        var unwitnessed = 0
+        /// Distinct local calendar days the agreements fall on.
+        var days = 0
+        var firstAt: TimeInterval = 0
+        var lastAt: TimeInterval = 0
+        /// Your row, the most recent time you went the other way.
+        var lastDisagreement: Record?
+
+        var witnessed: Int { agreed + disagreed }
+        var total: Int { witnessed + unwitnessed }
+    }
+
+    /// How long after a watch row the human's answer to the same prompt may land.
+    /// `permission.js` waits 600 s by default and then hands the prompt back to the
+    /// terminal, after which there is no card left to answer in AgentBar — so a
+    /// row later than that is a different prompt. Fifteen minutes covers the
+    /// default wait with room for a raised `AGENTBAR_APPROVAL_TIMEOUT`, and the
+    /// one-to-one pairing below keeps a later identical prompt's answer from being
+    /// counted for two watch rows.
+    static let agreementWindow: TimeInterval = 15 * 60
+
+    /// Pairs each `watch` row of one rule with the human's answer to the same
+    /// prompt: the first unclaimed row a person wrote (`via` is not "rule") with
+    /// a verdict (`allow`, `always`, `deny` — `defer` and `answer` are not
+    /// verdicts), in the same session, for the same tool and shape, no earlier
+    /// than the watch row and within `agreementWindow` of it. `always` is an allow.
+    ///
+    /// The ledger carries no request id, so "the same prompt" is the closest thing
+    /// it can prove: same session, same shape, moments later. A session id that is
+    /// empty proves nothing and is never matched. Each human row witnesses at most
+    /// one watch row, taken in time order, so two identical prompts pending at
+    /// once pair off rather than both claiming the first answer.
+    ///
+    /// `since` drops watch rows older than it — the rule's last save, because rows
+    /// from before an edit were about a rule that no longer exists.
+    static func agreement(rule id: String, in records: [Record], since: TimeInterval = 0,
+                          calendar: Calendar = .current) -> Agreement {
+        var out = Agreement()
+        let watches = records.enumerated()
+            .filter { $0.element.rule == id && $0.element.decision == "watch"
+                      && $0.element.ts >= since }
+            .sorted { ($0.element.ts, $0.offset) < ($1.element.ts, $1.offset) }
+        // The human's verdicts, oldest first, by index so a claimed one stays claimed.
+        let answers = records.enumerated()
+            .filter { $0.element.via != "rule" && !$0.element.sessionId.isEmpty
+                      && ["allow", "always", "deny"].contains($0.element.decision) }
+            .sorted { ($0.element.ts, $0.offset) < ($1.element.ts, $1.offset) }
+        var claimed = Set<Int>()
+        var days = Set<DateComponents>()
+        for (_, w) in watches {
+            out.firstAt = out.firstAt == 0 ? w.ts : min(out.firstAt, w.ts)
+            out.lastAt = max(out.lastAt, w.ts)
+            let match = w.sessionId.isEmpty ? nil : answers.first { candidate in
+                let a = candidate.element
+                return !claimed.contains(candidate.offset) && a.sessionId == w.sessionId
+                    && a.shape == w.shape && a.tool == w.tool
+                    && a.ts >= w.ts && a.ts - w.ts <= agreementWindow
+            }
+            guard let found = match else {
+                out.unwitnessed += 1
+                continue
+            }
+            claimed.insert(found.offset)
+            let a = found.element
+            let did = a.decision == "deny" ? "deny" : "allow"
+            if did == w.would {
+                out.agreed += 1
+                days.insert(calendar.dateComponents([.year, .month, .day],
+                                                    from: Date(timeIntervalSince1970: w.ts)))
+            } else {
+                out.disagreed += 1
+                if a.ts >= (out.lastDisagreement?.ts ?? 0) { out.lastDisagreement = a }
+            }
+        }
+        out.days = days.count
+        return out
+    }
+
+    /// Enough agreement to offer the "Let it answer" button. Ten, because a rule
+    /// that has matched a handful of times has not yet met the prompt it gets
+    /// wrong; three days, because one long afternoon in one task is one context,
+    /// and a rule that is going to answer for you meets all of them. A single
+    /// disagreement blocks it outright: a prompt you answered the other way even
+    /// once is a prompt that still deserves to be asked. The button is an offer —
+    /// switching is still a click, and nothing here switches anything.
+    static let letItAnswerAfterAgreements = 10
+    static let letItAnswerAcrossDays = 3
+
+    static func canLetItAnswer(_ a: Agreement) -> Bool {
+        a.disagreed == 0 && a.agreed >= letItAnswerAfterAgreements
+            && a.days >= letItAnswerAcrossDays
+    }
+
+    /// "you did the same 13×, the other way 1×" — the half of a watching rule's line
+    /// that says whether it matched you, not just whether it matched. Nil when you
+    /// have answered none of its prompts here and they are too few to say so.
+    static func agreementClause(_ a: Agreement) -> String? {
+        var parts: [String] = []
+        if a.agreed > 0 { parts.append("you did the same \(a.agreed)×") }
+        if a.disagreed > 0 {
+            parts.append(a.agreed > 0 ? "the other way \(a.disagreed)×"
+                                      : "you went the other way \(a.disagreed)×")
+        }
+        // Mentioned only when it is most of the story: otherwise "13 the same" next
+        // to a would-have count of 14 already says one went unseen.
+        if a.unwitnessed > a.witnessed {
+            parts.append(a.witnessed == 0 ? "none answered here yet"
+                                          : "\(a.unwitnessed)× not answered here")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: ", ")
+    }
+
     /// "Allowed 12× · last today" for a rule's row. Unlike `hint`, one firing is
     /// worth saying: it is the first proof the rule does what it says.
     static func firingLine(_ s: Summary, wouldHave: Bool = false, now: Date = Date()) -> String {

@@ -172,7 +172,10 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   real command — `git push --force origin main` — and are told on the spot whether
   this rule would have taken it, and which clause stopped it. A new rule starts out
   **watching**: it answers nothing and writes down what it *would* have done, so you
-  can look at a week of that before you let it speak for you. A rule
+  can look at a week of that before you let it speak for you. The rule's line says
+  whether *you*, answering those same prompts, did what it would have done — and once
+  it has matched you ten times across three days without a single disagreement, it
+  offers a **Let it answer** button that still asks before it changes anything. A rule
   that **refuses** may cover every repository on the machine. A rule that **approves**
   names one — and before it answers, the command itself is checked again, not just its
   shape: anything chained, piped, redirected or substituted, anything under `sudo`, a

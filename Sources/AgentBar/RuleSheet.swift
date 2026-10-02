@@ -447,23 +447,38 @@ final class RuleSheet: NSObject {
         // the rule the file check accepts instead of being refused by it.
         let dir = selectedDirectory == "choose" || selectedDirectory.isEmpty
             ? "" : RulesStore.normalisedCwd(selectedDirectory)
-        var rule = RulesStore.Rule(id: editingID.isEmpty ? RulesStore.newID() : editingID,
+        let rule = RulesStore.Rule(id: editingID.isEmpty ? RulesStore.newID() : editingID,
                                    decision: isDeny ? "deny" : "allow",
                                    shape: typedShape, cwd: dir,
                                    note: note.stringValue.trimmingCharacters(in: .whitespaces),
                                    tell: isDeny ? (DenyNote.clean(tell.stringValue) ?? "") : "",
                                    mode: selectedMode)
-        // The same validation the file gets, before the file gets it — a rule that
-        // would refuse the whole file on the next launch must not be written now.
-        if let why = RulesStore.validate(rule, index: 0, seen: []) {
-            complain("That rule cannot be saved.",
-                     why.replacingOccurrences(of: "Rule 1 (\(rule.id)) in ~/.agentbar/rules.json",
-                                              with: "This rule"))
-            return
+        switch Self.finalised(rule) {
+        case .failure(let why):
+            complain("That rule cannot be saved.", why.text)
+        case .success(let rule):
+            done?(rule)
+            finish()
         }
-        rule.created = Date().timeIntervalSince1970
-        done?(rule)
-        finish()
+    }
+
+    struct Refused: Error { let text: String }
+
+    /// What every save of a rule goes through, whether it came from this sheet or
+    /// from the rules list's "Let it answer": the same validation the file gets,
+    /// before the file gets it — a rule that would refuse the whole file on the next
+    /// launch must not be written now — and the save time stamped as `created`,
+    /// which is what a watching rule's evidence is counted from.
+    static func finalised(_ rule: RulesStore.Rule,
+                          now: TimeInterval = Date().timeIntervalSince1970)
+    -> Result<RulesStore.Rule, Refused> {
+        if let why = RulesStore.validate(rule, index: 0, seen: []) {
+            return .failure(Refused(text: why.replacingOccurrences(
+                of: "Rule 1 (\(rule.id)) in ~/.agentbar/rules.json", with: "This rule")))
+        }
+        var out = rule
+        out.created = now
+        return .success(out)
     }
 
     private func complain(_ message: String, _ detail: String) {

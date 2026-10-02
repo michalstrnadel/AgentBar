@@ -176,20 +176,24 @@ final class RulesView: NSView {
         // Read from the ledger, never from a counter inside the rules file: intent
         // lives in one place and the record in another, and this line is the only
         // place the two meet.
-        let watching = rule.mode == .watch
-        let counts = watching ? DecisionLedger.wouldHave(rule: rule.id, in: ledger)
-                              : DecisionLedger.firings(rule: rule.id, in: ledger)
-        var trail = DecisionLedger.firingLine(counts, wouldHave: watching)
-        if !rule.tell.isEmpty { trail += " · tells it “\(rule.tell)”" }
-        if !rule.note.isEmpty { trail += " · " + rule.note }
-        let detail = NSTextField(labelWithString: trail)
+        let trail = Self.trail(rule, ledger: ledger)
+        let detail = NSTextField(labelWithString: trail.text)
         detail.font = .systemFont(ofSize: 10.5)
-        detail.textColor = counts.isEmpty ? .tertiaryLabelColor : .secondaryLabelColor
+        detail.textColor = trail.empty ? .tertiaryLabelColor : .secondaryLabelColor
         detail.lineBreakMode = .byTruncatingTail
+        detail.toolTip = trail.tooltip
 
         let edit = inline("Edit", #selector(editRule(_:)), rule.id)
         let remove = inline("Remove", #selector(removeRule(_:)), rule.id)
-        let bottom = NSStackView(views: [detail, NSView(), edit, remove])
+        var actions: [NSView] = [detail, NSView()]
+        // Shown, never pressed for you: the evidence earns an offer, and the click
+        // that takes it is the same one the sheet's Mode menu would be.
+        if Self.mayLetItAnswer(rule, ledger: ledger) {
+            let promote = inline("Let it answer", #selector(letItAnswer(_:)), rule.id)
+            promote.toolTip = "It has matched you every time. Asks before it changes anything."
+            actions.append(promote)
+        }
+        let bottom = NSStackView(views: actions + [edit, remove])
         bottom.orientation = .horizontal
         bottom.spacing = 8
         bottom.alignment = .centerY
@@ -203,6 +207,73 @@ final class RulesView: NSView {
         top.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         bottom.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return stack
+    }
+
+    /// The rule's second line, and what hovering it says. Pure, so the wording is
+    /// testable.
+    ///
+    /// For a watching rule both counts start at the rule's last save (`created`):
+    /// rows from before an edit were about a rule with another shape, place or
+    /// answer, and "would have allowed 14×" of a rule that no longer exists is not
+    /// evidence about this one.
+    static func trail(_ rule: RulesStore.Rule, ledger: [DecisionLedger.Record],
+                      now: Date = Date()) -> (text: String, tooltip: String?, empty: Bool) {
+        let watching = rule.mode == .watch
+        let rows = watching ? ledger.filter { $0.ts >= rule.created } : ledger
+        let counts = watching ? DecisionLedger.wouldHave(rule: rule.id, in: rows)
+                              : DecisionLedger.firings(rule: rule.id, in: rows)
+        var text = DecisionLedger.firingLine(counts, wouldHave: watching, now: now)
+        var tooltip: String?
+        if watching, !counts.isEmpty {
+            let a = DecisionLedger.agreement(rule: rule.id, in: rows, since: rule.created)
+            if let clause = DecisionLedger.agreementClause(a) {
+                // Inside the "last …" that ends the would-have half, so the line
+                // still reads as one sentence about one rule.
+                let last = text.range(of: " · last ", options: .backwards)
+                let at = last?.lowerBound ?? text.endIndex
+                text.insert(contentsOf: " · " + clause, at: at)
+            }
+            if let d = a.lastDisagreement {
+                let did = d.decision == "deny" ? "denied" : "allowed"
+                let what = d.display.isEmpty ? readable(d.shape) : d.display
+                tooltip = "Last time you went the other way: you \(did) “\(what)” "
+                    + DecisionLedger.ago(Date(timeIntervalSince1970: d.ts), now: now)
+                    + " at " + clock(d.ts)
+            }
+        }
+        if !rule.tell.isEmpty { text += " · tells it “\(rule.tell)”" }
+        if !rule.note.isEmpty { text += " · " + rule.note }
+        return (text, tooltip, counts.isEmpty)
+    }
+
+    private static func clock(_ ts: TimeInterval) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US")
+        f.dateFormat = "HH:mm"
+        return f.string(from: Date(timeIntervalSince1970: ts))
+    }
+
+    /// Whether the row offers "Let it answer": a watching rule whose evidence since
+    /// its last save clears `DecisionLedger.canLetItAnswer`.
+    static func mayLetItAnswer(_ rule: RulesStore.Rule, ledger: [DecisionLedger.Record]) -> Bool {
+        rule.mode == .watch && DecisionLedger.canLetItAnswer(
+            DecisionLedger.agreement(rule: rule.id, in: ledger, since: rule.created))
+    }
+
+    /// What the confirmation says before a watching rule starts answering: the
+    /// evidence, restated, and what changes. Pure, for the same reason `trail` is.
+    static func letItAnswerText(_ rule: RulesStore.Rule, _ a: DecisionLedger.Agreement) -> String {
+        let verb = rule.isAllow ? "allowed" : "refused"
+        let place = rule.cwd.isEmpty ? "" : " in " + (rule.cwd as NSString).lastPathComponent
+        return "\(rule.isAllow ? "Allow" : "Deny") \(readable(rule.shape))\(place).\n\n"
+            + "While it watched, you answered \(a.agreed) of its prompts here and \(verb) "
+            + "every one, across \(a.days) days. It never disagreed with you."
+            + (a.unwitnessed > 0 ? " \(a.unwitnessed) more were answered somewhere AgentBar "
+               + "cannot see, and are not counted either way." : "")
+            + "\n\nFrom now on it answers these itself, and every answer it gives is written "
+            + "down naming it. "
+            + (rule.isAllow ? "The live command is still checked first, exactly as before. " : "")
+            + "You can set it back to Watching at any time."
     }
 
     private func inline(_ title: String, _ action: Selector, _ id: String) -> NSButton {
@@ -248,6 +319,41 @@ final class RulesView: NSView {
               let mode = RulesStore.Rule.Mode(rawValue: raw) else { return }
         rules[i].mode = mode
         RulesStore.save(rules)
+        reload()
+    }
+
+    /// The one way the rules list turns a rule on by itself being asked to — and it
+    /// is still asked: a click, then a confirmation that says what the evidence
+    /// was. It then takes the path the sheet's Save takes, with the mode set to
+    /// Answering: the same validation, the same write. Everything is re-read at the
+    /// click, so a disagreement that landed since the row was drawn still blocks it.
+    @objc private func letItAnswer(_ sender: NSButton) {
+        guard let id = sender.identifier?.rawValue,
+              case .rules(let fresh) = RulesStore.load(),
+              let rule = fresh.first(where: { $0.id == id }), rule.mode == .watch
+        else { reload(); return }
+        let ledger = DecisionLedger.read()
+        let a = DecisionLedger.agreement(rule: rule.id, in: ledger, since: rule.created)
+        guard DecisionLedger.canLetItAnswer(a) else { reload(); return }
+
+        let alert = NSAlert()
+        alert.messageText = "Let this rule answer for you?"
+        alert.informativeText = Self.letItAnswerText(rule, a)
+        alert.addButton(withTitle: "Let it answer")
+        alert.addButton(withTitle: "Keep watching")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        var on = rule
+        on.mode = .on
+        switch RuleSheet.finalised(on) {
+        case .failure(let why):
+            let refused = NSAlert()
+            refused.messageText = "That rule cannot be saved."
+            refused.informativeText = why.text
+            refused.runModal()
+        case .success(let saved):
+            RulesStore.put(saved)
+        }
         reload()
     }
 

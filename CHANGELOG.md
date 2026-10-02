@@ -3,6 +3,31 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **A watching rule is judged on whether it matched you.** Its line said how often
+  it matched — *"Would have allowed 14×"* — which is a fact about prompts, not about
+  the rule. It now says whether you, answering the same prompt moments later, did
+  what it would have done: *"Would have allowed 14× · you did the same 13×, the other
+  way 1× · last today"*, with the time you went the other way, and what it was, one
+  hover away. A prompt answered in the terminal, by keystroke or left to time out
+  writes nothing, so it is counted as unseen and never as agreement. Evidence starts
+  at the rule's last save, because rows from before an edit were about another rule.
+  After ten agreements across three days and not one disagreement, the row offers
+  **Let it answer** — a button, then a confirmation that restates the evidence, then
+  the same validation and write the rule sheet's Save makes. Nothing switches a rule
+  by itself, and nothing appears to suggest it. `agentbar rules` shows the same
+  numbers, counted the same way.
+
+### Fixed
+
+- **A rule saved while `rules.json` has a mistake in it no longer replaces the
+  file.** A file that does not load is read as no rules, and saving a new rule from
+  the sheet wrote that empty list plus the new rule over the person's own text.
+  AgentBar now refuses the save, leaves the file exactly as it is, and says why.
+
 ## 1.32.0 - 2026-10-02
 
 ### Added

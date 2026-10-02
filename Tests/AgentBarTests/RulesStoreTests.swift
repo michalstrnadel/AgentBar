@@ -38,6 +38,19 @@ import Testing
         #expect(RulesStore.load(url: url).rules.count == 2)
     }
 
+    /// A typo in the hand-edited file must not become every rule gone the next time
+    /// the sheet saves one: the broken file read as empty, and `put` wrote the new
+    /// rule over it.
+    @Test func aRuleIsNotWrittenOverABrokenFile() throws {
+        let url = file()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let broken = #"{"version": 1, "rules": [{"id": "r-a", "decision": "deny", "shape": "bash:curl",}]}"#
+        write(broken, to: url)
+        let rule = RulesStore.Rule(id: "r-b", decision: "deny", shape: "bash:wget")
+        #expect(RulesStore.put(rule, to: url) == false)
+        #expect(try String(contentsOf: url, encoding: .utf8) == broken)
+    }
+
     // MARK: - Refusals, each one whole-file
 
     @Test func junkIsRefused() {

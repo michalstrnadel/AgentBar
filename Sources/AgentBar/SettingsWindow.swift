@@ -872,13 +872,16 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         guard let window else { return }
         RuleSheet.present(on: window, prefill: prefill) { [weak self] rule in
             guard let self, let rule else { return }
-            var all = RulesStore.load().rules
-            if let i = all.firstIndex(where: { $0.id == rule.id }) {
-                all[i] = rule
-            } else {
-                all.append(rule)
+            if !RulesStore.put(rule), case .invalid(let reason) = RulesStore.load() {
+                // Said where the person is looking, not only in Diagnostics: the
+                // rule they just wrote did not land, and they need to know why.
+                let alert = NSAlert()
+                alert.messageText = "The rule was not saved"
+                alert.informativeText = "~/.agentbar/rules.json has a mistake in it, so AgentBar "
+                    + "left the file exactly as it is rather than write over your rules: "
+                    + reason + " Fix it there, then add the rule again."
+                alert.beginSheetModal(for: window)
             }
-            RulesStore.save(all)
             rulesView.reload()
         }
     }

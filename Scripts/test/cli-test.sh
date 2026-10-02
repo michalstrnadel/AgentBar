@@ -518,6 +518,33 @@ check "a dot-dot voids the file"             'plain_cwd_refused /x/repo/../other
 check "a plain cwd stays in force"           '! plain_cwd_refused /x/repo /x/repo && "$CLI" rules | grep -q "^deny  bash:curl"'
 check "root is plain"                        '! plain_cwd_refused / /'
 
+# Whether you agreed with a watching rule, from the fixture RuleAgreementTests
+# reads too — so the app and this command cannot quietly count differently.
+fresh_home
+cp Tests/Fixtures/rule-agreement/rules.json Tests/Fixtures/rule-agreement/decisions.jsonl "$HOME/.agentbar/"
+export AGENTBAR_NOW=$((1789646400 + 21600))
+OUT="$("$CLI" rules)"
+JSON="$("$CLI" rules --json)"
+agreed_json() { # $1 rule id, $2 node expression over a = its agreement
+  echo "$JSON" | "$NODE" -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const a=JSON.parse(s).rules.find(r=>r.id===process.argv[1]).agreement;process.exit(eval(process.argv[2])?0:1)})' "$1" "$2"
+}
+check "agreement counts only since the last save" 'echo "$OUT" | grep -q "15x would have (watch) · you did the same 10x$"'
+check "unwitnessed is never agreement"        'agreed_json r-agree "a.agreed===10 && a.disagreed===0 && a.unwitnessed===5 && a.days===3"'
+check "ten over three days earns the offer"   'agreed_json r-agree "a.eligible===true" && echo "$OUT" | grep -q "Let it answer"'
+check "always the other way is a disagreement" 'echo "$OUT" | grep -q "you did the same 2x, the other way 1x"'
+check "one disagreement blocks the offer"     'agreed_json r-split "a.eligible===false && a.agreed===2 && a.disagreed===1 && a.days===1"'
+check "the last disagreement is named"        'echo "$OUT" | grep -q "last the other way: you allowed \"Bash: curl https://example.com\""'
+check "listing a rule never changes its mode" '"$CLI" rules >/dev/null; cmp -s "$HOME/.agentbar/rules.json" Tests/Fixtures/rule-agreement/rules.json'
+# Nine is not ten: the oldest agreement left out of the ledger takes the offer with it.
+grep -v '"sessionId":"a1"' Tests/Fixtures/rule-agreement/decisions.jsonl > "$HOME/.agentbar/decisions.jsonl"
+JSON="$("$CLI" rules --json)"
+check "nine agreements are not enough"        'agreed_json r-agree "a.agreed===9 && a.eligible===false"'
+# Two days are not three: the whole first day gone, six left over two.
+grep -vE '"sessionId":"a[1-4]"' Tests/Fixtures/rule-agreement/decisions.jsonl > "$HOME/.agentbar/decisions.jsonl"
+JSON="$("$CLI" rules --json)"
+check "two days are not enough"               'agreed_json r-agree "a.days===2 && a.eligible===false"'
+unset AGENTBAR_NOW
+
 # --- the Codex hooks block: the real integration, beside the older notify key ----
 fresh_home
 mkdir -p "$HOME/.codex"
