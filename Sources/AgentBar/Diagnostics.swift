@@ -112,6 +112,12 @@ enum Diagnostics {
         let configs: [String]
         /// What identifies our entry inside them.
         let marker: String
+
+        /// Whether this Mac has the agent at all — the question every row for it
+        /// starts from, here and on the Agents card in Settings.
+        func isPresent(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Bool {
+            presence.contains { FileManager.default.fileExists(atPath: home.appendingPathComponent($0).path) }
+        }
     }
 
     static let integrations: [Integration] = [
@@ -178,11 +184,14 @@ enum Diagnostics {
     static func run(home: URL = FileManager.default.homeDirectoryForCurrentUser,
                     now: TimeInterval = Date().timeIntervalSince1970) -> [Check] {
         let base = home.appendingPathComponent(".agentbar", isDirectory: true)
+        // The agents the user switched off (`WiringPrefs`): unwired on purpose, so
+        // nothing about them is a failure or something to repair.
+        let off = WiringPrefs.load(home: home)
         var out: [Check] = []
         out += nodeChecks(home: home)
         out += directoryChecks(base: base)
-        out += hookScriptChecks(base: base, home: home)
-        out += integrations.flatMap { integrationChecks($0, home: home, base: base, now: now) }
+        out += hookScriptChecks(base: base, home: home, off: off)
+        out += integrations.flatMap { integrationChecks($0, home: home, base: base, now: now, off: off) }
         out += claudeConfigDirCheck(home: home)
         out += ruleChecks(base: base)
         out += orphanChecks(base: base, now: now)
@@ -270,7 +279,10 @@ enum Diagnostics {
         return out
     }
 
-    private static func hookScriptChecks(base: URL, home: URL) -> [Check] {
+    /// What a check says about an agent the user turned off in Settings ▸ Diagnostics.
+    static let turnedOff = "Turned off by you"
+
+    private static func hookScriptChecks(base: URL, home: URL, off: Set<String> = []) -> [Check] {
         let fm = FileManager.default
         let hooks = base.appendingPathComponent("hooks", isDirectory: true)
         let missing = hookDirs.filter { !fm.fileExists(atPath: hooks.appendingPathComponent($0).path) }
@@ -284,13 +296,17 @@ enum Diagnostics {
         // Only for agents that are actually here: the installer pins a script when it
         // wires that agent, so a machine without Cursor keeps the bundled shebang and
         // is perfectly healthy.
-        let relevant = shebangScripts.filter { agent, _ in
+        let installed = shebangScripts.filter { agent, _ in
             integrations.first { $0.id == agent }?.presence
                 .contains { fm.fileExists(atPath: home.appendingPathComponent($0).path) } == true
         }
+        // Turned off, the installer stops pinning that script, and that is fine.
+        let relevant = installed.filter { !off.contains($0.key) }
         guard !relevant.isEmpty else {
             out.append(Check(id: "hooks.shebang", title: "Scripts that run themselves name a real node",
-                             status: .skipped, detail: "Neither Cursor nor Antigravity is installed here."))
+                             status: .skipped,
+                             detail: installed.isEmpty ? "Neither Cursor nor Antigravity is installed here."
+                                                       : "\(turnedOff) — AgentBar leaves those agents alone."))
             return out
         }
         let unpinned = relevant.values.filter { rel in
@@ -308,12 +324,19 @@ enum Diagnostics {
 
     // MARK: - Per agent
 
-    private static func integrationChecks(_ i: Integration, home: URL, base: URL, now: TimeInterval) -> [Check] {
+    private static func integrationChecks(_ i: Integration, home: URL, base: URL, now: TimeInterval,
+                                          off: Set<String> = []) -> [Check] {
         let fm = FileManager.default
         let present = i.presence.contains { fm.fileExists(atPath: home.appendingPathComponent($0).path) }
         guard present else {
             return [Check(id: "agent.\(i.id)", title: i.name, status: .skipped,
                           detail: "Not installed on this Mac.")]
+        }
+        // Unwired because the person asked: not a failure, no repair, and no "has
+        // not reported for a fortnight" — of course it has not.
+        guard !off.contains(i.id) else {
+            return [Check(id: "agent.\(i.id)", title: i.name, status: .skipped,
+                          detail: "\(turnedOff) — AgentBar leaves its settings alone.")]
         }
 
         var out: [Check] = []

@@ -228,4 +228,40 @@ import Testing
         #expect(ConfigChangesSheet.short("/h/.claude/settings.json", home: "/h") == "~/.claude/settings.json")
         #expect(ConfigChangesSheet.short("/hx/settings.json", home: "/h") == "/hx/settings.json")
     }
+
+    // MARK: - Whose file it was
+
+    /// Records written before the agent was named have no `agent` key; they must
+    /// still read, and a record without an agent must not grow a `null`.
+    @Test func theAgentFieldIsAdditive() throws {
+        let old = #"[{"path":"/h/.claude/settings.json","ts":1,"diff":"x"}]"#
+        let rows = try JSONDecoder().decode([ConfigBackup.Record].self, from: Data(old.utf8))
+        #expect(rows.first?.agent == nil)
+        let plain = String(decoding: try JSONEncoder().encode(rows), as: UTF8.self)
+        #expect(!plain.contains("agent"))
+
+        let url = dir.appendingPathComponent("settings.json")
+        let r = try ConfigBackup.write(Data("{}\n".utf8), to: url, log: log, agent: "gemini")
+        #expect(r?.agent == "gemini")
+        #expect(ConfigBackup.recent(log: log).first?.agent == "gemini")
+    }
+
+    /// A file AgentBar owns is removed the way a settings file is rewritten: the
+    /// copy first, then the change, then the record — and nothing at all when there
+    /// is no file.
+    @Test func removingKeepsACopyAndRecordsADeletion() throws {
+        let url = dir.appendingPathComponent("agentbar.json")
+        #expect(try ConfigBackup.remove(url, log: log) == nil)
+        try Data("{\"version\":1}\n".utf8).write(to: url)
+        #expect(ConfigBackup.previewRemoval(of: url, agent: "copilot")?.agent == "copilot")
+
+        let r = try #require(try ConfigBackup.remove(url, now: date("20261001-142233"),
+                                                     log: log, agent: "copilot"))
+        #expect(!FileManager.default.fileExists(atPath: url.path))
+        let backup = try #require(r.backup)
+        #expect(try String(contentsOfFile: backup, encoding: .utf8) == "{\"version\":1}\n")
+        #expect(r.diff.contains("+++ /dev/null"))
+        #expect(r.diff.contains("-{\"version\":1}"))
+        #expect(ConfigBackup.recent(log: log).first == r)
+    }
 }

@@ -58,6 +58,10 @@ enum ConfigBackup {
         let ts: Double
         /// `diff -u` of before → after.
         let diff: String
+        /// The agent whose settings these are (`Agent` ids). Nil in records written
+        /// before 1.32 — the key is simply absent there, and encoding leaves it out
+        /// again when nil, so old and new `config-changes.json` read each other.
+        var agent: String? = nil
     }
 
     // MARK: - Names
@@ -121,18 +125,27 @@ enum ConfigBackup {
 
     /// What writing `data` to `url` would change, without writing it. Nil when it
     /// would change nothing.
-    static func preview(_ data: Data, for url: URL, now: Date = Date()) -> Record? {
+    static func preview(_ data: Data, for url: URL, now: Date = Date(),
+                        agent: String? = nil) -> Record? {
         let before = try? Data(contentsOf: url)
         guard before != data else { return nil }
         return Record(path: url.path, backup: nil, ts: now.timeIntervalSince1970,
-                      diff: diff(before: before, after: data, path: url.path))
+                      diff: diff(before: before, after: data, path: url.path), agent: agent)
+    }
+
+    /// What deleting `url` would change. Nil when there is no file to delete.
+    static func previewRemoval(of url: URL, now: Date = Date(), agent: String? = nil) -> Record? {
+        guard let before = try? Data(contentsOf: url) else { return nil }
+        return Record(path: url.path, backup: nil, ts: now.timeIntervalSince1970,
+                      diff: diff(before: before, after: nil, path: url.path), agent: agent)
     }
 
     /// Back up, write atomically, record. Returns nil — and has done nothing at all —
     /// when the file already holds exactly `data`.
     @discardableResult
     static func write(_ data: Data, to url: URL, now: Date = Date(),
-                      log: URL? = defaultLog, keep: Int = keep) throws -> Record? {
+                      log: URL? = defaultLog, keep: Int = keep,
+                      agent: String? = nil) throws -> Record? {
         lock.lock()
         defer { lock.unlock() }
         let fm = FileManager.default
@@ -159,19 +172,48 @@ enum ConfigBackup {
             backup = target
         }
         try data.write(to: destination, options: .atomic)
-
-        if backup != nil {
-            let dir = url.deletingLastPathComponent()
-            let names = (try? fm.contentsOfDirectory(atPath: dir.path)) ?? []
-            for old in expired(of: url.lastPathComponent, among: names, keep: keep) {
-                try? fm.removeItem(at: dir.appendingPathComponent(old))
-            }
-        }
+        if backup != nil { rotate(url, keep: keep) }
 
         let record = Record(path: url.path, backup: backup?.path, ts: now.timeIntervalSince1970,
-                            diff: diff(before: before, after: data, path: url.path))
+                            diff: diff(before: before, after: data, path: url.path), agent: agent)
         if let log { append(record, to: log) }
         return record
+    }
+
+    /// A file AgentBar owns outright (Copilot's `hooks/agentbar.json`, OpenCode's
+    /// plugin) taken away when its agent is switched off: kept beside itself first,
+    /// exactly as a rewrite would be, then deleted, then recorded. Nil — and nothing
+    /// done — when there is no file.
+    @discardableResult
+    static func remove(_ url: URL, now: Date = Date(), log: URL? = defaultLog,
+                       keep: Int = keep, agent: String? = nil) throws -> Record? {
+        lock.lock()
+        defer { lock.unlock() }
+        let fm = FileManager.default
+        let destination = linkTarget(of: url)
+        guard let before = try? Data(contentsOf: destination) else { return nil }
+        let dir = url.deletingLastPathComponent()
+        let names = (try? fm.contentsOfDirectory(atPath: dir.path)) ?? []
+        let target = dir.appendingPathComponent(
+            backupName(for: url.lastPathComponent, at: now, taken: Set(names)))
+        try fm.copyItem(at: destination, to: target)
+        // The path itself, not what a link points at: removing the link is what takes
+        // the file out of the directory the agent scans.
+        try fm.removeItem(at: url)
+        rotate(url, keep: keep)
+        let record = Record(path: url.path, backup: target.path, ts: now.timeIntervalSince1970,
+                            diff: diff(before: before, after: nil, path: url.path), agent: agent)
+        if let log { append(record, to: log) }
+        return record
+    }
+
+    private static func rotate(_ url: URL, keep: Int) {
+        let fm = FileManager.default
+        let dir = url.deletingLastPathComponent()
+        let names = (try? fm.contentsOfDirectory(atPath: dir.path)) ?? []
+        for old in expired(of: url.lastPathComponent, among: names, keep: keep) {
+            try? fm.removeItem(at: dir.appendingPathComponent(old))
+        }
     }
 
     /// The file a path finally names, following links on its last component — the
@@ -193,12 +235,13 @@ enum ConfigBackup {
         return current.standardizedFileURL
     }
 
-    static func diff(before: Data?, after: Data, path: String) -> String {
+    /// `after` nil is a deletion, labelled the way `diff -u` labels one.
+    static func diff(before: Data?, after: Data?, path: String) -> String {
         let old = before.flatMap { String(data: $0, encoding: .utf8) } ?? ""
-        let new = String(data: after, encoding: .utf8) ?? ""
+        let new = after.flatMap { String(data: $0, encoding: .utf8) } ?? ""
         let text = LineDiff.unified(old: old, new: new,
                                     oldLabel: before == nil ? "/dev/null" : path,
-                                    newLabel: path)
+                                    newLabel: after == nil ? "/dev/null" : path)
         guard text.utf8.count > diffLimit else { return text }
         let cut = String(decoding: text.utf8.prefix(diffLimit), as: UTF8.self)
         return cut + "\n⋯ cut here; the backup beside the file has all of it\n"

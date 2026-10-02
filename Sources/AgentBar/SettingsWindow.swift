@@ -86,6 +86,9 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var personalityBox: NSSwitch!
     private var diagnostics: DiagnosticsView!
     private var configChangesButton: NSButton!
+    /// The Agents card, rebuilt by `syncAgents` — its subtitles say each agent's
+    /// state, and a row's subtitle is fixed once the row is made.
+    private var agentsHost: NSStackView!
     private var claudeQuotaBox: NSSwitch!
     private var quotaStatus: NSTextField!
     private var quotaCheck: NSButton!
@@ -386,6 +389,10 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                                          action: #selector(showConfigChanges))
         configChangesButton.toolTip = "What AgentBar wrote into each agent's settings, as a "
             + "diff, where it kept the file as it was — and what a re-install would change now."
+        agentsHost = NSStackView()
+        agentsHost.orientation = .vertical
+        agentsHost.alignment = .leading
+        agentsHost.translatesAutoresizingMaskIntoConstraints = false
     }
 
     private func buildPage(_ page: Page) -> NSView {
@@ -531,19 +538,16 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         case .diagnostics:
             add([
                 SettingsChrome.card([SettingsChrome.customRow(diagnostics)]),
-                // A row of its own rather than a fifth button in the report's header:
-                // it answers a different question — not "is it working" but "what did
-                // it do to my files" — and the header is already as wide as it gets.
-                // No subtitle: `captionWidth` leaves room for a switch, not for a
-                // button this wide, and the page's footnote says the rest.
-                SettingsChrome.card([
-                    SettingsChrome.row("Changes to your agents' settings",
-                                       control: configChangesButton),
-                ]),
+                // One switch per agent, and under them the record of what those
+                // switches — and every launch — wrote. Both answer "what does
+                // AgentBar do to my files", so they share a card.
+                agentsHost,
                 SettingsChrome.header("Why an agent isn't showing up: hooks wired, the node "
                                       + "they point at still there, folders writable. Before "
                                       + "AgentBar writes into a settings file it keeps the "
-                                      + "file as it was, beside it."),
+                                      + "file as it was, beside it. Switching an agent off "
+                                      + "takes out only AgentBar's own entries; sessions "
+                                      + "already running keep their hooks until they end."),
             ])
         }
         return column
@@ -647,6 +651,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         // Re-run on every show: the answer changes with what the user did outside
         // this window — installed an agent, upgraded node, granted Accessibility.
         diagnostics.refresh()
+        syncAgents()
         syncRecorderState()
         syncSoundControls()
         syncSoundPack()
@@ -802,6 +807,57 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     @objc private func showConfigChanges() {
         guard let window else { return }
         ConfigChangesSheet.present(on: window)
+    }
+
+    /// What an agent's row says under its name.
+    static func agentState(present: Bool, off: Bool) -> String {
+        guard present else { return "Not on this Mac" }
+        return off ? "Off — your choice" : "Wired"
+    }
+
+    /// The Agents card from scratch: one row per `Diagnostics.integrations`, a switch
+    /// on each (disabled where the agent is not installed), and the changes row last.
+    private func syncAgents() {
+        let off = WiringPrefs.load()
+        var rows: [NSView] = Diagnostics.integrations.map { i in
+            let present = i.isPresent()
+            let toggle = SettingsChrome.toggle(target: self, action: #selector(toggleAgent(_:)))
+            toggle.identifier = NSUserInterfaceItemIdentifier(i.id)
+            toggle.state = present && !off.contains(i.id) ? .on : .off
+            toggle.isEnabled = present
+            toggle.setAccessibilityLabel("Wire AgentBar into \(i.name)")
+            // The state beside the switch rather than under the name: one line a
+            // row keeps eight agents a card, not a page.
+            let state = NSTextField(labelWithString: Self.agentState(present: present,
+                                                                     off: off.contains(i.id)))
+            state.font = .systemFont(ofSize: 11.5)
+            state.textColor = .secondaryLabelColor
+            let control = NSStackView(views: [state, toggle])
+            control.orientation = .horizontal
+            control.alignment = .centerY
+            control.spacing = SettingsChrome.Space.tight
+            return SettingsChrome.row(i.name, control: control)
+        }
+        // No subtitle: `captionWidth` leaves room for a switch, not for a button
+        // this wide, and the page's footnote says the rest.
+        rows.append(SettingsChrome.row("Changes to your agents' settings", control: configChangesButton))
+        for old in agentsHost.arrangedSubviews { old.removeFromSuperview() }
+        let card = SettingsChrome.card(rows)
+        agentsHost.addArrangedSubview(card)
+        card.widthAnchor.constraint(equalTo: agentsHost.widthAnchor).isActive = true
+    }
+
+    /// A switch is a request, not the change: it opens the changes sheet on what
+    /// switching would write, and only **Apply** writes it. Cancel puts it back.
+    @objc private func toggleAgent(_ sender: NSSwitch) {
+        guard let window, let id = sender.identifier?.rawValue,
+              let i = Diagnostics.integrations.first(where: { $0.id == id }) else { return }
+        let wire = sender.state == .on
+        ConfigChangesSheet.present(on: window, agent: id, name: i.name, wire: wire) { [weak self] applied in
+            guard let self else { return }
+            self.syncAgents()
+            if applied { self.diagnostics.refresh() }
+        }
     }
 
     @objc private func toggleRules() {

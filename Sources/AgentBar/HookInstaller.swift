@@ -8,16 +8,42 @@ import Foundation
 /// it and records the diff (`ConfigBackup`); `preview` answers what the next pass
 /// would write, from the same code, without writing it.
 enum HookInstaller {
-    private static let home = FileManager.default.homeDirectoryForCurrentUser
-    private static var hooksDir: URL { home.appendingPathComponent(".agentbar/hooks", isDirectory: true) }
+    /// The real home and the real interpreter. Only `Context.live` and the script copy
+    /// read these; every per-agent function goes through its pass's `Context`, so a
+    /// test can point a whole pass at a temporary home and nothing else.
+    private static let realHome = FileManager.default.homeDirectoryForCurrentUser
+    private static var realHooksDir: URL { realHome.appendingPathComponent(".agentbar/hooks", isDirectory: true) }
 
     /// Resolved once per launch: the fallback probes the user's login shell, which can
     /// cost hundreds of ms on nvm/fnm setups — never pay that four times.
-    private static let nodePath: String? = findNode()
+    private static let liveNode: String? = findNode()
     /// The interpreter and the scripts, for anything that needs to *run* a hook
     /// rather than install one — `ApprovalSelfTest` is the only caller.
-    static var resolvedNode: String? { nodePath }
-    static var installedHooks: URL { hooksDir }
+    static var resolvedNode: String? { liveNode }
+    static var installedHooks: URL { realHooksDir }
+
+    /// Everything a pass reads from the machine, in one place: where home is, the
+    /// environment (`CLAUDE_CONFIG_DIR`, `COPILOT_HOME`), the node to write into the
+    /// configs, where the change record goes, and the agents the user switched off
+    /// (`WiringPrefs`).
+    struct Context {
+        var home: URL
+        var environment: [String: String] = [:]
+        var node: String?
+        /// `ConfigBackup`'s record; nil keeps none.
+        var log: URL?
+        var disabled: Set<String> = []
+        /// Only a pass over the real machine tells the welcome window what it wired.
+        var publishes = false
+
+        var hooksDir: URL { home.appendingPathComponent(".agentbar/hooks", isDirectory: true) }
+
+        static func live() -> Context {
+            Context(home: realHome, environment: ProcessInfo.processInfo.environment,
+                    node: liveNode, log: ConfigBackup.defaultLog,
+                    disabled: WiringPrefs.load(home: realHome), publishes: true)
+        }
+    }
 
     /// Agent ids whose hooks this launch actually wired — the tools the user has,
     /// minus any whose config we refused to touch. The welcome window reports it, so
@@ -41,24 +67,52 @@ enum HookInstaller {
     /// "wired" note — are skipped when previewing.
     private final class Pass {
         let preview: Bool
+        let ctx: Context
+        /// One agent's steps only — the Agents switch in Settings, which previews and
+        /// then writes exactly what it showed and nothing for anybody else.
+        let only: String?
+        /// The agent whose step is running, so every record says whose file it was.
+        var currentAgent: String?
         /// What a preview pass would write, in pass order. Touched only on the
         /// pass's own queue.
         private(set) var planned: [ConfigBackup.Record] = []
+        /// What this pass wired, whether or not it publishes it.
+        private(set) var noted: [String] = []
 
-        init(preview: Bool) { self.preview = preview }
+        init(preview: Bool, ctx: Context, only: String? = nil) {
+            self.preview = preview
+            self.ctx = ctx
+            self.only = only
+        }
+
+        var home: URL { ctx.home }
+        var hooksDir: URL { ctx.hooksDir }
+        var node: String? { ctx.node }
 
         /// An agent's config: backed up and recorded (`ConfigBackup`) when real,
         /// collected when previewing. A write that changes nothing is neither.
         func write(_ data: Data, to url: URL) throws {
             if preview {
-                if let r = ConfigBackup.preview(data, for: url) { planned.append(r) }
+                if let r = ConfigBackup.preview(data, for: url, agent: currentAgent) { planned.append(r) }
                 return
             }
-            guard let r = try ConfigBackup.write(data, to: url) else { return }
+            guard let r = try ConfigBackup.write(data, to: url, log: ctx.log, agent: currentAgent)
+            else { return }
             // The launch that rewrote a file says so where a launch can: one line,
             // naming the copy it kept. The diff itself is in the record.
             NSLog("AgentBar: wrote \(r.path)"
                   + (r.backup.map { " (the previous version is kept as \($0))" } ?? " (new file)"))
+        }
+
+        /// A file AgentBar owns outright, taken away — kept beside itself and
+        /// recorded first, the same as a rewrite. Nothing there is nothing to do.
+        func remove(_ url: URL) throws {
+            if preview {
+                if let r = ConfigBackup.previewRemoval(of: url, agent: currentAgent) { planned.append(r) }
+                return
+            }
+            guard let r = try ConfigBackup.remove(url, log: ctx.log, agent: currentAgent) else { return }
+            NSLog("AgentBar: removed \(r.path)" + (r.backup.map { " (kept as \($0))" } ?? ""))
         }
 
         func createDirectory(_ url: URL) throws {
@@ -68,22 +122,36 @@ enum HookInstaller {
 
         func note(_ agentID: String) {
             guard !preview else { return }
+            if !noted.contains(agentID) { noted.append(agentID) }
+            guard ctx.publishes else { return }
             DispatchQueue.main.async {
                 if !wired.contains(agentID) { wired.append(agentID) }
             }
         }
+
+        /// An agent that was just unwired is no longer one the welcome window names.
+        func unnote(_ agentID: String) {
+            guard !preview else { return }
+            noted.removeAll { $0 == agentID }
+            guard ctx.publishes else { return }
+            DispatchQueue.main.async { wired.removeAll { $0 == agentID } }
+        }
     }
 
-    static func installIfNeeded() {
+    static func installIfNeeded(then done: (() -> Void)? = nil) {
         DispatchQueue.global(qos: .utility).async {
-            guard let bundled = Bundle.main.resourceURL?.appendingPathComponent("hooks") else { return }
-            // Without the scripts on disk there is nothing worth wiring to.
-            guard step("copy scripts", { try copyScripts(from: bundled) }) else {
-                DispatchQueue.main.async { onFinish?() }
+            let finish = { DispatchQueue.main.async { onFinish?(); done?() } }
+            guard let bundled = Bundle.main.resourceURL?.appendingPathComponent("hooks") else {
+                finish()
                 return
             }
-            run(Pass(preview: false))
-            DispatchQueue.main.async { onFinish?() }
+            // Without the scripts on disk there is nothing worth wiring to.
+            guard step("copy scripts", { try copyScripts(from: bundled) }) else {
+                finish()
+                return
+            }
+            run(Pass(preview: false, ctx: .live()))
+            finish()
         }
     }
 
@@ -92,27 +160,80 @@ enum HookInstaller {
     /// re-install would leave every file exactly as it is.
     static func preview(_ done: @escaping ([ConfigBackup.Record]) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
-            let pass = Pass(preview: true)
-            run(pass)
-            let planned = pass.planned
+            let planned = runPass(.live(), preview: true).planned
             DispatchQueue.main.async { done(planned) }
         }
     }
 
-    private static func run(_ pass: Pass) {
-        for dir in claudeConfigDirs() {
-            _ = step("claude (\(dir.path))") { try installClaude(configDir: dir, pass) }
+    /// What switching one agent on (`wired`) or off would write, for that agent
+    /// alone — the Agents switch shows this before it does anything.
+    static func preview(agent: String, wired: Bool,
+                        _ done: @escaping ([ConfigBackup.Record]) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            var ctx = Context.live()
+            if wired { ctx.disabled.remove(agent) } else { ctx.disabled.insert(agent) }
+            let planned = runPass(ctx, preview: true, only: agent).planned
+            DispatchQueue.main.async { done(planned) }
         }
-        _ = step("codex") { try installCodex(pass) }
-        _ = step("cursor") { try installCursor(pass) }
-        _ = step("gemini") { try installGemini(pass) }
-        _ = step("antigravity") { try installAntigravity(pass) }
-        _ = step("qwen") { try installQwen(pass) }
-        _ = step("copilot") { try installCopilot(pass) }
-        // Not previewed and not backed up: the plugin is AgentBar's own code,
-        // copied verbatim, not a setting of the user's — a diff of it would be a
-        // diff of our release, and an old copy beside it is nothing to go back to.
-        if !pass.preview { _ = step("opencode") { try installOpenCode(pass) } }
+    }
+
+    /// The switch, confirmed: the choice is saved to `~/.agentbar/wire-disabled`
+    /// first — so the next launch agrees with it even if this pass fails part way —
+    /// and then that one agent is wired or unwired, exactly as the preview showed.
+    /// Sessions already running keep the hooks they started with; their permission
+    /// requests are still answered, because the app never looks at this file for that.
+    static func setWired(_ agent: String, _ wired: Bool,
+                         _ done: @escaping (Error?) -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try WiringPrefs.set(agent, disabled: !wired, home: realHome)
+            } catch {
+                DispatchQueue.main.async { done(error) }
+                return
+            }
+            _ = runPass(.live(), preview: false, only: agent)
+            DispatchQueue.main.async { onFinish?(); done(nil) }
+        }
+    }
+
+    /// One pass over `ctx` — the entry point the tests drive with a temporary home.
+    /// The script copy is not part of it; that is `installIfNeeded`'s alone.
+    static func runPass(_ ctx: Context, preview: Bool,
+                        only: String? = nil) -> (planned: [ConfigBackup.Record], wired: [String]) {
+        let pass = Pass(preview: preview, ctx: ctx, only: only)
+        run(pass)
+        return (pass.planned, pass.noted)
+    }
+
+    /// Every agent the user has not switched off is wired; every one they have is
+    /// *unwired* — on every pass, so a hand-edited `wire-disabled` (or the CLI's)
+    /// takes effect on the next launch too. Unwiring something already unwired
+    /// writes nothing.
+    private static func run(_ pass: Pass) {
+        let on = { (id: String) in !pass.ctx.disabled.contains(id) }
+        for dir in claudeConfigDirs(pass.ctx) {
+            step("claude (\(dir.path))", agent: "claude", pass) {
+                on("claude") ? try installClaude(configDir: dir, pass)
+                             : try unwireClaude(configDir: dir, pass)
+            }
+        }
+        step("codex", agent: "codex", pass) { on("codex") ? try installCodex(pass) : try unwireCodex(pass) }
+        step("cursor", agent: "cursor", pass) { on("cursor") ? try installCursor(pass) : try unwireCursor(pass) }
+        step("gemini", agent: "gemini", pass) { on("gemini") ? try installGemini(pass) : try unwireGemini(pass) }
+        step("antigravity", agent: "antigravity", pass) {
+            on("antigravity") ? try installAntigravity(pass) : try unwireAntigravity(pass)
+        }
+        step("qwen", agent: "qwen", pass) { on("qwen") ? try installQwen(pass) : try unwireQwen(pass) }
+        step("copilot", agent: "copilot", pass) { on("copilot") ? try installCopilot(pass) : try unwireCopilot(pass) }
+        // Installing is not previewed on a whole pass and not backed up: the plugin is
+        // AgentBar's own code, copied verbatim, not a setting of the user's — a diff of
+        // it would be a diff of our release. The one-agent preview behind the Agents
+        // switch does show it, because there it is the whole answer. Taking it away
+        // is always shown and always kept, like any other file AgentBar removes.
+        step("opencode", agent: "opencode", pass) {
+            if !on("opencode") { try unwireOpenCode(pass) }
+            else if !pass.preview || pass.only == "opencode" { try installOpenCode(pass) }
+        }
     }
 
     /// Each integration is independent: one agent's config blowing up must not cost the
@@ -128,15 +249,25 @@ enum HookInstaller {
         }
     }
 
+    /// One agent's step: skipped when the pass is for somebody else, and tagged so
+    /// every record it leaves names the agent.
+    private static func step(_ name: String, agent: String, _ pass: Pass, _ body: () throws -> Void) {
+        if let only = pass.only, only != agent { return }
+        pass.currentAgent = agent
+        defer { pass.currentAgent = nil }
+        step(name, body)
+    }
+
     /// Every Claude config dir we should wire hooks into. Covers a custom
     /// `CLAUDE_CONFIG_DIR` (issue #4) — read from the app's environment if present, or
     /// from a hint file the installer drops (the app is launched via `open`, so it
     /// usually doesn't inherit the shell's env; install.sh rewrites or clears the hint
     /// on every run, so it can't go stale). The default `~/.claude` is always
     /// included so a user who runs Claude both ways stays covered. Deduped.
-    private static func claudeConfigDirs() -> [URL] {
+    private static func claudeConfigDirs(_ ctx: Context) -> [URL] {
+        let home = ctx.home
         var dirs = [home.appendingPathComponent(".claude")]
-        if let env = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"], !env.isEmpty {
+        if let env = ctx.environment["CLAUDE_CONFIG_DIR"], !env.isEmpty {
             dirs.append(URL(fileURLWithPath: (env as NSString).expandingTildeInPath))
         }
         let hint = home.appendingPathComponent(".agentbar/claude-config-dir")
@@ -151,9 +282,9 @@ enum HookInstaller {
     /// Always refresh the script copies — they're versioned with the app.
     private static func copyScripts(from bundled: URL) throws {
         let fm = FileManager.default
-        try fm.createDirectory(at: hooksDir, withIntermediateDirectories: true)
+        try fm.createDirectory(at: realHooksDir, withIntermediateDirectories: true)
         for agent in (try? fm.contentsOfDirectory(at: bundled, includingPropertiesForKeys: nil)) ?? [] {
-            let dest = hooksDir.appendingPathComponent(agent.lastPathComponent)
+            let dest = realHooksDir.appendingPathComponent(agent.lastPathComponent)
             if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
             try fm.copyItem(at: agent, to: dest)
         }
@@ -202,7 +333,7 @@ enum HookInstaller {
     /// old nodejs.org pkg tends to linger.
     static var stableNodePaths: [String] {
         ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node",
-         home.appendingPathComponent(".local/bin/node").path]
+         realHome.appendingPathComponent(".local/bin/node").path]
     }
 
     /// Swap a version-pinned path for a stable alias that resolves to the same binary.
@@ -262,7 +393,8 @@ enum HookInstaller {
     // MARK: - Claude Code (<configDir>/settings.json)
 
     private static func installClaude(configDir: URL, _ pass: Pass) throws {
-        guard let node = nodePath else { NSLog("AgentBar: node not found, Claude hooks skipped"); return }
+        let hooksDir = pass.hooksDir
+        guard let node = pass.node else { NSLog("AgentBar: node not found, Claude hooks skipped"); return }
         let settingsURL = configDir.appendingPathComponent("settings.json")
         try pass.createDirectory(settingsURL.deletingLastPathComponent())
 
@@ -290,15 +422,7 @@ enum HookInstaller {
 
         // Drop earlier AgentBar entries from EVERY event (path match), so events we
         // no longer register (e.g. Notification) don't linger from old installs.
-        for (event, value) in hooks {
-            guard var rules = value as? [[String: Any]] else { continue }
-            rules.removeAll { rule in
-                ((rule["hooks"] as? [[String: Any]]) ?? []).contains { cmd in
-                    (cmd["command"] as? String)?.contains("/.agentbar/hooks/claude/") == true
-                }
-            }
-            if rules.isEmpty { hooks.removeValue(forKey: event) } else { hooks[event] = rules }
-        }
+        hooks = strippingOurs(hooks, marker: claudeMarker).hooks
 
         for e in events {
             var rules = hooks[e.event] as? [[String: Any]] ?? []
@@ -319,8 +443,9 @@ enum HookInstaller {
     // MARK: - Codex (~/.codex/config.toml: the hooks block, and the notify bridge)
 
     private static func installCodex(_ pass: Pass) throws {
-        guard let node = nodePath else { NSLog("AgentBar: node not found, Codex hooks skipped"); return }
-        let codexDir = home.appendingPathComponent(".codex")
+        let hooksDir = pass.hooksDir
+        guard let node = pass.node else { NSLog("AgentBar: node not found, Codex hooks skipped"); return }
+        let codexDir = pass.home.appendingPathComponent(".codex")
         guard FileManager.default.fileExists(atPath: codexDir.path) else { return } // not a Codex user
         let configURL = codexDir.appendingPathComponent("config.toml")
         // The same rule `readConfig` keeps for the JSON configs: missing is a fresh
@@ -544,16 +669,16 @@ enum HookInstaller {
     private static func installCursor(_ pass: Pass) throws {
         // ~/.cursor also exists for IDE-only users; that's intentional — the same
         // hooks.json drives IDE agent sessions, and the bridge is observe-only.
-        let cursorDir = home.appendingPathComponent(".cursor")
+        let cursorDir = pass.home.appendingPathComponent(".cursor")
         guard FileManager.default.fileExists(atPath: cursorDir.path) else { return } // not a Cursor user
         let cfgURL = cursorDir.appendingPathComponent("hooks.json")
-        let scriptURL = hooksDir.appendingPathComponent("cursor/cursor.js")
-        if !pass.preview { try pinNodeShebang(of: scriptURL) }
+        let scriptURL = pass.hooksDir.appendingPathComponent("cursor/cursor.js")
+        if !pass.preview { try pinNodeShebang(of: scriptURL, node: pass.node) }
 
         guard var root = readConfig(at: cfgURL) else { return }
         root["version"] = root["version"] ?? 1
         var hooks = root["hooks"] as? [String: Any] ?? [:]
-        let marker = "/.agentbar/hooks/cursor/"
+        let marker = cursorMarker
 
         // Cursor's command is a single executable path (our script is +x with a shebang).
         // Only observational events: the before* hooks gate permissions and belong to
@@ -574,8 +699,8 @@ enum HookInstaller {
     /// Cursor runs the script directly via its shebang, and a GUI-launched Cursor
     /// inherits the launchd PATH — often without /opt/homebrew/bin — so
     /// `#!/usr/bin/env node` would silently never fire. Pin the resolved node path.
-    private static func pinNodeShebang(of scriptURL: URL) throws {
-        guard let node = nodePath else {
+    private static func pinNodeShebang(of scriptURL: URL, node: String?) throws {
+        guard let node else {
             NSLog("AgentBar: node not found, \(scriptURL.lastPathComponent) left on its bundled shebang")
             return
         }
@@ -594,12 +719,10 @@ enum HookInstaller {
     /// ("agentbar") and never touch the rest. The script runs via its shebang, so
     /// the node path is pinned the same way as Cursor's bridge.
     private static func installAntigravity(_ pass: Pass) throws {
-        let scriptURL = hooksDir.appendingPathComponent("antigravity/antigravity.js")
-        let dirs = ["antigravity", "antigravity-cli"].map {
-            home.appendingPathComponent(".gemini/\($0)", isDirectory: true)
-        }.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let scriptURL = pass.hooksDir.appendingPathComponent("antigravity/antigravity.js")
+        let dirs = antigravityDirs(pass)
         guard !dirs.isEmpty else { return } // not an Antigravity user
-        if !pass.preview { try pinNodeShebang(of: scriptURL) }
+        if !pass.preview { try pinNodeShebang(of: scriptURL, node: pass.node) }
 
         // Observational events only. PreToolUse is not decision-free: agy is
         // fail-closed on it, so antigravity.js prints `{"decision":"allow"}` first
@@ -632,26 +755,17 @@ enum HookInstaller {
     /// unverified against permission.js, and a blocking hook must never be wired
     /// on faith. Timeouts here are milliseconds (Qwen), not seconds (Claude).
     private static func installQwen(_ pass: Pass) throws {
-        guard let node = nodePath else { NSLog("AgentBar: node not found, Qwen hooks skipped"); return }
-        let qwenDir = home.appendingPathComponent(".qwen")
+        guard let node = pass.node else { NSLog("AgentBar: node not found, Qwen hooks skipped"); return }
+        let qwenDir = pass.home.appendingPathComponent(".qwen")
         guard FileManager.default.fileExists(atPath: qwenDir.path) else { return } // not a Qwen user
         let cfgURL = qwenDir.appendingPathComponent("settings.json")
-        let dir = hooksDir.appendingPathComponent("claude").path
+        let dir = pass.hooksDir.appendingPathComponent("claude").path
 
         guard var root = readConfig(at: cfgURL) else { return }
         var hooks = root["hooks"] as? [String: Any] ?? [:]
-        let marker = "/.agentbar/hooks/claude/"
 
         // Drop earlier AgentBar entries from every event before re-adding.
-        for (event, value) in hooks {
-            guard var rules = value as? [[String: Any]] else { continue }
-            rules.removeAll { rule in
-                ((rule["hooks"] as? [[String: Any]]) ?? []).contains { cmd in
-                    (cmd["command"] as? String)?.contains(marker) == true
-                }
-            }
-            if rules.isEmpty { hooks.removeValue(forKey: event) } else { hooks[event] = rules }
-        }
+        hooks = strippingOurs(hooks, marker: claudeMarker).hooks
 
         let events: [(event: String, cmd: String, matcher: Bool)] = [
             ("SessionStart",     "\"\(node)\" \"\(dir)/lifecycle.js\" start", false),
@@ -701,15 +815,12 @@ enum HookInstaller {
     /// AgentBar owns the whole file: Copilot loads every `*.json` in the hooks dir,
     /// so our entries live in ours and the user's live in theirs.
     private static func installCopilot(_ pass: Pass) throws {
-        guard let node = nodePath else { NSLog("AgentBar: node not found, Copilot hooks skipped"); return }
-        // COPILOT_HOME wins when set, exactly as the CLI resolves it.
-        let copilotDir = ProcessInfo.processInfo.environment["COPILOT_HOME"].flatMap {
-            $0.isEmpty ? nil : URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath)
-        } ?? home.appendingPathComponent(".copilot")
+        guard let node = pass.node else { NSLog("AgentBar: node not found, Copilot hooks skipped"); return }
+        let copilotDir = copilotDir(pass)
         guard FileManager.default.fileExists(atPath: copilotDir.path) else { return } // not a Copilot user
         let hooksFileDir = copilotDir.appendingPathComponent("hooks", isDirectory: true)
         try pass.createDirectory(hooksFileDir)
-        let dir = hooksDir.appendingPathComponent("claude").path
+        let dir = pass.hooksDir.appendingPathComponent("claude").path
 
         let events: [(event: String, script: String, arg: String?)] = [
             ("SessionStart",       "lifecycle.js", "start"),
@@ -752,30 +863,32 @@ enum HookInstaller {
     /// OpenCode loads JS plugins from its config dir; ours observes the event bus
     /// and mirrors it into state files. The copy refreshes with the app version.
     private static func installOpenCode(_ pass: Pass) throws {
-        let configDir = home.appendingPathComponent(".config/opencode")
+        let configDir = pass.home.appendingPathComponent(".config/opencode")
         guard FileManager.default.fileExists(atPath: configDir.path) else { return } // not an OpenCode user
         let pluginsDir = configDir.appendingPathComponent("plugins", isDirectory: true)
         try pass.createDirectory(pluginsDir)
-        let src = hooksDir.appendingPathComponent("opencode/agentbar.js")
+        let src = pass.hooksDir.appendingPathComponent("opencode/agentbar.js")
         let dest = pluginsDir.appendingPathComponent("agentbar.js")
         let data = try Data(contentsOf: src)
-        try writeIfChanged(data, to: dest)
+        // A preview only reaches here for the one-agent preview (see `run`), where
+        // the plugin appearing is the whole of the answer.
+        if pass.preview { try pass.write(data, to: dest) } else { try writeIfChanged(data, to: dest) }
         pass.note("opencode")
     }
 
     // MARK: - Gemini CLI (~/.gemini/settings.json)
 
     private static func installGemini(_ pass: Pass) throws {
-        guard let node = nodePath else { NSLog("AgentBar: node not found, Gemini hooks skipped"); return }
-        let geminiDir = home.appendingPathComponent(".gemini")
+        guard let node = pass.node else { NSLog("AgentBar: node not found, Gemini hooks skipped"); return }
+        let geminiDir = pass.home.appendingPathComponent(".gemini")
         guard FileManager.default.fileExists(atPath: geminiDir.path) else { return } // not a Gemini user
         let cfgURL = geminiDir.appendingPathComponent("settings.json")
-        let script = hooksDir.appendingPathComponent("gemini/gemini.js").path
+        let script = pass.hooksDir.appendingPathComponent("gemini/gemini.js").path
         let command = "\"\(node)\" \"\(script)\""
 
         guard var root = readConfig(at: cfgURL) else { return }
         var hooks = root["hooks"] as? [String: Any] ?? [:]
-        let marker = "/.agentbar/hooks/gemini/"
+        let marker = geminiMarker
 
         // Gemini groups hooks as [{ hooks: [{type:"command", command}] }].
         func ours(_ group: [String: Any]) -> Bool {
@@ -795,5 +908,155 @@ enum HookInstaller {
         let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
         try pass.write(data, to: cfgURL)
         pass.note("gemini")
+    }
+
+    // MARK: - Where each agent lives
+
+    private static func antigravityDirs(_ pass: Pass) -> [URL] {
+        ["antigravity", "antigravity-cli"].map {
+            pass.home.appendingPathComponent(".gemini/\($0)", isDirectory: true)
+        }.filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    /// COPILOT_HOME wins when set, exactly as the CLI resolves it.
+    private static func copilotDir(_ pass: Pass) -> URL {
+        pass.ctx.environment["COPILOT_HOME"].flatMap {
+            $0.isEmpty ? nil : URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath)
+        } ?? pass.home.appendingPathComponent(".copilot")
+    }
+
+    // MARK: - Unwiring (an agent the user switched off)
+
+    /// What says a hook command is ours, per script directory. Qwen and Copilot run
+    /// the claude/ scripts, so they share Claude's.
+    static let claudeMarker = "/.agentbar/hooks/claude/"
+    static let cursorMarker = "/.agentbar/hooks/cursor/"
+    static let geminiMarker = "/.agentbar/hooks/gemini/"
+
+    /// `hooks` without every rule that runs one of our scripts, and without any event
+    /// that leaves empty. A rule is ours when `marker` is in its own `command` (Cursor's
+    /// flat shape) or in any of its nested `hooks[].command` (Claude, Qwen, Gemini).
+    /// Values that are not a list of rules are left exactly as they are.
+    static func strippingOurs(_ hooks: [String: Any], marker: String) -> (hooks: [String: Any], removed: Bool) {
+        func ours(_ rule: [String: Any]) -> Bool {
+            if (rule["command"] as? String)?.contains(marker) == true { return true }
+            return ((rule["hooks"] as? [[String: Any]]) ?? []).contains {
+                ($0["command"] as? String)?.contains(marker) == true
+            }
+        }
+        var out = hooks
+        var removed = false
+        for (event, value) in hooks {
+            guard var rules = value as? [[String: Any]] else { continue }
+            let before = rules.count
+            rules.removeAll(where: ours)
+            guard rules.count != before else { continue }
+            removed = true
+            if rules.isEmpty { out.removeValue(forKey: event) } else { out[event] = rules }
+        }
+        return (out, removed)
+    }
+
+    /// The JSON configs that keep our entries among the user's under `hooks`: our
+    /// rules come out, an emptied `hooks` goes, everything else is serialized exactly
+    /// the way the installer serializes it. A file holding nothing of ours is not
+    /// rewritten at all — unwiring must never reformat a file it had no part in.
+    private static func unwireHooksJSON(at url: URL, marker: String, _ pass: Pass) throws {
+        guard FileManager.default.fileExists(atPath: url.path),
+              var root = readConfig(at: url),
+              let hooks = root["hooks"] as? [String: Any] else { return }
+        let (left, removed) = strippingOurs(hooks, marker: marker)
+        guard removed else { return }
+        if left.isEmpty { root.removeValue(forKey: "hooks") } else { root["hooks"] = left }
+        let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        try pass.write(data, to: url)
+    }
+
+    private static func unwireClaude(configDir: URL, _ pass: Pass) throws {
+        try unwireHooksJSON(at: configDir.appendingPathComponent("settings.json"),
+                            marker: claudeMarker, pass)
+        pass.unnote("claude")
+    }
+
+    private static func unwireQwen(_ pass: Pass) throws {
+        try unwireHooksJSON(at: pass.home.appendingPathComponent(".qwen/settings.json"),
+                            marker: claudeMarker, pass)
+        pass.unnote("qwen")
+    }
+
+    private static func unwireGemini(_ pass: Pass) throws {
+        try unwireHooksJSON(at: pass.home.appendingPathComponent(".gemini/settings.json"),
+                            marker: geminiMarker, pass)
+        pass.unnote("gemini")
+    }
+
+    /// `version` stays: the installer adds it only when missing, and Cursor wants it.
+    private static func unwireCursor(_ pass: Pass) throws {
+        try unwireHooksJSON(at: pass.home.appendingPathComponent(".cursor/hooks.json"),
+                            marker: cursorMarker, pass)
+        pass.unnote("cursor")
+    }
+
+    /// We own exactly one top-level key in each Antigravity hooks.json.
+    private static func unwireAntigravity(_ pass: Pass) throws {
+        for dir in antigravityDirs(pass) {
+            let url = dir.appendingPathComponent("hooks.json")
+            guard FileManager.default.fileExists(atPath: url.path),
+                  var root = readConfig(at: url), root["agentbar"] != nil else { continue }
+            root.removeValue(forKey: "agentbar")
+            let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+            try pass.write(data, to: url)
+        }
+        pass.unnote("antigravity")
+    }
+
+    /// The whole file is ours, so the whole file goes — kept beside itself first.
+    private static func unwireCopilot(_ pass: Pass) throws {
+        try pass.remove(copilotDir(pass).appendingPathComponent("hooks/agentbar.json"))
+        pass.unnote("copilot")
+    }
+
+    private static func unwireOpenCode(_ pass: Pass) throws {
+        try pass.remove(pass.home.appendingPathComponent(".config/opencode/plugins/agentbar.js"))
+        pass.unnote("opencode")
+    }
+
+    /// Same refusals as `installCodex`: unreadable or not UTF-8 is left alone.
+    private static func unwireCodex(_ pass: Pass) throws {
+        let url = pass.home.appendingPathComponent(".codex/config.toml")
+        guard let data = try? Data(contentsOf: url) else { return }
+        guard let config = String(data: data, encoding: .utf8) else {
+            NSLog("AgentBar: ~/.codex/config.toml is not UTF-8 — leaving it untouched")
+            return
+        }
+        let next = codexUnwired(config: config)
+        if next != config { try pass.write(Data(next.utf8), to: url) }
+        pass.unnote("codex")
+    }
+
+    /// The config without AgentBar's hooks block and without AgentBar's own `notify`
+    /// line — the inverse of the two plans, so wiring and then unwiring a file gives
+    /// back the file (bar a final newline the install had to add). Someone else's
+    /// notify is never touched, and neither is our marker in a shape the line pattern
+    /// cannot read: the same line `codexPlan` draws. Pure, so it is a test.
+    static func codexUnwired(config: String) -> String {
+        var text = config
+        if let begin = text.range(of: codexBegin),
+           let end = text.range(of: codexEnd, range: begin.upperBound..<text.endIndex) {
+            var lower = begin.lowerBound
+            var upper = end.upperBound
+            if upper < text.endIndex, text[upper] == "\n" { upper = text.index(after: upper) }
+            // The blank line `codexHooksPlan` put above the block.
+            if text[..<lower].hasSuffix("\n\n") { lower = text.index(before: lower) }
+            text.removeSubrange(lower..<upper)
+        }
+        let ourLine = #"(?m)^[ \t]*notify[ \t]*=[ \t]*\[[^\]]*/\.agentbar/hooks/codex/[^\]]*\]"#
+        if var line = text.range(of: ourLine, options: .regularExpression) {
+            if line.upperBound < text.endIndex, text[line.upperBound] == "\n" {
+                line = line.lowerBound..<text.index(after: line.upperBound)
+            }
+            text.removeSubrange(line)
+        }
+        return text
     }
 }

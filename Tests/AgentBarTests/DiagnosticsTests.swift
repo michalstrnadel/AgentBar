@@ -101,6 +101,25 @@ import Testing
         #expect(check("agent.codex.wired") == nil)
     }
 
+    /// Switched off in Settings (or in `wire-disabled` by hand): unwired on purpose,
+    /// so no failure, no repair button, and no "silent for a fortnight".
+    @Test func anAgentYouTurnedOffIsSkippedNotFailed() throws {
+        try write(".cursor/hooks.json", "{}")
+        try write(".agentbar/hooks/cursor/cursor.js", "#!/usr/bin/env node\n")
+        #expect(check("agent.cursor.wired")?.status == .fail)
+        #expect(check("hooks.shebang")?.status == .warn)
+
+        try write(".agentbar/wire-disabled", "# mine\ncursor\n")
+        let row = check("agent.cursor")
+        #expect(row?.status == .skipped)
+        #expect(row?.detail?.hasPrefix(Diagnostics.turnedOff) == true)
+        #expect(row?.repair == nil)
+        #expect(check("agent.cursor.wired") == nil)
+        #expect(check("agent.cursor.lastSeen") == nil)
+        #expect(check("hooks.shebang")?.status == .skipped)
+        #expect(Diagnostics.run(home: home, now: Self.now).allSatisfy { $0.status != .fail || !$0.id.hasPrefix("agent.cursor") })
+    }
+
     @Test func anInstalledButUnwiredAgentIsAFailure() throws {
         try write(".codex/config.toml", "model = \"o3\"\n")
         #expect(check("agent.codex.wired")?.status == .fail)

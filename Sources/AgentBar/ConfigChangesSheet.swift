@@ -14,6 +14,12 @@ import Cocoa
 /// - **Written.** The last writes from `ConfigBackup`'s record, each with its diff
 ///   and the backup it kept beside the file.
 ///
+/// The same sheet answers the **Agents** switches in Settings ▸ Diagnostics, in a
+/// second mode (`Mode.toggle`): the pending half only, for that one agent, worked
+/// out by the same preview — and instead of **Write it now**, **Cancel** and
+/// **Apply**. Switching an agent on or off is a write into its settings like any
+/// other, so it is shown like any other before it happens.
+///
 /// A sheet, not a window, for the reason `RuleSheet` is one: it is opened by a click
 /// in a window the user already has open (Settings ▸ Diagnostics, or the welcome
 /// window), it is modal to that window, and it is gone when it is dismissed. There
@@ -28,6 +34,19 @@ final class ConfigChangesSheet: NSObject {
         var record: ConfigBackup.Record {
             switch self { case .pending(let r), .written(let r): return r }
         }
+    }
+
+    /// What the sheet is for: everything AgentBar did and would do, or one agent
+    /// being switched on (`wire`) or off.
+    enum Mode: Equatable {
+        case all
+        case toggle(agent: String, name: String, wire: Bool)
+    }
+
+    /// A pending record that takes a file away rather than rewriting it — Copilot's
+    /// and OpenCode's, which are AgentBar's own files.
+    static func isRemoval(_ r: ConfigBackup.Record) -> Bool {
+        r.diff.contains("\n+++ /dev/null") || r.diff.hasPrefix("+++ /dev/null")
     }
 
     /// Pending first — it is the half that still wants a decision — then the record,
@@ -57,12 +76,14 @@ final class ConfigChangesSheet: NSObject {
 
     /// The sentence under the picker: where the original went, which is the half of
     /// the answer a diff cannot give.
-    static func caption(_ entry: Entry) -> String {
+    static func caption(_ entry: Entry, mode: Mode = .all) -> String {
         switch entry {
         case .pending(let r):
+            let who = mode == .all ? "The next launch" : "Apply"
+            if isRemoval(r) { return "\(who) removes this file. A copy is kept beside it first." }
             return FileManager.default.fileExists(atPath: r.path)
-                ? "The next launch writes this. The file as it is now will be kept beside it first."
-                : "The next launch creates this file."
+                ? "\(who) writes this. The file as it is now will be kept beside it first."
+                : "\(who) creates this file."
         case .written(let r):
             guard let backup = r.backup else {
                 return "AgentBar created this file, so there was nothing to keep."
@@ -88,7 +109,13 @@ final class ConfigChangesSheet: NSObject {
     private let empty = NSTextField(wrappingLabelWithString: "")
     private let text = NSTextView()
     private let scroll = NSScrollView()
+    private let apply = NSButton()
+    private let done = NSButton()
     private var entries: [Entry] = []
+    private let mode: Mode
+    /// `Mode.toggle` only: called once, true when the change was applied, false when
+    /// it was cancelled — so the switch that opened the sheet can go back.
+    private var answer: ((Bool) -> Void)?
     /// Each sheet retained for its own life and released when *it* closes. Two
     /// can be up at once — one on the welcome window, one on Settings — and a
     /// single slot the second overwrote freed the first: its buttons hold weak
@@ -96,23 +123,55 @@ final class ConfigChangesSheet: NSObject {
     private static var open: [ObjectIdentifier: ConfigChangesSheet] = [:]
 
     static func present(on parent: NSWindow) {
-        let s = ConfigChangesSheet()
+        let s = ConfigChangesSheet(mode: .all)
         let key = ObjectIdentifier(s.sheet)
         open[key] = s
         parent.beginSheet(s.sheet) { _ in open[key] = nil }
         s.load()
     }
 
-    private override init() {
+    /// One agent switched on or off: what that would write, then Cancel or Apply.
+    /// `answer` runs on the main queue once, after the change has been made (true)
+    /// or abandoned (false).
+    static func present(on parent: NSWindow, agent: String, name: String, wire: Bool,
+                        answer: @escaping (Bool) -> Void) {
+        let s = ConfigChangesSheet(mode: .toggle(agent: agent, name: name, wire: wire))
+        s.answer = answer
+        let key = ObjectIdentifier(s.sheet)
+        open[key] = s
+        parent.beginSheet(s.sheet) { _ in open[key] = nil }
+        s.load()
+    }
+
+    static func heading(_ mode: Mode) -> (title: String, blurb: String) {
+        switch mode {
+        case .all:
+            return ("What AgentBar changed in your agents' settings",
+                    "Before AgentBar writes into a settings file it keeps the file as it was, beside "
+                    + "it, as settings.json\(ConfigBackup.marker)<date and time>. The last \(ConfigBackup.keep) "
+                    + "copies of each stay; a launch that changes nothing writes nothing and keeps nothing.")
+        case .toggle(_, let name, true):
+            return ("Wire AgentBar into \(name)",
+                    "This is what AgentBar will add to \(name)'s settings, keeping each file as it "
+                    + "was beside it first. New \(name) sessions show up from then on.")
+        case .toggle(_, let name, false):
+            return ("Leave \(name) alone",
+                    "This is what AgentBar will take out of \(name)'s settings — only its own "
+                    + "entries — keeping each file as it was beside it first. It stays off on every "
+                    + "launch until you switch it back. Sessions already running keep their hooks "
+                    + "until they end, and anything they ask is still answered.")
+        }
+    }
+
+    private init(mode: Mode) {
+        self.mode = mode
         super.init()
 
-        let title = NSTextField(labelWithString: "What AgentBar changed in your agents' settings")
+        let heading = Self.heading(mode)
+        let title = NSTextField(labelWithString: heading.title)
         title.font = .systemFont(ofSize: 15, weight: .semibold)
 
-        let blurb = NSTextField(wrappingLabelWithString:
-            "Before AgentBar writes into a settings file it keeps the file as it was, beside "
-            + "it, as settings.json\(ConfigBackup.marker)<date and time>. The last \(ConfigBackup.keep) "
-            + "copies of each stay; a launch that changes nothing writes nothing and keeps nothing.")
+        let blurb = NSTextField(wrappingLabelWithString: heading.blurb)
         blurb.font = .systemFont(ofSize: 11.5)
         blurb.textColor = .secondaryLabelColor
         blurb.preferredMaxLayoutWidth = Self.inner
@@ -168,9 +227,25 @@ final class ConfigChangesSheet: NSObject {
         writeNow.isHidden = true
         writeNow.toolTip = "Runs the installer now, as a launch would. Each file is backed up first."
 
-        let done = NSButton(title: "Done", target: self, action: #selector(finish))
+        done.title = "Done"
+        done.target = self
+        done.action = #selector(finish)
         done.bezelStyle = .rounded
         done.keyEquivalent = "\r"
+
+        apply.target = self
+        apply.action = #selector(applyToggle)
+        apply.bezelStyle = .rounded
+        apply.isHidden = true
+        if case .toggle(_, _, let wire) = mode {
+            // The change is the default button; walking away is Escape.
+            done.title = "Cancel"
+            done.keyEquivalent = "\u{1b}"
+            apply.title = wire ? "Wire it" : "Turn off"
+            apply.keyEquivalent = "\r"
+            apply.isHidden = false
+            apply.isEnabled = false   // until the preview is in
+        }
 
         let captionRow = NSStackView(views: [caption, NSView(), reveal])
         captionRow.orientation = .horizontal
@@ -178,7 +253,7 @@ final class ConfigChangesSheet: NSObject {
         captionRow.spacing = 8
         caption.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        let buttons = NSStackView(views: [writeNow, NSView(), done])
+        let buttons = NSStackView(views: [writeNow, NSView(), done, apply])
         buttons.orientation = .horizontal
         buttons.spacing = 10
 
@@ -211,23 +286,46 @@ final class ConfigChangesSheet: NSObject {
     /// The preview runs the installer's own pass, which can probe the login shell for
     /// node — off the main thread, with the picker saying so meanwhile.
     private func load(selecting path: String? = nil) {
+        if case .toggle(let agent, _, let wire) = mode {
+            HookInstaller.preview(agent: agent, wired: wire) { [weak self] pending in
+                guard let self else { return }
+                self.show(Self.entries(pending: pending.filter { $0.agent == agent }, written: []),
+                          selecting: path)
+                self.apply.isEnabled = true
+            }
+            return
+        }
         HookInstaller.preview { [weak self] pending in
             self?.show(Self.entries(pending: pending, written: ConfigBackup.recent()),
                        selecting: path)
         }
     }
 
+    /// What the sheet says when there is no diff to show.
+    static func emptyText(_ mode: Mode) -> String {
+        switch mode {
+        case .all:
+            return "AgentBar has not changed any of your agents' settings since it "
+                + "started keeping this record, and a re-install would change nothing."
+        case .toggle(_, let name, true):
+            return "Nothing in \(name)'s settings changes — AgentBar's hooks are already there."
+        case .toggle(_, let name, false):
+            return "Nothing to take out — none of AgentBar's hooks are in \(name)'s settings. "
+                + "Turning it off keeps it that way."
+        }
+    }
+
     private func show(_ found: [Entry], selecting path: String?) {
         entries = found
         picker.removeAllItems()
-        writeNow.isHidden = !found.contains { if case .pending = $0 { return true }; return false }
+        writeNow.isHidden = mode != .all
+            || !found.contains { if case .pending = $0 { return true }; return false }
         guard !found.isEmpty else {
             picker.addItem(withTitle: "Nothing to show")
             picker.isEnabled = false
             caption.stringValue = ""
             reveal.isHidden = true
-            empty.stringValue = "AgentBar has not changed any of your agents' settings since it "
-                + "started keeping this record, and a re-install would change nothing."
+            empty.stringValue = Self.emptyText(mode)
             empty.isHidden = false
             scroll.isHidden = true
             return
@@ -246,7 +344,7 @@ final class ConfigChangesSheet: NSObject {
         let i = picker.indexOfSelectedItem
         guard entries.indices.contains(i) else { return }
         let entry = entries[i]
-        caption.stringValue = Self.caption(entry)
+        caption.stringValue = Self.caption(entry, mode: mode)
         if case .written(let r) = entry, let backup = r.backup {
             reveal.isHidden = !FileManager.default.fileExists(atPath: backup)
         } else {
@@ -308,14 +406,39 @@ final class ConfigChangesSheet: NSObject {
     }
 
     @objc private func finish() {
+        answer?(false)
+        answer = nil
         sheet.sheetParent?.endSheet(sheet)
+    }
+
+    /// Saves the choice and makes the change, then closes. A failure to save the
+    /// choice is said in the sheet rather than swallowed, and the switch goes back.
+    @objc private func applyToggle() {
+        guard case .toggle(let agent, _, let wire) = mode else { return }
+        apply.isEnabled = false
+        done.isEnabled = false
+        apply.title = wire ? "Wiring…" : "Turning off…"
+        HookInstaller.setWired(agent, wire) { [weak self] error in
+            guard let self else { return }
+            if let error {
+                self.done.isEnabled = true
+                self.apply.title = wire ? "Wire it" : "Turn off"
+                self.apply.isEnabled = true
+                self.empty.stringValue = "Could not save the choice: \(error.localizedDescription)"
+                self.empty.isHidden = false
+                return
+            }
+            self.answer?(true)
+            self.answer = nil
+            self.sheet.sheetParent?.endSheet(self.sheet)
+        }
     }
 
     /// Drawn to a file, for the same reason `RuleSheet` is: its layout and wording
     /// are the parts that can be wrong, and no test can look at either.
     static func renderForVerification(to url: URL, pending: [ConfigBackup.Record],
-                                      written: [ConfigBackup.Record]) -> Bool {
-        let s = ConfigChangesSheet()
+                                      written: [ConfigBackup.Record], mode: Mode = .all) -> Bool {
+        let s = ConfigChangesSheet(mode: mode)
         s.show(entries(pending: pending, written: written), selecting: nil)
         guard let root = s.sheet.contentView else { return false }
         root.layoutSubtreeIfNeeded()

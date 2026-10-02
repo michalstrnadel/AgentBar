@@ -222,4 +222,233 @@ import Testing
         #expect(HookInstaller.realPath(resolved) == real)
         #expect(HookInstaller.stableNodePaths.contains(resolved))
     }
+
+    // MARK: - Wiring and unwiring a whole agent, in a home of our own
+
+    /// Every pass here runs against a temporary home with an empty environment — the
+    /// shell running the tests may carry a real `CLAUDE_CONFIG_DIR` or `COPILOT_HOME`,
+    /// and a pass that read either would write into the person's own settings.
+    private struct Home {
+        let url: URL
+        init() throws {
+            url = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("agentbar-wire-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        var log: URL { url.appendingPathComponent(".agentbar/config-changes.json") }
+        func ctx(off: Set<String> = []) -> HookInstaller.Context {
+            HookInstaller.Context(home: url, environment: [:], node: "/opt/homebrew/bin/node",
+                                  log: log, disabled: off)
+        }
+        func path(_ rel: String) -> URL { url.appendingPathComponent(rel) }
+        func dir(_ rel: String) throws {
+            try FileManager.default.createDirectory(at: path(rel), withIntermediateDirectories: true)
+        }
+        func put(_ rel: String, _ text: String) throws {
+            try FileManager.default.createDirectory(at: path(rel).deletingLastPathComponent(),
+                                                    withIntermediateDirectories: true)
+            try text.write(to: path(rel), atomically: true, encoding: .utf8)
+        }
+        func read(_ rel: String) -> String? { try? String(contentsOf: path(rel), encoding: .utf8) }
+        func exists(_ rel: String) -> Bool { FileManager.default.fileExists(atPath: path(rel).path) }
+        func records() -> [ConfigBackup.Record] { ConfigBackup.recent(log: log) }
+        /// The installer's own serializer, so "the file as it was" means the same bytes.
+        static func json(_ object: [String: Any]) throws -> String {
+            String(decoding: try JSONSerialization.data(
+                withJSONObject: object, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]),
+                   as: UTF8.self)
+        }
+        func cleanUp() { try? FileManager.default.removeItem(at: url) }
+    }
+
+    /// Wire one agent, then switch it off: the file must come back to exactly what it
+    /// was, the user's own entries included, and every record must name the agent.
+    private func roundTrip(_ agent: String, file: String, before: String,
+                           marker: String, setUp: (Home) throws -> Void = { _ in }) throws {
+        let home = try Home()
+        defer { home.cleanUp() }
+        try setUp(home)
+        try home.put(file, before)
+
+        let wired = HookInstaller.runPass(home.ctx(), preview: false, only: agent)
+        #expect(wired.wired == [agent])
+        let during = try #require(home.read(file))
+        #expect(Diagnostics.unescapingSlashes(during).contains(marker), "\(agent) was not wired")
+
+        // The preview of switching it off is the diff the sheet shows, tagged.
+        let planned = HookInstaller.runPass(home.ctx(off: [agent]), preview: true, only: agent).planned
+        #expect(planned.count == 1)
+        #expect(planned.first?.agent == agent)
+        #expect(home.read(file) == during, "a preview wrote")
+
+        let unwired = HookInstaller.runPass(home.ctx(off: [agent]), preview: false, only: agent)
+        #expect(unwired.wired.isEmpty)
+        #expect(home.read(file) == before, "\(agent): unwiring did not give the file back")
+        #expect(home.records().allSatisfy { $0.agent == agent })
+        #expect(home.records().count == 2)
+
+        // And again: nothing of ours left means nothing is written.
+        _ = HookInstaller.runPass(home.ctx(off: [agent]), preview: false, only: agent)
+        #expect(home.records().count == 2)
+    }
+
+    @Test func claudeUnwiresBackToTheUsersOwnSettings() throws {
+        let before = try Home.json([
+            "env": ["FOO": "1"],
+            "hooks": ["Stop": [["hooks": [["type": "command", "command": "say done"]]]]],
+            "model": "opus",
+        ])
+        try roundTrip("claude", file: ".claude/settings.json", before: before,
+                      marker: HookInstaller.claudeMarker)
+    }
+
+    @Test func claudeWithNoHooksOfItsOwnLosesTheEmptyHooksKey() throws {
+        try roundTrip("claude", file: ".claude/settings.json",
+                      before: try Home.json(["model": "opus"]), marker: HookInstaller.claudeMarker)
+    }
+
+    @Test func qwenUnwires() throws {
+        let before = try Home.json([
+            "hooks": ["SessionStart": [["hooks": [["type": "command", "command": "echo hi"]]]]],
+        ])
+        try roundTrip("qwen", file: ".qwen/settings.json", before: before,
+                      marker: HookInstaller.claudeMarker)
+    }
+
+    @Test func geminiUnwires() throws {
+        let before = try Home.json([
+            "hooks": ["AfterTool": [["hooks": [["type": "command", "command": "lint"]]]]],
+            "theme": "dark",
+        ])
+        try roundTrip("gemini", file: ".gemini/settings.json", before: before,
+                      marker: HookInstaller.geminiMarker)
+    }
+
+    @Test func cursorUnwiresAndKeepsTheUsersFlatRules() throws {
+        let before = try Home.json([
+            "version": 1,
+            "hooks": ["stop": [["command": "/usr/local/bin/notify-me"]]],
+        ])
+        try roundTrip("cursor", file: ".cursor/hooks.json", before: before,
+                      marker: HookInstaller.cursorMarker)
+    }
+
+    @Test func antigravityLosesOnlyItsOwnGroup() throws {
+        let before = try Home.json([
+            "mine": ["Stop": [["hooks": [["type": "command", "command": "beep"]]]]],
+        ])
+        try roundTrip("antigravity", file: ".gemini/antigravity/hooks.json", before: before,
+                      marker: "\"agentbar\"")
+    }
+
+    @Test func codexUnwiresTheBlockAndItsOwnNotify() throws {
+        let before = "model = \"o3\"\n\n[mcp_servers.github]\ncommand = \"gh\"\n"
+        try roundTrip("codex", file: ".codex/config.toml", before: before,
+                      marker: "/.agentbar/hooks/codex/")
+    }
+
+    /// Somebody else's notify was never ours to take, so it is not ours to remove.
+    @Test func codexUnwiringLeavesAForeignNotifyAlone() throws {
+        let before = "notify = [\"/usr/bin/say\", \"done\"]\nmodel = \"o3\"\n"
+        try roundTrip("codex", file: ".codex/config.toml", before: before,
+                      marker: HookInstaller.codexBegin)
+    }
+
+    @Test func codexUnwiredIsTheInverseOfBothPlans() {
+        for original in ["", "model = \"o3\"\n", "model = \"o3\"\n\n", "a = 1\n[t]\nb = 2\n"] {
+            var text = original
+            if case .write(let next, _) = HookInstaller.codexPlan(
+                config: text, node: "/n", script: "/u/.agentbar/hooks/codex/notify.js",
+                isExecutable: { _ in true }) { text = next }
+            if case .write(let next, _) = HookInstaller.codexHooksPlan(
+                config: text, node: "/n", dir: "/u/.agentbar/hooks") { text = next }
+            #expect(text != original)
+            #expect(HookInstaller.codexUnwired(config: text) == original, "\(original.debugDescription)")
+        }
+        // Our marker in a shape the notify pattern cannot read stays, as codexPlan leaves it.
+        let odd = "# wired by agentbar: /u/.agentbar/hooks/codex/notify.js\n"
+        #expect(HookInstaller.codexUnwired(config: odd) == odd)
+    }
+
+    /// Copilot loads every *.json in its hooks dir; ours is a file of its own, so
+    /// switching it off deletes that file — kept beside itself first — and nothing else.
+    @Test func copilotUnwiresByRemovingItsOwnFile() throws {
+        let home = try Home()
+        defer { home.cleanUp() }
+        try home.put(".copilot/hooks/mine.json", "{\"version\":1}")
+        _ = HookInstaller.runPass(home.ctx(), preview: false, only: "copilot")
+        #expect(home.exists(".copilot/hooks/agentbar.json"))
+
+        let planned = HookInstaller.runPass(home.ctx(off: ["copilot"]), preview: true, only: "copilot").planned
+        #expect(planned.count == 1)
+        #expect(ConfigChangesSheet.isRemoval(try #require(planned.first)))
+        #expect(home.exists(".copilot/hooks/agentbar.json"), "a preview removed")
+
+        _ = HookInstaller.runPass(home.ctx(off: ["copilot"]), preview: false, only: "copilot")
+        #expect(!home.exists(".copilot/hooks/agentbar.json"))
+        #expect(home.read(".copilot/hooks/mine.json") == "{\"version\":1}")
+        let removal = try #require(home.records().first)
+        #expect(removal.agent == "copilot")
+        #expect(ConfigChangesSheet.isRemoval(removal))
+        let kept = try #require(removal.backup)
+        #expect(FileManager.default.fileExists(atPath: kept))
+        // The copy is not a *.json, or Copilot would load our hooks from it.
+        #expect(!kept.hasSuffix(".json"))
+    }
+
+    @Test func openCodeIsPreviewedForItsOwnSwitchAndRemovedWhenOff() throws {
+        let home = try Home()
+        defer { home.cleanUp() }
+        try home.dir(".config/opencode")
+        try home.put(".agentbar/hooks/opencode/agentbar.js", "export default {}\n")
+
+        // A whole-pass preview still leaves the plugin out (it is our release, not
+        // the user's settings); the one-agent preview behind the switch shows it.
+        #expect(HookInstaller.runPass(home.ctx(), preview: true).planned.allSatisfy { $0.agent != "opencode" })
+        let shown = HookInstaller.runPass(home.ctx(), preview: true, only: "opencode").planned
+        #expect(shown.map(\.agent) == ["opencode"])
+
+        _ = HookInstaller.runPass(home.ctx(), preview: false, only: "opencode")
+        #expect(home.read(".config/opencode/plugins/agentbar.js") == "export default {}\n")
+        _ = HookInstaller.runPass(home.ctx(off: ["opencode"]), preview: false, only: "opencode")
+        #expect(!home.exists(".config/opencode/plugins/agentbar.js"))
+        #expect(home.records().first?.agent == "opencode")
+    }
+
+    /// The whole launch pass, with one agent switched off: that one is not wired —
+    /// its file stays byte for byte, hand formatting and all — and the rest are.
+    @Test func aDisabledAgentIsNotRewiredByTheLaunchPass() throws {
+        let home = try Home()
+        defer { home.cleanUp() }
+        let handWritten = "{ \"version\": 1,\n  \"hooks\": {} }\n"
+        try home.put(".cursor/hooks.json", handWritten)
+        try home.dir(".codex")
+
+        let pass = HookInstaller.runPass(home.ctx(off: ["cursor"]), preview: false)
+        #expect(home.read(".cursor/hooks.json") == handWritten)
+        #expect(!pass.wired.contains("cursor"))
+        #expect(pass.wired.contains("claude"))
+        #expect(pass.wired.contains("codex"))
+        #expect(!home.records().contains { $0.agent == "cursor" })
+        // Every record the pass left says whose file it was.
+        #expect(!home.records().isEmpty)
+        #expect(home.records().allSatisfy { $0.agent != nil })
+    }
+
+    /// Only Claude's config dir in the temporary home is touched — the environment
+    /// is the context's, so a `CLAUDE_CONFIG_DIR` in the shell running this is not.
+    @Test func claudeIsUnwiredInEveryConfigDirItWasWiredInto() throws {
+        let home = try Home()
+        defer { home.cleanUp() }
+        let other = home.path("elsewhere/claude")
+        var ctx = home.ctx()
+        ctx.environment = ["CLAUDE_CONFIG_DIR": other.path]
+        try home.put(".claude/settings.json", "{}")
+        _ = HookInstaller.runPass(ctx, preview: false, only: "claude")
+        #expect(home.read("elsewhere/claude/settings.json")?.contains("lifecycle.js") == true)
+        ctx.disabled = ["claude"]
+        _ = HookInstaller.runPass(ctx, preview: false, only: "claude")
+        #expect(home.read("elsewhere/claude/settings.json") == "{\n\n}")
+        #expect(home.read(".claude/settings.json") == "{\n\n}")
+    }
 }
