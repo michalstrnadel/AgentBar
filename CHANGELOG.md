@@ -1327,7 +1327,8 @@ All notable changes to AgentBar are documented here. This project follows
   auto-suspended threads show as idle within their own window. A row click only
   follows web and vendor schemes — any state file can name a `url`, and opening
   an arbitrary local path with its default app is not what a row click is for.
-  Devin joins the agent roster with an original D letterform mark.
+  Devin joins the agent roster with an original D letterform mark. — thanks
+  @emigal (#14)
 - **Activity feed.** The island hero shows the turn's recent tool steps as a
   quiet breadcrumb ("Reading · Searching · Editing") while the session works —
   the last item of the island plan's content-parity phase. Carried as the

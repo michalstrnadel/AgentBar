@@ -143,11 +143,27 @@ The whole app ↔ hook protocol is files in `~/.agentbar/` (`state.d/`, `request
 `answers.d/`) — you can drive any app feature by writing JSON files there, no agent
 needed. See `docs/specs/` for the design documents.
 
+## Your first contribution
+
+The smallest useful one is an agent AgentBar does not know yet. It needs no Swift:
+any agent id renders on its own — a monogram and the name you give it — so a bridge
+is a few lines that call `agentbar report` as the agent starts, works and stops
+(see "Bring your own agent" in [`docs/protocol.md`](docs/protocol.md)). Put it in
+`Scripts/hooks/<agent>/` with a README saying which of the agent's own hooks or
+wrappers it uses, add a case to `Scripts/test/bridge-hooks-test.sh`, and open a PR.
+A native mark, an entry in `Agents.swift` and an installer step can come later —
+the list under **Adding an agent** above is what that takes.
+
+Issues labelled [`good first issue`](https://github.com/michalstrnadel/AgentBar/labels/good%20first%20issue)
+are picked to be done in an evening.
+
 ## Pull requests
 
 - Conventional Commits (`feat:`, `fix:`, `docs:`, …).
 - Add or extend a test when you touch the hook protocol.
-- Update `CHANGELOG.md` for user-visible changes.
+- Update `CHANGELOG.md` for user-visible changes, and end your entry with
+  `— thanks @you (#PR)`. Every change from outside this repo is credited where the
+  release notes are read; that is the only place credit is given.
 - CI must be green (build + hook tests).
 
 ## Demo GIFs
