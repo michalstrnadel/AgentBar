@@ -266,8 +266,10 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   waiting on you; `agentbar://new-task?cwd=…&agent=…&prompt=…` fills the launcher in
   (Return is still yours). No link can approve, deny or answer anything. See
   [docs/url-scheme.md](docs/url-scheme.md).
-- **Built-in updates** — a quiet daily check of GitHub Releases plus **Check for
-  Updates…** in the menu; one click installs the new version and relaunches.
+- **Built-in updates** — a quiet daily check of GitHub Releases; a new version is
+  downloaded, checked against the running app's own signing certificate, and
+  installed automatically once nothing is waiting on you and you have stepped away.
+  Switch it off in Settings ▸ General to install from **Check for Updates…** instead.
 - **Linux too** — the [`agentbar` CLI](#linux-cli) is a full peer of the menu bar app:
   live status, pending approvals, `a`/`d` remote Allow/Deny, digit keys to answer
   questions, waybar module.
@@ -325,8 +327,12 @@ If your projects live in Documents, Desktop or Downloads, macOS asks once whethe
 AgentBar may read them; that is for the git branch and changes shown on each row,
 and nothing leaves your Mac.
 
-**Updating:** the app checks GitHub Releases daily and offers new versions in the menu
-(**Check for Updates…** works any time). Homebrew users can keep using
+**Updating:** the app checks GitHub Releases daily and updates itself automatically —
+it downloads the new version, checks its signature against the running app's own
+certificate, and relaunches as it the next time nothing is waiting on you and you have
+been away for five minutes (or at the next launch). **Settings ▸ General ▸ Install
+updates automatically** turns that off; the menu then offers the update instead, and
+**Check for Updates…** works any time. Homebrew users can keep using
 `brew upgrade --cask agentbar` — both paths install the same bundle.
 
 > **What install touches:** hook scripts are copied to `~/.agentbar/hooks/`, hook

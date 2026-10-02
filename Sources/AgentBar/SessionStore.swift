@@ -68,10 +68,7 @@ final class SessionStore {
                 continue
             }
             loggedUnreadable.remove(url.path)
-            // Prune: the owning agent process is gone, or the file is ancient (24h).
-            let dead = s.pid > 0 && kill(s.pid, 0) != 0 && errno == ESRCH
-            let stale = s.ts > 0 && Date().timeIntervalSince1970 - s.ts > 86_400
-            if dead || stale {
+            if !Self.isLive(s) {
                 try? fm.removeItem(at: url)
                 continue
             }
@@ -103,5 +100,22 @@ final class SessionStore {
         guard snapshot != lastSnapshot else { return }
         lastSnapshot = snapshot
         onChange?(sessions)
+    }
+
+    /// Prune rule: the owning agent process is gone, or the file is ancient (24h).
+    static func isLive(_ s: Session) -> Bool {
+        let dead = s.pid > 0 && kill(s.pid, 0) != 0 && errno == ESRCH
+        let stale = s.ts > 0 && Date().timeIntervalSince1970 - s.ts > 86_400
+        return !dead && !stale
+    }
+
+    /// Live sessions on disk that are waiting on the human, read without a running
+    /// store and without pruning anything — for the updater at launch.
+    static func waitingOnDisk() -> Int {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: stateDir, includingPropertiesForKeys: nil)) ?? []
+        return files.filter { $0.pathExtension == "json" }
+            .compactMap(Session.init(fileURL:))
+            .filter { isLive($0) && $0.state.waitsOnHuman }.count
     }
 }

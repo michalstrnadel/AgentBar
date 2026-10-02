@@ -67,11 +67,7 @@ final class RequestStore {
         var found: [ApprovalRequest] = []
         for url in files where url.pathExtension == "json" {
             guard let r = ApprovalRequest(fileURL: url) else { continue }
-            // Orphans: the waiting hook died (SIGKILL leaves no cleanup), or expired.
-            let watched = r.hookPid > 0 ? r.hookPid : r.pid
-            let dead = watched > 0 && kill(watched, 0) != 0 && errno == ESRCH
-            let expired = r.ts > 0 && Date().timeIntervalSince1970 - r.ts > Self.maxAge
-            if dead || expired {
+            guard Self.isLive(r) else {
                 try? fm.removeItem(at: url)
                 continue
             }
@@ -98,6 +94,26 @@ final class RequestStore {
         lastSnapshot = snapshot
         requests = found
         onChange?()
+    }
+
+    /// Whether a hook is still waiting on this request. Orphans are the ones whose
+    /// hook died (SIGKILL leaves no cleanup) or that outlived the longest wait.
+    static func isLive(_ r: ApprovalRequest) -> Bool {
+        let watched = r.hookPid > 0 ? r.hookPid : r.pid
+        let dead = watched > 0 && kill(watched, 0) != 0 && errno == ESRCH
+        let expired = r.ts > 0 && Date().timeIntervalSince1970 - r.ts > Self.maxAge
+        return !dead && !expired
+    }
+
+    /// Live requests on disk, read without a running store and without touching
+    /// anything — for the updater at launch, before any store has started. A
+    /// request a rule is about to answer still counts: waiting is the safe guess.
+    static func pendingOnDisk() -> Int {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: requestsDir, includingPropertiesForKeys: nil)) ?? []
+        return files.filter { $0.pathExtension == "json" }
+            .compactMap(ApprovalRequest.init(fileURL:))
+            .filter(isLive).count
     }
 
     /// Answers nobody consumed (hook died between click and pickup): delete after 60s.

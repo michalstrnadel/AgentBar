@@ -22,6 +22,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var islandRunning = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // First, before any surface exists: an update staged before the last quit
+        // installs now, while a relaunch is invisible. True means we are leaving.
+        if UpdateChecker.shared.resumeAtLaunch() { return }
+        // What a quiet moment is measured against, from the live stores.
+        UpdateChecker.shared.pendingRequests = { [weak self] in self?.requestStore.requests.count ?? 1 }
+        UpdateChecker.shared.waitingSessions = { [weak self] in
+            self?.sessions.filter { $0.state.waitsOnHuman }.count ?? 1
+        }
         AgentActions.currentSessions = { [weak self] in self?.sessions ?? [] }
 
         URLCommands.sessions = { [weak self] in self?.sessions ?? [] }

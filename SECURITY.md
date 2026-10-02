@@ -14,7 +14,9 @@ guarantees worth knowing when auditing:
 - Everything is same-user, local filesystem — the app ↔ hook protocol is JSON
   files under `~/.agentbar/`, and nothing about a session ever leaves the machine.
 - Three destinations exist, all in the app and none on the approval path: the
-  daily update check against GitHub Releases; and — **only** while
+  daily update check against GitHub Releases (and the download of a newer release,
+  installed automatically only if its signature matches the running app's — see
+  "Verifying a download"); and — **only** while
   **Settings ▸ Usage** is ticked, off by default — Claude's own quota, either a `GET`
   to `api.anthropic.com/api/oauth/usage` or, after **Sign in to Claude…**, `claude.ai`
   (described below). That one reads the
@@ -131,7 +133,21 @@ Reports that break any of these guarantees are exactly what we want to hear abou
 
 The app is signed with the project's own certificate, not Apple's, so its
 signature proves the bundle was not changed after signing and nothing about where
-it came from. Provenance answers that part. From 1.28.1 on, every release asset is
+it came from — on its own. The in-app updater, which installs without a click,
+leans on it differently: before a downloaded bundle replaces the running one, its
+signature must be valid for every architecture under strict validation and must
+satisfy the **running app's designated requirement** — for a release, its bundle
+identifier and the hash of the certificate that signed it. Only a bundle signed with
+the same key passes; trust is placed in whichever copy was installed first, and
+pinned from then on. The check runs once when the update is staged and again right
+before the swap, on top of TLS to GitHub and a check that the bundle is the version
+the release named. A bundle that fails is deleted, nothing is installed, the reason
+goes to Console, and the download is retried at most once a day. A build signed
+ad-hoc (a dev build without the local identity) has a requirement only it can
+satisfy, so it never installs an update by itself; its **Install & Relaunch** is
+the unchecked click it always was. Replacing the release certificate would make
+every installed copy refuse the next update, which would then have to be installed
+by hand. Provenance answers the part a signature cannot. From 1.28.1 on, every release asset is
 attested after a check that it is exactly the bundle CI built from the tagged
 commit, with the signature replaced and nothing else:
 

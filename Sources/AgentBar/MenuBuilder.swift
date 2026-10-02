@@ -350,6 +350,19 @@ enum MenuBuilder {
             item.target = target
             symbol = "arrow.down.circle.fill"
             badge = ""
+        case .ready(let v):
+            // Downloaded and verified, waiting for a quiet moment to install by
+            // itself; the click is for whoever would rather not wait.
+            item.attributedTitle = NSAttributedString(
+                string: "Update to \(v) ready — Relaunch now",
+                attributes: [.foregroundColor: NSColor.controlAccentColor,
+                             .font: NSFont.menuFont(ofSize: 0)])
+            item.action = install
+            item.target = target
+            item.toolTip = "Installs by itself once nothing is waiting on you "
+                + "and you have been away for five minutes."
+            symbol = "arrow.down.circle.fill"
+            badge = ""
         case .downloading(let v):
             item.title = "Downloading \(v)…"
             symbol = "arrow.down.circle"

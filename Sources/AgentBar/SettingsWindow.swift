@@ -98,6 +98,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var notifyApprovalsBox: NSSwitch!
     private var notifyFailuresBox: NSSwitch!
     private var notifyQuietBox: NSSwitch!
+    private var autoUpdateBox: NSSwitch!
 
     private var sidebarItems: [SidebarItem] = []
     private var pageViews: [Page: NSView] = [:]
@@ -290,6 +291,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         hideIslandBox = SettingsChrome.toggle(target: self, action: #selector(toggleHideIsland))
         hideAwayBox = SettingsChrome.toggle(target: self, action: #selector(toggleHideAway))
         personalityBox = SettingsChrome.toggle(target: self, action: #selector(togglePersonality))
+        autoUpdateBox = SettingsChrome.toggle(target: self, action: #selector(toggleAutoUpdate))
 
         enableBox = SettingsChrome.toggle(target: self, action: #selector(toggleEnabled))
         launchBox = SettingsChrome.toggle(target: self, action: #selector(toggleLauncher))
@@ -447,6 +449,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                        + "a row's mark pokes it instead of jumping to the "
                                        + "session. Never with Reduce Motion.",
                                        control: personalityBox),
+                ]),
+                SettingsChrome.card([
+                    SettingsChrome.row("Install updates automatically",
+                                       "AgentBar updates itself when nothing is waiting on you.",
+                                       control: autoUpdateBox),
                 ]),
             ])
         case .notifications:
@@ -638,6 +645,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         hideIslandBox.state = IslandVisibility.Prefs.hideWhenEmpty ? .on : .off
         hideAwayBox.state = IslandVisibility.Prefs.hideWhenAway ? .on : .off
         personalityBox.state = MascotPersonality.Prefs.enabled ? .on : .off
+        autoUpdateBox.state = UpdateChecker.shared.autoUpdate ? .on : .off
         claudeQuotaBox.state = ClaudeQuota.enabled ? .on : .off
         syncQuota()
         rememberBox.state = DecisionLedger.enabled ? .on : .off
@@ -1037,6 +1045,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
     @objc private func toggleHideAway() {
         IslandVisibility.Prefs.hideWhenAway = hideAwayBox.state == .on
+        onChange?()
+    }
+
+    @objc private func toggleAutoUpdate() {
+        UpdateChecker.shared.autoUpdate = autoUpdateBox.state == .on
         onChange?()
     }
 

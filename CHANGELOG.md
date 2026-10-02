@@ -5,6 +5,25 @@ All notable changes to AgentBar are documented here. This project follows
 
 ## Unreleased
 
+### Added
+
+- **Updates install themselves, at a quiet moment.** The daily check used to stop at
+  an offer in the menu, and an offer is something a person has to notice. Now a newer
+  release is downloaded and checked in the background, the row reads *Update to X
+  ready — Relaunch now* for whoever would rather not wait, and otherwise the app
+  installs it the first time nothing is waiting on you — no approval, no question, no
+  plan, no session asking — and you have been away from the keyboard for five
+  minutes, or at the next launch if you quit first. Nothing appears to say so: the app
+  relaunches as the new version with the menu bar and the island exactly as they
+  were. Before anything is swapped in, the download's signature must satisfy the
+  running app's own designated requirement — its bundle identifier and the
+  certificate that signed it — so only a bundle signed with the same key gets in; one
+  that does not is deleted, the row says *Update could not be verified*, and it is
+  tried again at most once a day. A dev build signed ad-hoc has nothing to check
+  against and keeps the click. Switch it off in **Settings ▸ General ▸ Install
+  updates automatically**. Versions before this one only offer updates, so this one
+  update still takes a click — or `brew upgrade --cask michalstrnadel/tap/agentbar`.
+
 ### Fixed
 
 - **Updates work in Island-only mode.** The island's **⋯** menu had a bare *Check for

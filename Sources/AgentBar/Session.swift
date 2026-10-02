@@ -7,6 +7,8 @@ struct Session {
         case idle, thinking, tool, permission, question, done, error
 
         var isWorking: Bool { self == .thinking || self == .tool }
+        /// An approval or a question is sitting in front of the human.
+        var waitsOnHuman: Bool { self == .permission || self == .question }
         /// The turn is over either way; only `done` earned the celebration.
         var isFinished: Bool { self == .done || self == .error || self == .idle }
     }

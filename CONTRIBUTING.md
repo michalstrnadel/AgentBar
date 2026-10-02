@@ -178,7 +178,10 @@ A release asset has to satisfy two things that no longer fit on one machine. It
 must be **universal**, and it must be signed with the **"AgentBar Local Signing"**
 identity — that lives in one keychain, and changing the signature makes macOS
 re-ask every user for folder access on update, which is the whole reason a stable
-identity exists. A machine with only the Command Line Tools cannot link x86_64 at
+identity exists. It is also what the in-app updater checks a download against: an
+installed copy only installs a bundle that satisfies its own designated requirement,
+so a release signed with any other identity is refused by every install
+("Update could not be verified") and has to be installed by hand. A machine with only the Command Line Tools cannot link x86_64 at
 all, and CI has no access to the certificate. So CI builds and verifies the
 universal bundle, and it is signed locally.
 
