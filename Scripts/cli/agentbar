@@ -19,6 +19,10 @@
 //   agentbar doctor [--json]        diagnose a silent integration: hooks wired?
 //                                   node path still there? dirs writable? when did
 //                                   each agent last report?
+//   agentbar report --agent ID --state S [--label L] [--name N] ...
+//                                   write one session row for ANY agent, the
+//                                   bridge for agents AgentBar has no hooks for.
+//                                   Status only: it can never create an approval
 //   agentbar install-hooks          wire agent hooks (Claude/Codex/Cursor/Antigravity/
 //                                   Gemini/Qwen/Copilot/OpenCode) —
 //                                   the Linux equivalent of the macOS app's installer
@@ -46,9 +50,9 @@ const HISTORY_MAX = 5000;
 const nowMs = () => (process.env.AGENTBAR_NOW ? Number(process.env.AGENTBAR_NOW) * 1000 : Date.now());
 const now = () => Math.floor(nowMs() / 1000);
 const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
-const writeAtomic = (f, obj) => {
+const writeAtomic = (f, obj, replacer) => {
   const t = f + "." + process.pid + ".tmp";
-  fs.writeFileSync(t, JSON.stringify(obj));
+  fs.writeFileSync(t, JSON.stringify(obj, replacer));
   fs.renameSync(t, f);
 };
 const alive = (pid) => {
@@ -74,7 +78,10 @@ function sessions() {
     const dead = s.pid > 0 && !alive(s.pid);
     const stale = s.ts > 0 && now() - s.ts > 86400;
     if (dead || stale) { try { fs.rmSync(p, { force: true }); } catch {} continue; }
-    if (!s.started) continue;
+    // Only an explicit `false` hides a row (docs/protocol.md). A third-party writer
+    // that never heard of the field is showing a live session, and the app has
+    // always shown it — this CLI hid it, so the two halves disagreed about one file.
+    if (s.started === false) continue;
     s.id = f.slice(0, -".json".length);
     // Antigravity emits no terminal event (2.3.x fires only PostToolUse), so a
     // working session that has gone quiet decays to done instead of running for
@@ -130,7 +137,8 @@ function recordHistory(ss) {
 
     const rec = (s, id) => {
       const o = {
-        v: 1, agent: s.agent || "", sessionId: id, project: s.project || "",
+        v: 1, agent: s.agent || "", ...(s.agent_name ? { agentName: s.agent_name } : {}),
+        sessionId: id, project: s.project || "",
         cwd: s.cwd || "", label: s.label || "", prompt: s.prompt || "",
         model: s.model || "", startedAt: Math.floor(s.started_at || 0),
         endedAt: Math.floor(s.ts || now()), state: s.state || "",
@@ -212,13 +220,13 @@ function printHistory(argv, json) {
     const when = new Date((r.endedAt || 0) * 1000)
       .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const dur = r.startedAt > 0 && r.endedAt >= r.startedAt ? durationText(r.endedAt - r.startedAt) : "";
-    const name = r.project || r.agent || "session";
+    const name = r.project || r.agentName || r.agent || "session";
     const mark = r.state === "error" ? red("✗") : green("✓");
     // Every trailing column is blank when it was not measured, never zero-filled.
     const tok = r.weight ? compact(weightTotal(r.weight)) : "";
     const ch = r.change ? changeText(r.change) : "";
     console.log(`${mark} ${dim(when)}  ${bold(name.padEnd(22))} ${dim((dur || "").padStart(6))}`
-      + ` ${dim(tok.padStart(7))}  ${dim(ch.padEnd(17))} ${dim(r.agent)}`);
+      + ` ${dim(tok.padStart(7))}  ${dim(ch.padEnd(17))} ${dim(r.agentName || r.agent)}`);
   }
   // A partial total presented as the day's work is a number someone would quote.
   // Doubly so for tokens: only three of the ten agents publish one at all, so the
@@ -1009,7 +1017,7 @@ function sessionLine(s) {
     : s.state === "question" ? blue(s.label || "waiting for your answer")
     : s.state === "error" ? red("failed") + (s.label ? dim(" — " + s.label) : "")
     : (s.label ? dim(s.label) : dim(s.state));
-  return `${DOTS[s.state] || dim("●")} ${bold(name)}${branch ? dim(" · " + branch) : ""}  ${label}${age ? dim("  " + age) : ""}  ${dim((s.agent || "?").toUpperCase())}`;
+  return `${DOTS[s.state] || dim("●")} ${bold(name)}${branch ? dim(" · " + branch) : ""}  ${label}${age ? dim("  " + age) : ""}  ${dim((s.agent_name || s.agent || "?").toUpperCase())}`;
 }
 
 function printStatus(json) {
@@ -1165,7 +1173,7 @@ function waybar() {
   const working = ss.filter((s) => s.state === "thinking" || s.state === "tool").length;
   const cls = pending ? "permission" : asking ? "question" : working ? "working" : ss.length ? "idle" : "empty";
   const text = pending ? `✋ ${pending}` : asking ? `❓ ${asking}` : working ? `● ${working}` : ss.length ? `${ss.length}` : "";
-  const tooltip = ss.map((s) => `${s.project || "session"} — ${s.state}${s.label ? " · " + s.label : ""} (${s.agent})`)
+  const tooltip = ss.map((s) => `${s.project || "session"} — ${s.state}${s.label ? " · " + s.label : ""} (${s.agent_name || s.agent})`)
     .concat(rs.map((r) => `pending: ${r.display}`)).join("\n") || "no sessions";
   console.log(JSON.stringify({ text, alt: cls, class: cls, tooltip }));
 }
@@ -2025,6 +2033,113 @@ function installHooks() {
   if (backupsKept) console.log(`Each settings file changed above was kept as it was, beside itself (*${BACKUP_MARK}<time>; the last ${BACKUP_KEEP} stay).`);
 }
 
+// MARK: - report (bring your own agent)
+
+// One session row for an agent AgentBar has no hooks for: a wrapper script, a
+// bridge in another language, an agent that exists only on your machine. Same
+// schema and mechanics as the hooks (Scripts/hooks/claude/update.js), so a row
+// written here is indistinguishable from one written there — except that there is
+// deliberately no `permission` state. An approval is a rendezvous with a hook that
+// blocks while the human decides; a one-shot call has nothing waiting on the
+// answer, so a report can never create one and never touches requests.d.
+const REPORT_STATES = { idle: 1, thinking: 1, tool: 1, question: 1, done: 1, error: 1, end: 1 };
+const REPORT_FLAGS = ["agent", "state", "label", "name", "project", "cwd", "session", "pid", "prompt", "recap"];
+// The hooks' rules, copied rather than shared: the CLI is one file with no imports.
+const rSafeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";
+const rPaired = (k, v) => (typeof v === "string"
+  ? v.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "")
+  : v);
+const rSliceSafe = (s, n) => {
+  const cut = s.slice(0, n);
+  const last = cut.charCodeAt(cut.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
+};
+// \s covers newlines and tabs; the other control characters (an ESC from a
+// coloured log line) are dropped, not spaced, so a label cannot repaint a terminal.
+const rOneLine = (s, n) => rSliceSafe(String(s).replace(/[\u0000-\u0008\u000E-\u001F\u007F-\u009F]/g, "")
+  .replace(/\s+/g, " ").trim(), n);
+
+function reportSession(argv) {
+  const usage = "usage: agentbar report --agent ID --state STATE [--label L] [--name N] [--project P]"
+    + " [--cwd C] [--session S] [--pid N] [--prompt T] [--recap T]";
+  const refuse = (msg) => { console.error("agentbar report: " + msg); console.error(usage); process.exit(2); };
+  const o = {};
+  for (let i = 0; i < argv.length; i++) {
+    const m = /^--([a-z]+)(?:=(.*))?$/s.exec(argv[i]);
+    if (!m || !REPORT_FLAGS.includes(m[1])) refuse(`unknown argument ${JSON.stringify(argv[i])}`);
+    let v = m[2];
+    if (v === undefined) {
+      if (i + 1 >= argv.length) refuse(`--${m[1]} needs a value`);
+      v = argv[++i];
+    }
+    o[m[1]] = v;
+  }
+  const agent = o.agent || "";
+  // Not sanitised into shape: an id is what every frontend keys a sprite, a quota
+  // and a history line by, and a silently rewritten one is a second agent.
+  if (!/^[a-z0-9-]{1,32}$/.test(agent))
+    refuse(`--agent must be 1-32 characters of a-z, 0-9 and "-" (got ${JSON.stringify(agent)})`);
+  const state = o.state || "";
+  if (state === "permission")
+    refuse(`"permission" is not a state a report can set: an approval needs a hook that waits for the answer,`
+      + ` and a report has none. Use "question" when the agent is waiting on its user.`);
+  if (!REPORT_STATES[state]) refuse(`--state must be one of ${Object.keys(REPORT_STATES).join("|")} (got ${JSON.stringify(state)})`);
+  let pid = process.ppid;
+  if (o.pid !== undefined) {
+    if (!/^[0-9]+$/.test(o.pid) || Number(o.pid) <= 0) refuse(`--pid must be a positive integer (got ${JSON.stringify(o.pid)})`);
+    pid = Number(o.pid);
+  }
+  const cwd = path.resolve(o.cwd !== undefined && o.cwd !== "" ? o.cwd : process.cwd());
+  // Default identity: one row per agent per project directory. The cwd is what a
+  // wrapper's successive one-shot calls share; the caller's pid is not (every call
+  // is a new process) and the ppid only is when every call comes from the same
+  // shell. Two runs of one agent in one directory need --session to stay two rows.
+  const dir = path.basename(cwd);
+  const sessionId = rSafeId(o.session !== undefined ? o.session : `${agent}-${dir || pid}`);
+  const file = path.join(stateDir, sessionId + ".json");
+
+  if (state === "end") {
+    // Removing the file is the protocol's `end` (state "end" is never written).
+    try { fs.rmSync(file, { force: true }); } catch (e) { console.error("agentbar report: " + e.message); process.exit(1); }
+    return;
+  }
+
+  const prev = readJSON(file) || {};
+  const ts = now();
+  const out = {
+    ...prev,
+    agent, state,
+    // A hint for the CURRENT state, so it is not carried into the next one: a row
+    // that went from "Editing" to done must not still say "Editing".
+    label: o.label !== undefined ? rOneLine(o.label, 80) : "",
+    project: o.project !== undefined ? rOneLine(o.project, 80) : (prev.project || dir),
+    cwd, sessionId,
+    entrypoint: prev.entrypoint || "cli",
+    term_program: process.env.TERM_PROGRAM || prev.term_program || "",
+    pid, started: true,
+    started_at: prev.started_at || ts,
+    ts,
+  };
+  if (o.name !== undefined) {
+    const n = rOneLine(o.name, 24);
+    if (n) out.agent_name = n; else delete out.agent_name;
+  }
+  if (o.prompt !== undefined) {
+    out.prompt = rOneLine(o.prompt, 120);
+    // A new prompt starts a new task: the previous turn's recap and steps are not
+    // this one's (protocol: writers MUST drop them, not carry them forward).
+    delete out.recap; delete out.activity;
+  }
+  if (o.recap !== undefined) {
+    const r = rOneLine(o.recap, 160);
+    if (r) out.recap = r; else delete out.recap;
+  }
+  try {
+    fs.mkdirSync(stateDir, { recursive: true });
+    writeAtomic(file, out, rPaired);
+  } catch (e) { console.error("agentbar report: " + e.message); process.exit(1); }
+}
+
 // MARK: - Main
 
 const [cmd, ...argv] = process.argv.slice(2);
@@ -2044,6 +2159,7 @@ switch (cmd) {
   case "forget": forget(); break;
   case "doctor": doctor(json); break;
   case "install-hooks": installHooks(); break;
+  case "report": reportSession(argv); break;
   case "--help": case "help": default:
     console.log(`agentbar — AI coding agents' status & remote approval (file protocol: ~/.agentbar)
 
@@ -2062,6 +2178,12 @@ switch (cmd) {
   agentbar rules                  the rules you wrote and what each one has done [--json]
   agentbar forget                 empty the decision ledger
   agentbar doctor [--json]        why an agent isn't showing up: hooks, node path, permissions
+  agentbar report --agent ID --state STATE [--label L] [--name N] [--project P] [--cwd C]
+                 [--session S] [--pid N] [--prompt T] [--recap T]
+                                  show any agent: one row per call; STATE is
+                                  idle|thinking|tool|question|done|error|end (end removes it).
+                                  Pass --pid with the agent's pid from a one-shot call.
+                                  Status only — never an approval
   agentbar install-hooks          wire Claude/Codex/Cursor/Antigravity/Gemini/Qwen/Copilot/OpenCode hooks (Linux installer)`);
     break;
 }

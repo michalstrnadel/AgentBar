@@ -13,6 +13,9 @@ struct Session {
 
     let id: String
     let agentID: String
+    /// What a writer outside the known agents calls itself (`agent_name`), already
+    /// cleaned for display; "" for every agent AgentBar ships with.
+    let agentName: String
     var state: State
     /// True when `state` was synthesized by a frontend watchdog (Antigravity's
     /// 90s quiet decay), not reported by the agent — celebrations should skip it.
@@ -58,6 +61,7 @@ struct Session {
         else { return nil }
         id          = fileURL.deletingPathExtension().lastPathComponent
         agentID     = o["agent"] as? String ?? "claude"
+        agentName   = Self.displayName(o["agent_name"])
         state       = State(rawValue: o["state"] as? String ?? "") ?? .idle
         label       = o["label"] as? String ?? ""
         project     = o["project"] as? String ?? ""
@@ -77,6 +81,22 @@ struct Session {
         recap       = o["recap"] as? String ?? ""
         activity    = (o["activity"] as? [String] ?? []).prefix(5).map { String($0.prefix(40)) }
         url         = o["url"] as? String ?? ""
+    }
+
+    /// Who this row belongs to: a known agent, or a generic one named by the row.
+    var agent: Agent { Agent.byID(agentID, name: agentName) }
+
+    /// A writer-chosen name, fit to sit in a menu row: control characters (a
+    /// newline would split the row, an escape could reach a terminal through the
+    /// CLI) dropped, whitespace trimmed, and capped at 24 characters so a long
+    /// one cannot push the state off the edge. Shared with `ApprovalRequest`.
+    static func displayName(_ raw: Any?) -> String {
+        guard let raw = raw as? String else { return "" }
+        let kept = String(String.UnicodeScalarView(raw.unicodeScalars.filter {
+            !CharacterSet.controlCharacters.contains($0)
+        }))
+        return String(kept.trimmingCharacters(in: .whitespacesAndNewlines).prefix(24))
+            .trimmingCharacters(in: .whitespaces)
     }
 
     /// A Unix time a row may carry, or 0. `state.d` is a folder anybody may write
@@ -120,6 +140,7 @@ struct Session {
     init(preview state: State, agentID: String = "claude", project: String, label: String) {
         id = "preview"
         self.agentID = agentID
+        agentName = ""
         self.state = state
         self.label = label
         self.project = project

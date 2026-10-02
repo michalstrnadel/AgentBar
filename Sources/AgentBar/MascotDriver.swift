@@ -63,7 +63,7 @@ final class MascotDriver {
         var seen = Set<String>()
         var row: [(Agent, Session.State)] = []
         for s in sessions where seen.insert(s.agentID).inserted {
-            row.append((Agent.byID(s.agentID), s.state))
+            row.append((s.agent, s.state))
         }
         return row
     }
@@ -71,7 +71,7 @@ final class MascotDriver {
     private func render() {
         let row = agentRow
         if row.count > 1 { return renderMulti(row) }
-        let agent = Agent.byID(topSession?.agentID ?? "claude")
+        let agent = topSession?.agent ?? Agent.byID("claude")
         let sprite = IconRenderer.shared.sprite(for: agent)
         let frames = systemColor ? sprite.templateFrames : sprite.colorFrames
         let resting = systemColor ? sprite.restingTemplate : sprite.restingColor
@@ -84,7 +84,9 @@ final class MascotDriver {
             startAnimation(frames: frames, fps: sprite.fps)
             // Rotating verbs are Clawd's voice; other agents' dot clusters carry
             // the "working" signal on their own. A fixed word (compacting) is not
-            // a mood but a fact, so it holds still and shows for any agent.
+            // a mood but a fact, so it holds still and shows for any agent. The id
+            // check is exact on purpose: an id AgentBar does not know is a generic
+            // agent now, never Claude, so it bobs its monogram and says nothing.
             if let fixed = Self.fixedWord(for: topSession) {
                 stopWords(); word = fixed
             } else if agent.id == "claude" { startWords() } else { stopWords() }

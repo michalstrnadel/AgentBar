@@ -220,7 +220,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             // yet, and the request carries its own agent id — a request can arrive
             // before the session row it belongs to.
             let project = sessions.first { $0.id == r.sessionId }?.project ?? ""
-            let who = project.isEmpty ? Agent.byID(r.agentID).name : project
+            let who = project.isEmpty ? r.agent.name : project
             return r.questions != nil
                 ? Event(id: r.fileName, kind: .question, title: "\(who) is asking",
                         body: r.display, sessionId: r.sessionId, requestIdentity: r.identity)
@@ -248,7 +248,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             guard previous[s.id] != .error else { return nil }
             // The display name, not the raw id — "claude failed" is a log line, not a
             // notification. Matches what `requestEvents` above already does.
-            let who = s.project.isEmpty ? Agent.byID(s.agentID).name : s.project
+            let who = s.project.isEmpty ? s.agent.name : s.project
             return Event(id: "error:\(s.id):\(Int(s.ts))", kind: .failed,
                          title: "\(who) failed",
                          body: s.label.isEmpty ? "The turn ended with an error." : s.label,

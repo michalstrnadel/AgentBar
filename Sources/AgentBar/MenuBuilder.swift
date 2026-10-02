@@ -30,7 +30,7 @@ enum MenuBuilder {
                 item.representedObject = s
                 // Drawn, not typeset: the same mark the Open submenu uses, and the
                 // time and agent in aligned columns. `title` stays for type-select.
-                let row = SessionRowView(session: s, mark: menuMark(for: Agent.byID(s.agentID)))
+                let row = SessionRowView(session: s, mark: menuMark(for: s.agent))
                 row.toolTip = rowToolTip(s)
                 item.view = row
                 item.title = SessionRowView.plainTitle(row.content)
@@ -49,7 +49,7 @@ enum MenuBuilder {
                     // No request file (non-Claude agent). With a keystroke backend
                     // the row gets a Claude-style inline strip; otherwise an info
                     // submenu is all we can offer.
-                    if Agent.byID(s.agentID).approveKeys != nil {
+                    if s.agent.approveKeys != nil {
                         menu.addItem(item)
                         addKeystrokeApproval(to: menu, for: s, controller: controller)
                         continue
@@ -219,7 +219,7 @@ enum MenuBuilder {
             row.target = target
             row.representedObject = e.cwd
             row.isEnabled = !e.cwd.isEmpty
-            row.image = menuMark(for: Agent.byID(e.agent))
+            row.image = menuMark(for: e.resolvedAgent)
             row.attributedTitle = e.failed
                 ? NSAttributedString(string: HistoryDigest.line(e),
                                      attributes: [.foregroundColor: NSColor.systemRed])
@@ -380,7 +380,7 @@ enum MenuBuilder {
     /// cwd, plus the last turn's recap when the writer carries one.
     private static func rowToolTip(_ s: Session) -> String {
         s.recap.isEmpty ? s.cwd
-            : "\(s.cwd)\n\n\(Agent.byID(s.agentID).name): \(s.recap)"
+            : "\(s.cwd)\n\n\(s.agent.name): \(s.recap)"
     }
 
     /// Small resting mark used as the item icon in the Open submenu. Every mark is
@@ -392,49 +392,66 @@ enum MenuBuilder {
     /// read at the same solid weight as the mascots.
     private static let markCapHeight: CGFloat = 13
 
-    private static let menuMarks: [String: NSImage] = {
-        let glyphs: [(String, NSImage)] = Agent.all.map { agent in
-            let template: NSImage
-            switch agent.id {
-            case "codex":
-                template = IconRenderer.decode(codexMascotMarkPNG).map {
-                    IconRenderer.solidTemplate(IconRenderer.trim($0))
-                } ?? trimmedTemplate(for: agent)
-            case "copilot":
-                template = IconRenderer.decode(copilotMascotMarkPNG).map {
-                    IconRenderer.adaptiveTemplate(IconRenderer.trim($0))
-                } ?? trimmedTemplate(for: agent)
-            case "cursor":
-                template = IconRenderer.decode(cursorLogoPNG).map {
-                    IconRenderer.adaptiveTemplate(IconRenderer.trim($0), knockout: true)
-                } ?? trimmedTemplate(for: agent)
-            case "gemini":
-                template = IconRenderer.decode(geminiLogoPNG).map {
-                    IconRenderer.adaptiveTemplate(IconRenderer.trim($0), knockout: true)
-                } ?? trimmedTemplate(for: agent)
-            default:
-                template = trimmedTemplate(for: agent)
-            }
-            let img = template.copy() as! NSImage
-            let scale = markCapHeight / max(img.size.height, 1)
-            img.size = NSSize(width: (img.size.width * scale).rounded(), height: markCapHeight)
-            return (agent.id, img)
+    private static let knownGlyphs: [(id: String, glyph: NSImage)] = Agent.all.map { agent in
+        let template: NSImage
+        switch agent.id {
+        case "codex":
+            template = IconRenderer.decode(codexMascotMarkPNG).map {
+                IconRenderer.solidTemplate(IconRenderer.trim($0))
+            } ?? trimmedTemplate(for: agent)
+        case "copilot":
+            template = IconRenderer.decode(copilotMascotMarkPNG).map {
+                IconRenderer.adaptiveTemplate(IconRenderer.trim($0))
+            } ?? trimmedTemplate(for: agent)
+        case "cursor":
+            template = IconRenderer.decode(cursorLogoPNG).map {
+                IconRenderer.adaptiveTemplate(IconRenderer.trim($0), knockout: true)
+            } ?? trimmedTemplate(for: agent)
+        case "gemini":
+            template = IconRenderer.decode(geminiLogoPNG).map {
+                IconRenderer.adaptiveTemplate(IconRenderer.trim($0), knockout: true)
+            } ?? trimmedTemplate(for: agent)
+        default:
+            template = trimmedTemplate(for: agent)
         }
-        let boxWidth = glyphs.map { $0.1.size.width }.max() ?? markCapHeight
-        return Dictionary(uniqueKeysWithValues: glyphs.map { id, glyph in
-            let out = NSImage(size: NSSize(width: boxWidth, height: markCapHeight))
-            out.lockFocus()
-            NSGraphicsContext.current?.imageInterpolation = .high
-            glyph.draw(in: NSRect(x: ((boxWidth - glyph.size.width) / 2).rounded(),
-                                  y: 0, width: glyph.size.width, height: markCapHeight))
-            out.unlockFocus()
-            out.isTemplate = true
-            return (id, out)
-        })
-    }()
+        return (agent.id, capped(template))
+    }
+
+    /// The one column every mark is centred in, known agents and generic ones
+    /// alike, so a row for an agent AgentBar has never heard of lines its name up
+    /// with everybody else's instead of starting a few points to the left.
+    private static let markBoxWidth: CGFloat =
+        knownGlyphs.map { $0.glyph.size.width }.max() ?? markCapHeight
+
+    private static let menuMarks: [String: NSImage] =
+        Dictionary(uniqueKeysWithValues: knownGlyphs.map { ($0.id, boxed($0.glyph)) })
 
     static func menuMark(for agent: Agent) -> NSImage {
-        menuMarks[agent.id] ?? trimmedTemplate(for: agent)
+        menuMarks[agent.id] ?? boxed(capped(trimmedTemplate(for: agent)))
+    }
+
+    /// Scaled to the shared cap height, width following the mark's own aspect.
+    private static func capped(_ template: NSImage) -> NSImage {
+        let img = template.copy() as! NSImage
+        let scale = markCapHeight / max(img.size.height, 1)
+        img.size = NSSize(width: (img.size.width * scale).rounded(), height: markCapHeight)
+        return img
+    }
+
+    /// Centred in the shared box. A mark wider than the box is shrunk to fit it
+    /// rather than spilling into the row's title.
+    private static func boxed(_ glyph: NSImage) -> NSImage {
+        let box = markBoxWidth
+        let w = min(glyph.size.width, box)
+        let h = glyph.size.width > box ? markCapHeight * box / glyph.size.width : markCapHeight
+        let out = NSImage(size: NSSize(width: box, height: markCapHeight))
+        out.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        glyph.draw(in: NSRect(x: ((box - w) / 2).rounded(), y: ((markCapHeight - h) / 2).rounded(),
+                              width: w, height: h))
+        out.unlockFocus()
+        out.isTemplate = true
+        return out
     }
 
     /// Resting template of an agent's sprite, tight-trimmed and re-flagged as template.
@@ -738,7 +755,7 @@ enum MenuBuilder {
     /// preselected option via keystroke; the second button jumps to the prompt.
     private static func addKeystrokeApproval(to menu: NSMenu, for s: Session,
                                              controller: StatusItemController) {
-        let agent = Agent.byID(s.agentID)
+        let agent = s.agent
         let target = s.entrypoint == "antigravity-app" ? "⧉ \(agent.name)" : "⌨ Terminal"
         let specs: [(title: String, behavior: String, toolTip: String?)] =
             KeystrokeApprover.trusted
@@ -759,7 +776,7 @@ enum MenuBuilder {
     private static func keystrokeSubmenu(for s: Session, controller: StatusItemController) -> NSMenu {
         let menu = NSMenu()
         menu.delegate = controller
-        let agent = Agent.byID(s.agentID)
+        let agent = s.agent
         // Cowork puts the tool name in the label even though it writes no request
         // file — say what is being asked instead of only that we can't show it.
         let note = NSMenuItem(title: s.label.isEmpty

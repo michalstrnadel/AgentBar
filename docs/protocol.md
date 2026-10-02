@@ -36,7 +36,8 @@ session becomes two rows. The cap counts the prefix.
 
 ```json
 {
-  "agent": "claude",           // agent id: claude | codex | copilot | antigravity | cursor | gemini | qwen | opencode | devin
+  "agent": "claude",           // agent id: claude | codex | copilot | antigravity | cursor | gemini | qwen | opencode | devin,
+                               // or any other `[a-z0-9-]{1,32}` id (frontends render unknown ids generically)
   "state": "tool",             // idle | thinking | tool | permission | question | done | error
   "label": "Running command",  // short human hint for the current state ("" ok)
   "project": "AgentBar",       // basename of cwd ("" ok)
@@ -52,6 +53,7 @@ session becomes two rows. The cap counts the prefix.
   "ts": 1784844796,
 
   "started_at": 1784844700,    // OPTIONAL: unix seconds the session began
+  "agent_name": "Aider",       // OPTIONAL: display name for an id the frontend doesn't know, <= 24 chars
   "prompt": "fix the auth bug",// OPTIONAL: latest user prompt, one line, <= 120 chars
   "model": "claude-opus-5",    // OPTIONAL: model name, when the agent reports one
   "recap": "Fixed the auth bug and added 3 regression tests",
@@ -93,6 +95,12 @@ Rules:
   writer doesn't know what was said. `activity` follows the same reset rule: it is
   the ring of the *current* task's tool steps (≤ 5 short labels, oldest → newest,
   consecutive duplicates collapsed), and a new prompt starts it clean.
+- `started` absent counts as `true`: only an explicit `false` hides a row, so a
+  writer that never heard of the field still shows up.
+- `agent_name` names an agent the frontend has no entry for. Frontends strip
+  control characters, trim, cap it at 24 characters, and fall back to the id when
+  it is absent or empty. A known id keeps its own name, sprite and actions; an
+  unknown one gets a generic mark and no keystroke approvals.
 
 Frontend pruning (each refresh):
 - delete when `pid > 0` and the process no longer exists (`kill(pid, 0)` → ESRCH);
@@ -259,6 +267,7 @@ any account of a day's work. Hence one append-only JSON Lines file.
   "cwd": "/Users/me/src/AgentBar", "label": "build", "prompt": "fix the linker",
   "model": "gpt-5", "startedAt": 1784844000, "endedAt": 1784844796,
   "state": "done", "decayed": false,
+  "agentName": "Aider",        // OPTIONAL: the row's `agent_name`, when it had one
 
   "weight": { "in": 1330, "out": 622024, "cacheWrite": 1453897,
               "cacheRead": 220795232, "src": "claude-transcript" },
@@ -479,6 +488,54 @@ A new frontend only needs: read `state.d` (apply the pruning rules), optionally
 read `requests.d` and write `answers.d`, and maintain `watcher.json` if it wants
 hooks to block for it. A new agent only needs a bridge script that maps its hook
 events onto the `state.d` schema above (see `Scripts/hooks/*/` for examples).
+
+### Bring your own agent
+
+An agent AgentBar has never heard of needs no entry anywhere: any `[a-z0-9-]` id is
+valid, and frontends render it with a generic mark and its `agent_name`. The CLI's
+`agentbar report` writes the row with the same mechanics as the hooks (atomic
+write, merge, `started_at` kept, values one-lined and capped). Wrapping any
+command-line agent:
+
+```bash
+#!/bin/bash
+# aider-bar: run aider, show it in AgentBar while it runs.
+r() { agentbar report --agent aider --name Aider --pid $$ "$@"; }   # $$: this wrapper
+r --state thinking --prompt "$*"
+r --state tool --label "Running"
+aider "$@"; code=$?
+if [ "$code" -eq 0 ]; then r --state done --recap "aider finished"
+else r --state error --label "exit $code"; fi
+sleep 5; r --state end
+```
+
+`--pid` matters: without it the row carries the CLI's parent pid, which for a
+one-shot call from a pipeline or a tool runner may be a process that is gone a
+moment later — and the row with it. Give it a pid that lives exactly as long as
+the agent (the agent's own, or a wrapper's like `$$` above), so the normal
+liveness pruning removes the row if the wrapper is killed before it reports `end`. The default row name is
+`<agent>-<basename of cwd>`, stable across one-shot calls from the same
+directory; pass `--session` to keep two runs in one directory apart.
+
+A writer that would rather not shell out writes the file itself:
+`~/.agentbar/state.d/<sessionId>.json`, written to a temp file in the same folder
+and renamed over the target:
+
+```json
+{ "agent": "aider", "agent_name": "Aider", "state": "tool", "label": "Editing",
+  "project": "myproj", "cwd": "/home/me/myproj", "sessionId": "aider-myproj",
+  "pid": 4242, "started": true, "started_at": 1784844700, "ts": 1784844796 }
+```
+
+Delete the file for `end`. Lone UTF-16 surrogates must never reach the file (cut
+on code points, not code units): one makes the macOS app reject the whole row.
+
+**Approvals are not possible this way, by design.** There is no `permission`
+state in `agentbar report`, and a row alone never creates a request: an approval
+is a rendezvous with a hook that blocks the agent while the human decides
+(`requests.d`, above). A wrapper has nothing waiting on the answer, so offering
+one would be a button that does nothing. Use `question` when the agent waits on its
+user. Approvals need a native bridge that blocks the agent's own permission step.
 
 An agent with no usable hook mechanism can still be covered by a **watcher** in
 the frontend that upserts `state.d` files itself — same schema, same pruning

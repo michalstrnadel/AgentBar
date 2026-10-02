@@ -102,4 +102,19 @@ import Testing
         #expect(lay.detail == 0)
         #expect(lay.name > 0)
     }
+
+    /// A row from an agent AgentBar ships nothing for is labelled with that
+    /// agent, not with Claude — the bug was a crab and "CLAUDE" on an aider row.
+    @Test func anUnknownAgentIsLabelledAsItself() throws {
+        let c = SessionRowView.content(for: try session("thinking", agent: "aider"))
+        #expect(c.agent == "AIDER")
+        #expect(c.agentID == "aider")
+
+        let url = dir.appendingPathComponent("\(UUID().uuidString).json")
+        let o: [String: Any] = ["agent": "my-bot", "agent_name": "Robo Helper", "state": "thinking",
+                                "started": true, "pid": 4242, "ts": Date().timeIntervalSince1970]
+        try JSONSerialization.data(withJSONObject: o).write(to: url)
+        let named = SessionRowView.content(for: try #require(Session(fileURL: url)))
+        #expect(named.agent == "ROBO HELPER")
+    }
 }

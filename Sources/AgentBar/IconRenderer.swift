@@ -24,9 +24,13 @@ final class IconRenderer {
     private var cache: [String: Sprite] = [:]
 
     func sprite(for agent: Agent) -> Sprite {
-        if let s = cache[agent.id] { return s }
+        // A generic agent's letter comes from the name its writer reports, which
+        // can change under the same id; the key carries it so a rename redraws.
+        var key = agent.id
+        if case .monogram(let letter) = agent.artwork { key += "\u{0}\(letter)" }
+        if let s = cache[key] { return s }
         let s = build(agent)
-        cache[agent.id] = s
+        cache[key] = s
         return s
     }
 
@@ -54,11 +58,12 @@ final class IconRenderer {
 
         case .tintedMark(let png):
             let mark = Self.fit(Self.trim(Self.decode(png) ?? NSImage()), height: 15)
-            let tinted = Self.tint(mark, with: agent.brand)
-            let ink = Self.solidTemplate(mark)
-            return Sprite(colorFrames: Self.bobFrames(tinted),
-                          templateFrames: Self.bobFrames(ink),
-                          fps: 8)
+            return Self.tintedSprite(mark, brand: agent.brand)
+
+        case .monogram(let letter):
+            // Drawn at the size the tinted marks are fitted to, then sent down
+            // exactly their path, so Color and System mode treat it the same.
+            return Self.tintedSprite(Self.monogram(letter, height: 15), brand: agent.brand)
 
         case .colorMark(let png):
             let mark = Self.fit(Self.trim(Self.decode(png) ?? NSImage()), height: 15)
@@ -74,7 +79,45 @@ final class IconRenderer {
         }
     }
 
+    /// One monochrome mark, brand-tinted for Color mode and solid ink for System.
+    private static func tintedSprite(_ mark: NSImage, brand: NSColor) -> Sprite {
+        Sprite(colorFrames: bobFrames(tint(mark, with: brand)),
+               templateFrames: bobFrames(solidTemplate(mark)),
+               fps: 8)
+    }
+
     // MARK: - Building blocks
+
+    /// A filled rounded square with `letter` cut clean through it. A rounded
+    /// square rather than a circle: at 13–15pt the vendors' marks beside it are
+    /// mostly blocky glyphs, and a circle reads as a status dot, which the menu
+    /// already uses for state. The letter is a hole, not paint, so the one alpha
+    /// mask tints to the brand in Color mode and lets the bar show through in
+    /// System mode.
+    static func monogram(_ letter: Character, height: CGFloat) -> NSImage {
+        let size = NSSize(width: height, height: height)
+        let out = NSImage(size: size)
+        out.lockFocus()
+        let rect = NSRect(origin: .zero, size: size)
+        NSColor.black.setFill()
+        NSBezierPath(roundedRect: rect, xRadius: height * 0.24, yRadius: height * 0.24).fill()
+        let font = NSFont.systemFont(ofSize: height * 0.66, weight: .heavy)
+        let glyph = NSAttributedString(string: String(letter),
+                                       attributes: [.font: font, .foregroundColor: NSColor.black])
+        let g = glyph.size()
+        // Centre on the cap height, not the line box, so the letter sits optically
+        // in the middle instead of riding high on the descender's room. A line
+        // drawn at `y` has its baseline at `y - descender`.
+        let baseline = (height - font.capHeight) / 2
+        if let cg = NSGraphicsContext.current?.cgContext {
+            cg.saveGState()
+            cg.setBlendMode(.destinationOut)
+            glyph.draw(at: NSPoint(x: ((height - g.width) / 2).rounded(), y: baseline + font.descender))
+            cg.restoreGState()
+        }
+        out.unlockFocus()
+        return out
+    }
 
     static func decode(_ base64: String) -> NSImage? {
         guard let data = Data(base64Encoded: base64), let img = NSImage(data: data) else { return nil }

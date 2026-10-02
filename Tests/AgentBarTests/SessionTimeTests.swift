@@ -32,6 +32,28 @@ import Testing
         #expect(s.elapsed == nil)
     }
 
+    /// `agent_name` comes from whoever wrote the row and lands in a menu row and a
+    /// banner title: a newline or an escape must not get that far, nor a name
+    /// long enough to push the state off the edge.
+    @Test func anAgentNameIsCleanedAndCapped() throws {
+        #expect(Session.displayName("  Aider  ") == "Aider")
+        #expect(Session.displayName("Ai\nder\u{1B}[31m\t") == "Aider[31m")
+        #expect(Session.displayName(String(repeating: "x", count: 40)).count == 24)
+        #expect(Session.displayName(42) == "")
+        #expect(Session.displayName(nil) == "")
+
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("agentbar-name-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let long = "My\u{0007} Very Long Agent Name That Goes On"
+        try JSONSerialization.data(withJSONObject: ["agent": "mine", "agent_name": long, "state": "idle"])
+            .write(to: url)
+        let s = try #require(Session(fileURL: url))
+        #expect(s.agentName == "My Very Long Agent Name")
+        #expect(s.agent.name == "My Very Long Agent Name")
+        #expect(s.agent.id == "mine")
+    }
+
     /// A submodule's `.git` is a file whose `gitdir:` is relative to the directory
     /// holding it. Read as given, it named nothing and the branch went missing.
     @Test func aRelativeGitdirIsReadFromTheDirectoryHoldingIt() throws {

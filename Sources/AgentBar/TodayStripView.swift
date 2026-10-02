@@ -168,7 +168,7 @@ final class TodayStripView: NSView, NSViewToolTipOwner {
         // The same red the live rows use for a failed turn, so one vocabulary covers
         // "this went wrong" everywhere on the panel.
         guard !e.failed else { return NSColor(srgbRed: 1, green: 0.45, blue: 0.42, alpha: 1) }
-        let brand = IconRenderer.legibleOnDark(Agent.byID(e.agent).brand)
+        let brand = IconRenderer.legibleOnDark(e.resolvedAgent.brand)
         // Half-lit when it could not be timed: the bar is a placeholder at floor
         // width, and it should not look like a measurement.
         return e.duration == nil ? brand.withAlphaComponent(0.45) : brand

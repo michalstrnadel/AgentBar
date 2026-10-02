@@ -16,6 +16,10 @@ struct Agent {
         /// Full-color app-icon-style mark on an opaque dark plate; templates as a
         /// knockout (plate becomes ink, bright artwork is cut out). Animated as a bob.
         case appIconMark(String)
+        /// One letter knocked out of a filled rounded square, drawn rather than
+        /// shipped: the mark of an agent AgentBar has never heard of, so a row
+        /// written by any tool still gets a face that is its own and not Claude's.
+        case monogram(Character)
     }
 
     enum OpenAction {
@@ -106,5 +110,51 @@ struct Agent {
               approveKeys: nil),
     ]
 
-    static func byID(_ id: String) -> Agent { all.first { $0.id == id } ?? all[0] }
+    /// The agent a row names. A known id is that agent; an empty id is Claude,
+    /// the protocol's documented default for a file with no `agent` key (Claude
+    /// Code's hooks predate the field). Anything else is an agent somebody wired
+    /// up themselves, and it gets a generic entry of its own — it used to get
+    /// `all[0]`, so an `aider` row wore the crab, said "Claude needs approval" and
+    /// opened Claude Desktop when clicked.
+    static func byID(_ id: String, name: String = "") -> Agent {
+        if id.isEmpty { return all[0] }
+        return all.first { $0.id == id } ?? generic(id: id, name: name)
+    }
+
+    /// An agent known only by the id a writer chose. Everything here is the
+    /// least AgentBar can promise about a stranger: the terminal is where it
+    /// probably runs, there is no command to launch it with, and above all
+    /// `approveKeys` stays nil — posting Return into a terminal we know nothing
+    /// about could approve something nobody read. Never added to `all`, so it
+    /// cannot appear in the Open menu or the launcher.
+    static func generic(id: String, name: String) -> Agent {
+        let shown = name.isEmpty ? titleCased(id) : name
+        let letter = shown.first(where: { $0.isLetter || $0.isNumber }).map { Character($0.uppercased()) } ?? "?"
+        return Agent(id: id, name: shown.isEmpty ? id : shown,
+                     brand: hue(for: id),
+                     artwork: .monogram(letter),
+                     open: .terminal,
+                     approveKeys: nil,
+                     cli: nil, takesPrompt: false)
+    }
+
+    /// "my-agent" → "My Agent".
+    static func titleCased(_ id: String) -> String {
+        id.split(whereSeparator: { $0 == "-" || $0 == "_" })
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
+    }
+
+    /// A brand colour that is the same on every launch and every machine, so an
+    /// agent keeps its colour from one day to the next. Swift's `hashValue` is
+    /// seeded per process and would repaint it at every launch; FNV-1a over the
+    /// id's UTF-8 bytes picks the hue instead. Saturation and brightness are held
+    /// in the middle so the mark reads on a light menu bar and a dark island
+    /// alike, and never shouts louder than the vendors' own colours beside it.
+    static func hue(for id: String) -> NSColor {
+        var h: UInt32 = 2_166_136_261
+        for b in id.utf8 { h = (h ^ UInt32(b)) &* 16_777_619 }
+        return NSColor(hue: CGFloat(h % 360) / 360, saturation: 0.45,
+               brightness: 0.72, alpha: 1)
+    }
 }

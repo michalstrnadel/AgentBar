@@ -31,6 +31,9 @@ enum HistoryDigest {
         /// What moved in the repo while it ran. Nil unless the whole span was
         /// observed — see `WorkDiff`, and note the wording it insists on.
         var change: RepoChange?
+        /// The record's `agentName` — see `HistoryStore.Record`.
+        var agentName = ""
+        var resolvedAgent: Agent { Agent.byID(agent, name: agentName) }
         var failed: Bool { state == "error" }
     }
 
@@ -68,7 +71,7 @@ enum HistoryDigest {
             .sorted { $0.endedAt > $1.endedAt }
             .map { Entry(agent: $0.agent, project: $0.project, cwd: $0.cwd, state: $0.state,
                          startedAt: $0.startedAt, endedAt: $0.endedAt,
-                         weight: $0.weight, change: $0.change) }
+                         weight: $0.weight, change: $0.change, agentName: $0.agentName) }
 
         var summary = Summary()
         summary.sessions = entries.count
@@ -120,7 +123,7 @@ enum HistoryDigest {
     /// Every clause after the name is dropped when it is not known, so a row never
     /// pads itself out with zeroes to look complete.
     static func line(_ e: Entry) -> String {
-        var parts = [e.project.isEmpty ? Agent.byID(e.agent).name : e.project]
+        var parts = [e.project.isEmpty ? e.resolvedAgent.name : e.project]
         if let d = e.duration { parts.append(duration(d)) }
         if let w = e.weight, w.total > 0 { parts.append(UsageCenter.compact(w.total)) }
         if let c = e.change { parts.append(WorkDiff.describe(c)) }

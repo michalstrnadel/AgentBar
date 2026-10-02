@@ -6,6 +6,8 @@ struct ApprovalRequest {
     let fileName: String            // shared key: the answer file must use the same name
     let sessionId: String
     let agentID: String
+    /// `agent_name`, cleaned as `Session.displayName` cleans it; "" when absent.
+    let agentName: String
     let toolName: String
     let display: String             // one line, e.g. "Bash: git push origin main"
     let toolInputPretty: String     // full tool input for the tooltip
@@ -42,6 +44,9 @@ struct ApprovalRequest {
         }
     }
 
+    /// Whose request this is, for card titles and banners.
+    var agent: Agent { Agent.byID(agentID, name: agentName) }
+
     /// The decoded questions when this request is an answerable AskUserQuestion.
     var questions: [Context.Question]? {
         if case .question(let qs) = context { return qs }
@@ -71,6 +76,7 @@ struct ApprovalRequest {
         fileName        = fileURL.lastPathComponent
         sessionId       = o["sessionId"] as? String ?? ""
         agentID         = o["agent"] as? String ?? "claude"
+        agentName       = Session.displayName(o["agent_name"])
         toolName        = o["toolName"] as? String ?? ""
         display         = o["display"] as? String ?? (o["toolName"] as? String ?? "request")
         toolInputPretty = o["toolInputPretty"] as? String ?? ""

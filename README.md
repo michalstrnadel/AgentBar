@@ -451,6 +451,7 @@ launchd agent has to be booted out separately, which is what the `cloud/install.
 | OpenCode | working / approval / done / failed | yes | prompt chevron | plugin in `~/.config/opencode/plugins/` (auto-installed if OpenCode is installed); observe-only |
 | Google Antigravity | working / done | yes | pixel rainbow arch + dot-matrix | hooks in `~/.gemini/antigravity{,-cli}/hooks.json` (auto-wired); desktop 2.3.x only honors per-workspace `.agents/hooks.json`, and only `PostToolUse` fires — quiet sessions decay to done |
 | Devin (cloud) | working / blocked / finished / suspended | yes | D letterform | no local process at all — rows come from the [cloud poller](Scripts/cloud/), clicking opens the exact thread in Devin Desktop (or the web) |
+| Your own agent | idle / working / question / done / failed | yes | generic letter mark + its name | anything else: wrap it with `agentbar report --agent <id> --name <Name> --state …` or write the [file protocol](docs/protocol.md#bring-your-own-agent) directly. No approvals — a report has no hook waiting on the answer |
 
 Hook readiness: Claude Code, Codex (`config.toml`), Cursor (`hooks.json`), Gemini
 (`settings.json`), Antigravity (`hooks.json`), Qwen Code (`settings.json`),

@@ -726,6 +726,52 @@ printf '{"agent":"claude","state":"tool","label":"x","project":"proj","cwd":"","
   "$$" "$OLD" > "$HOME/.agentbar/state.d/cl1.json"
 check "a quiet claude row is left alone"      '"$CLI" status --json | grep -q "\"state\": *\"tool\""'
 
+# --- report: any agent, one row per call (docs/protocol.md "Bring your own agent")
+fresh_home
+mkdir -p "$HOME/work/myproj"
+RROW="$HOME/.agentbar/state.d/aider-myproj.json"
+ABS_CLI="$PWD/$CLI"   # the subshells below run from the project dir
+( cd "$HOME/work/myproj" && "$ABS_CLI" report --agent aider --name Aider --state tool --label Editing --pid $$ )
+check "report writes the row"                '[ -f "$RROW" ]'
+check "report marks it started"              'grep -q "\"started\":true" "$RROW"'
+check "report names the agent id"            'grep -q "\"agent\":\"aider\"" "$RROW"'
+check "report carries agent_name"            'grep -q "\"agent_name\":\"Aider\"" "$RROW"'
+check "report defaults project to the cwd"   'grep -q "\"project\":\"myproj\"" "$RROW"'
+check "report stamps the given pid"          'grep -q "\"pid\":$$," "$RROW"'
+SA="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1])).started_at)' "$RROW")"
+# Pinned a minute later, so a started_at that was re-stamped would differ.
+( cd "$HOME/work/myproj" && AGENTBAR_NOW=$(( $(date +%s) + 60 )) "$ABS_CLI" report --agent aider --state done --recap "Edited 3 files" --pid $$ )
+check "a second report merges"               'grep -q "\"state\":\"done\"" "$RROW" && grep -q "\"agent_name\":\"Aider\"" "$RROW"'
+check "a second report keeps started_at"     'grep -q "\"started_at\":$SA," "$RROW"'
+check "status lists the agent's name"        '"$CLI" status | grep -q AIDER'
+check "waybar tooltip uses the name"         '"$CLI" waybar | grep -q "(Aider)"'
+( cd "$HOME/work/myproj" && "$ABS_CLI" report --agent aider --state end )
+check "report --state end deletes the row"   '[ ! -f "$RROW" ]'
+
+fresh_home
+"$CLI" report --agent Aider --state tool --session x >/dev/null 2>&1; RC=$?
+check "report refuses a bad agent id"        '[ "$RC" -ne 0 ] && [ -z "$(ls "$HOME/.agentbar/state.d")" ]'
+"$CLI" report --agent "a/../b" --state tool --session x >/dev/null 2>&1; RC=$?
+check "report refuses a path in the id"      '[ "$RC" -ne 0 ] && [ -z "$(ls "$HOME/.agentbar/state.d")" ]'
+"$CLI" report --agent aider --state working --session x >/dev/null 2>&1; RC=$?
+check "report refuses an unknown state"      '[ "$RC" -ne 0 ] && [ -z "$(ls "$HOME/.agentbar/state.d")" ]'
+# An approval needs a hook waiting on the answer; a one-shot report has none.
+"$CLI" report --agent aider --state permission --session x >/dev/null 2>&1; RC=$?
+check "report refuses permission"            '[ "$RC" -ne 0 ] && [ -z "$(ls "$HOME/.agentbar/state.d")" ] && [ -z "$(ls "$HOME/.agentbar/requests.d")" ]'
+"$CLI" report --agent aider --state tool --session "../../evil" --pid $$
+check "report --session is sanitised"        '[ -f "$HOME/.agentbar/state.d/....evil.json" ]'
+# 79 ASCII + an emoji: a cut at 80 lands between the surrogate halves, and a lone
+# surrogate makes Swift's JSONSerialization reject the whole file.
+"$CLI" report --agent aider --state tool --session sur --pid $$ --label "$(printf 'a%.0s' $(seq 79))😀" --name "$(printf 'n%.0s' $(seq 23))😀"
+check "report never writes a lone surrogate" '! grep -qiE "\\\\ud[89a-f]" "$HOME/.agentbar/state.d/sur.json" && node -e "JSON.parse(require(\"fs\").readFileSync(process.argv[1],\"utf8\"))" "$HOME/.agentbar/state.d/sur.json"'
+check "report caps agent_name at 24"         'node -e "process.exit(JSON.parse(require(\"fs\").readFileSync(process.argv[1],\"utf8\")).agent_name.length <= 24 ? 0 : 1)" "$HOME/.agentbar/state.d/sur.json"'
+
+# A row with no `started` field at all is a live session (third-party writers
+# predate the field); only an explicit false hides one. The app always showed it.
+fresh_home
+printf '{"agent":"claude","state":"tool","pid":%s,"ts":%s}' $$ "$(date +%s)" > "$HOME/.agentbar/state.d/nostarted.json"
+check "a row without started is shown"       '"$CLI" status --json | grep -q "\"id\": \"nostarted\""'
+
 echo "---"
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

@@ -95,9 +95,10 @@ final class SessionStore {
         // recap too — a second Stop can rewrite it while the state stays "done". Prompt
         // and model as well: the island titles rows by prompt and shows a model chip,
         // and both can change while state and label stay put (a queued prompt lands
-        // while the session is already "Thinking…").
+        // while the session is already "Thinking…"). The agent's own name too: a
+        // generic agent's row and mark are drawn from it.
         let snapshot = sessions.map {
-            "\($0.id):\($0.state.rawValue):\($0.label):\($0.project):\($0.gitBranch ?? ""):\($0.recap):\($0.prompt):\($0.model)"
+            "\($0.id):\($0.agentName):\($0.state.rawValue):\($0.label):\($0.project):\($0.gitBranch ?? ""):\($0.recap):\($0.prompt):\($0.model)"
         }
         guard snapshot != lastSnapshot else { return }
         lastSnapshot = snapshot

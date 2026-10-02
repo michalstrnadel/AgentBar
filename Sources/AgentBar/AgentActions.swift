@@ -95,7 +95,7 @@ enum AgentActions {
                 guard reportFailedAnswer(AnswerWriter.write(behavior: "defer", for: a.request))
                 else { return false }
                 if a.session.entrypoint == "claude-desktop" {
-                    open(Agent.byID(a.session.agentID))
+                    open(a.session.agent)
                 } else {
                     TerminalFocus.focus(session: a.session)
                 }
@@ -132,7 +132,7 @@ enum AgentActions {
             // The prompt is about to reappear where the session lives: bring it
             // forward — the exact tab when the terminal can be asked for it.
             if a.session.entrypoint == "claude-desktop" {
-                open(Agent.byID(a.session.agentID))
+                open(a.session.agent)
             } else {
                 TerminalFocus.focus(session: a.session)
             }
@@ -201,7 +201,7 @@ enum AgentActions {
     /// lets **anybody** write a row, so the poller's own discipline is not the place
     /// to rely on.
     static func mayKeystroke(_ session: Session) -> Bool {
-        session.entrypoint != "cloud" && Agent.byID(session.agentID).approveKeys != nil
+        session.entrypoint != "cloud" && session.agent.approveKeys != nil
     }
 
     /// Inline strip on keystroke-backed permission rows (Antigravity, Codex, Copilot).
@@ -209,7 +209,7 @@ enum AgentActions {
         switch behavior {
         case "allow":
             guard mayKeystroke(session),
-                  let keys = Agent.byID(session.agentID).approveKeys else { return }
+                  let keys = session.agent.approveKeys else { return }
             guard KeystrokeApprover.trusted else {
                 KeystrokeApprover.requestAccess()
                 return
@@ -240,7 +240,7 @@ enum AgentActions {
             KeystrokeApprover.requestAccess()
         default: // "open" — jump to the prompt and answer there
             if session.entrypoint == "antigravity-app" {
-                open(Agent.byID(session.agentID))
+                open(session.agent)
             } else {
                 TerminalFocus.focus(session: session)
             }

@@ -29,6 +29,23 @@ import Testing
         Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
     }
 
+    /// The CLI writes the same file and spells the field `agentName`, like the
+    /// other history keys; the two sides drifting apart would lose the name of
+    /// every third-party agent the moment the other frontend wrote a line.
+    @Test func aGenericAgentsNameSurvivesTheHistoryLine() throws {
+        let url = dir.appendingPathComponent("named.json")
+        let o: [String: Any] = ["agent": "aider", "agent_name": "Aider", "state": "done",
+                                "started": true, "ts": 1_000, "started_at": 400, "pid": 4242]
+        try JSONSerialization.data(withJSONObject: o).write(to: url)
+        let s = try #require(Session(fileURL: url))
+        let record = HistoryStore.Record(s, endedAt: 2_000)
+        #expect(record.json["agentName"] as? String == "Aider")
+        let line = try #require(String(data: JSONSerialization.data(withJSONObject: record.json),
+                                       encoding: .utf8))
+        let back = try #require(HistoryStore.Record(jsonLine: line))
+        #expect(back.resolvedAgent.name == "Aider")
+    }
+
     // MARK: - The edge
 
     @Test func aFinishedTurnIsRecordedOnce() throws {

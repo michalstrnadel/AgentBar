@@ -30,7 +30,7 @@ final class SessionRowView: NSView {
     static func content(for s: Session, ended: Bool = false) -> Content {
         var name = s.project.isEmpty ? "session" : s.project
         if let branch = s.gitBranch { name += " · \(branch)" }
-        let agent = Agent.byID(s.agentID).name.uppercased()
+        let agent = s.agent.name.uppercased()
         if ended {
             return Content(dot: .ended, name: name, detail: "ended", elapsed: "", agent: agent, agentID: s.agentID)
         }
@@ -287,7 +287,7 @@ final class SessionRowView: NSView {
         guard sessions.count == 6 else { return false }
 
         var views: [SessionRowView] = sessions.map {
-            SessionRowView(session: $0, mark: MenuBuilder.menuMark(for: Agent.byID($0.agentID)))
+            SessionRowView(session: $0, mark: MenuBuilder.menuMark(for: $0.agent))
         }
         let ended = SessionRowView(session: sessions[2], mark: MenuBuilder.menuMark(for: Agent.byID("codex")))
         ended.showEnded(sessions[2])

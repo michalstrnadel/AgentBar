@@ -313,11 +313,18 @@ final class UsageCenter {
     /// The usage provider an agent's sessions spend from. Several ids can share
     /// one — Claude Code and Cowork are the same account and the same window —
     /// and most agents have no provider here at all, which is its own answer.
+    ///
+    /// Exact ids, not prefixes: any tool may write a row under an id it picks, and
+    /// a `codex-fork` claiming Codex's quota would put somebody else's spending on
+    /// your meter. Cowork's rows already say `claude` (`CoworkWatcher`); `cowork`
+    /// stays for a writer that names it.
     static func provider(forAgent id: String) -> String? {
-        if id.hasPrefix("claude") || id.hasPrefix("cowork") { return "Claude" }
-        if id.hasPrefix("codex") { return "Codex" }
-        if id.hasPrefix("copilot") { return "Copilot" }
-        return nil
+        switch id {
+        case "claude", "cowork": return "Claude"
+        case "codex":            return "Codex"
+        case "copilot":          return "Copilot"
+        default:                 return nil
+        }
     }
 
     /// At or past this, a window stays on the island whatever else is happening.

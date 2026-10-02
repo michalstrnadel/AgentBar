@@ -40,4 +40,16 @@ import Testing
         #expect(AgentActions.mayKeystroke(try session(agent: "claude", entrypoint: "cli")) == false)
         #expect(AgentActions.mayKeystroke(try session(agent: "cursor", entrypoint: "cli")) == false)
     }
+
+    /// An agent AgentBar has never heard of used to resolve to Claude; now it
+    /// resolves to a generic agent, and a generic agent carries no keys at all.
+    /// Typing Return into a terminal whose prompt nobody here can read is exactly
+    /// the keystroke this check exists to stop.
+    @Test func anUnknownAgentIsNeverAimedAt() throws {
+        let s = try session(agent: "aider", entrypoint: "cli")
+        #expect(s.agent.approveKeys == nil)
+        #expect(AgentActions.mayKeystroke(s) == false)
+        // Not even when its id starts like an agent that does have keys.
+        #expect(AgentActions.mayKeystroke(try session(agent: "codex-fork", entrypoint: "cli")) == false)
+    }
 }

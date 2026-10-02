@@ -348,6 +348,15 @@ import Testing
         #expect(UsageCenter.provider(forAgent: "gemini") == nil)
     }
 
+    @Test func aLookalikeIdSpendsFromNobody() {
+        // Any tool may report under an id it picks; one that merely starts like a
+        // vendor's must not put its spending on that vendor's meter.
+        #expect(UsageCenter.provider(forAgent: "codex-fork") == nil)
+        #expect(UsageCenter.provider(forAgent: "claudette") == nil)
+        #expect(UsageCenter.provider(forAgent: "copilot-x") == nil)
+        #expect(UsageCenter.provider(forAgent: "") == nil)
+    }
+
     /// A sentence gets the width; a value keeps its column. A note under a
     /// provider is a sentence, and so is a provider whose whole truth is a
     /// phrase — held in the numbers column, "~654k tok this 5h block · resets

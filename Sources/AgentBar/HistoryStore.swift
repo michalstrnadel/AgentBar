@@ -60,6 +60,13 @@ final class HistoryStore {
         /// How much the repository moved while the session was open. Nil whenever the
         /// span cannot be measured honestly — see `WorkDiff`.
         var change: RepoChange? = nil
+        /// `Session.agentName`: what a generic agent called itself, so a day-old
+        /// record can still say "Aider" rather than its id. "" for known agents,
+        /// and omitted from the line then, so older readers see no new field.
+        var agentName = ""
+
+        /// Who the record belongs to, resolved the way a live row is.
+        var resolvedAgent: Agent { Agent.byID(agent, name: agentName) }
 
         var json: [String: Any] {
             var o: [String: Any] =
@@ -71,11 +78,13 @@ final class HistoryStore {
             // "nobody measured this" from "this cost nothing".
             if let weight { o["weight"] = weight.json }
             if let change { o["change"] = change.json }
+            if !agentName.isEmpty { o["agentName"] = agentName }
             return o
         }
 
         init(_ s: Session, endedAt: TimeInterval) {
             agent = s.agentID
+            agentName = s.agentName
             sessionId = s.id
             project = s.project
             cwd = s.cwd
@@ -264,5 +273,7 @@ extension HistoryStore.Record {
         decayed = o["decayed"] as? Bool ?? false
         weight = Weight(json: o["weight"])
         change = RepoChange(json: o["change"])
+        // Cleaned again on the way back in: the file is the user's to edit.
+        agentName = Session.displayName(o["agentName"])
     }
 }
