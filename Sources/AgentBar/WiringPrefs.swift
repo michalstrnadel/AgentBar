@@ -28,6 +28,9 @@ enum WiringPrefs {
     /// anything that is not shaped like an agent id is ignored rather than trusted.
     static func parse(_ text: String) -> Set<String> {
         var out = Set<String>()
+        // A byte-order mark in front of the first id: whether `String(contentsOf:)`
+        // strips it depends on the Foundation underneath, so it is dropped here.
+        let text = text.hasPrefix("\u{FEFF}") ? String(text.dropFirst()) : text
         for raw in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline) {
             let line = raw.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
                 .first.map(String.init) ?? ""
@@ -41,7 +44,7 @@ enum WiringPrefs {
 
     static func render(_ ids: Set<String>) -> String {
         (["# Agents AgentBar leaves unwired, one id per line.",
-          "# Written by AgentBar (Settings > Diagnostics > Agents) and the agentbar CLI."]
+          "# Written by AgentBar (Settings > Agents) and the agentbar CLI."]
             + ids.sorted()).joined(separator: "\n") + "\n"
     }
 

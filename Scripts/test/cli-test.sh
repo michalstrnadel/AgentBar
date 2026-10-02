@@ -840,7 +840,7 @@ check "unwire copilot keeps it first"       'ls "$HOME/.copilot/hooks" | grep -q
 check "unwire opencode deletes the plugin"  '[ ! -e "$HOME/.config/opencode/plugins/agentbar.js" ] && ls "$HOME/.config/opencode/plugins" | grep -q "^agentbar\.js\.agentbar-bak-"'
 check "unwire prints the removal diff"      'echo "$OUT" | grep -q "^+++ /dev/null"'
 check "wire-disabled lists all, sorted"     '[ "$(WD | grep -v "^#" | tr "\n" " ")" = "antigravity claude codex copilot cursor gemini opencode qwen " ]'
-check "wire-disabled has the app header"    '[ "$(WD | head -2)" = "$(printf "# Agents AgentBar leaves unwired, one id per line.\n# Written by AgentBar (Settings > Diagnostics > Agents) and the agentbar CLI.")" ]'
+check "wire-disabled has the app header"    '[ "$(WD | head -2)" = "$(printf "# Agents AgentBar leaves unwired, one id per line.\n# Written by AgentBar (Settings > Agents) and the agentbar CLI.")" ]'
 check "wire-disabled is 0644"               '[ "$(stat -c %a "$HOME/.agentbar/wire-disabled" 2>/dev/null || stat -f %Lp "$HOME/.agentbar/wire-disabled")" = 644 ]'
 # A switched-off agent is not re-wired by the next install-hooks, and a second
 # unwire of something already unwired writes nothing at all.

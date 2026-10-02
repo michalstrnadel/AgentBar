@@ -52,4 +52,10 @@ import Testing
         // Nothing disabled has one spelling on disk: no file.
         #expect(!FileManager.default.fileExists(atPath: WiringPrefs.url(home: home).path))
     }
+
+    /// Whether reading the file strips a byte-order mark depends on the Foundation
+    /// underneath (CI's did not), so `parse` drops it itself.
+    @Test func aByteOrderMarkInFrontIsNotPartOfTheFirstId() {
+        #expect(WiringPrefs.parse("\u{FEFF}cursor\ngemini\n") == ["cursor", "gemini"])
+    }
 }

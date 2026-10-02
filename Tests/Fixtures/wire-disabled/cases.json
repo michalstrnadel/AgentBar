@@ -10,7 +10,7 @@
   "cases": [
     {"name": "no file disables nothing", "file": null, "ids": []},
     {"name": "an empty file", "file": "", "ids": []},
-    {"name": "the header the writers write", "file": "# Agents AgentBar leaves unwired, one id per line.\n# Written by AgentBar (Settings > Diagnostics > Agents) and the agentbar CLI.\ncursor\ngemini\n", "ids": ["cursor", "gemini"]},
+    {"name": "the header the writers write", "file": "# Agents AgentBar leaves unwired, one id per line.\n# Written by AgentBar (Settings > Agents) and the agentbar CLI.\ncursor\ngemini\n", "ids": ["cursor", "gemini"]},
     {"name": "no final newline", "file": "cursor", "ids": ["cursor"]},
     {"name": "blank lines and comment lines", "file": "\n\n# codex\n  # qwen\ncursor\n\n", "ids": ["cursor"]},
     {"name": "a trailing comment", "file": "gemini   # a trailing comment too\n", "ids": ["gemini"]},

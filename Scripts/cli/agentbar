@@ -1909,7 +1909,7 @@ function removeConfig(file) {
 // means nothing is disabled, which is exactly the behaviour before the file existed.
 const wireDisabledFile = path.join(base, "wire-disabled");
 const WIRE_HEADER = ["# Agents AgentBar leaves unwired, one id per line.",
-                     "# Written by AgentBar (Settings > Diagnostics > Agents) and the agentbar CLI."];
+                     "# Written by AgentBar (Settings > Agents) and the agentbar CLI."];
 const WIRE_ID = /^[a-z0-9][a-z0-9_-]*$/;
 // Every agent install-hooks knows how to wire — what `--only` speaks for.
 const WIRABLE = INTEGRATIONS.map((i) => i.id);
