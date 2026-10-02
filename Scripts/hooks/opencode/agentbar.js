@@ -10,7 +10,14 @@ import { spawn, execSync } from "node:child_process";
 
 const AGENT = "opencode";
 const BUNDLE_ID = "com.michalstrnadel.agentbar";
-const base = path.join(os.homedir(), ".agentbar");
+// The state root (docs/protocol.md, "Where state lives"): AGENTBAR_HOME when it is
+// an absolute path, ~/.agentbar otherwise. A relative value is ignored, not refused:
+// a hook must never fail its host.
+const stateRoot = () => {
+  const v = process.env.AGENTBAR_HOME || "";
+  return path.isAbsolute(v) ? v.replace(/\/+$/, "") || "/" : path.join(os.homedir(), ".agentbar");
+};
+const base = stateRoot();
 const stateDir = path.join(base, "state.d");
 
 const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";

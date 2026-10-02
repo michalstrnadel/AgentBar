@@ -3,8 +3,8 @@
 // (CURSOR_API_KEY, DEVIN_API_KEY) so the file can stay key-free if preferred.
 
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
+const { stateRoot } = require("./state");
 
 const DEFAULTS = {
   pollSeconds: 30,
@@ -35,7 +35,7 @@ const merge = (base, over) => {
 };
 
 const load = () => {
-  const file = path.join(os.homedir(), ".agentbar", "cloud.json");
+  const file = path.join(stateRoot(), "cloud.json");
   let user = {};
   try {
     user = JSON.parse(fs.readFileSync(file, "utf8"));

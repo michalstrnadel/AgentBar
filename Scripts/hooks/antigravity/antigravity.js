@@ -9,7 +9,14 @@ const fs = require("fs"), os = require("os"), path = require("path"), cp = requi
 const AGENT = "antigravity";
 const BUNDLE_ID = "com.michalstrnadel.agentbar";
 const EXEC = "AgentBar";
-const stateDir = path.join(os.homedir(), ".agentbar", "state.d");
+// The state root (docs/protocol.md, "Where state lives"): AGENTBAR_HOME when it is
+// an absolute path, ~/.agentbar otherwise. A relative value is ignored, not refused:
+// a hook must never fail its host.
+const stateRoot = () => {
+  const v = process.env.AGENTBAR_HOME || "";
+  return path.isAbsolute(v) ? v.replace(/\/+$/, "") || "/" : path.join(os.homedir(), ".agentbar");
+};
+const stateDir = path.join(stateRoot(), "state.d");
 
 // Antigravity has no SessionStart/SessionEnd: the file appears on first activity
 // and leaves via the app's pid/staleness pruning. PostInvocation fires between

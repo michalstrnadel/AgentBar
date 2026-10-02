@@ -120,8 +120,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
                 // changes the very thing being measured.
                 var line = "granted=\(granted) error=\(String(describing: error))\n"
                 line += "bundleID=\(Bundle.main.bundleIdentifier ?? "nil") path=\(Bundle.main.bundlePath)\n"
-                let url = FileManager.default.homeDirectoryForCurrentUser
-                    .appendingPathComponent(".agentbar/notify-probe.txt")
+                let url = AgentBarHome.url("notify-probe.txt")
                 UNUserNotificationCenter.current().getNotificationSettings { st in
                     let full = line + "authorizationStatus=\(st.authorizationStatus.rawValue) "
                         + "alertSetting=\(st.alertSetting.rawValue) "

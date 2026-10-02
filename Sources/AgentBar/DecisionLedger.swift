@@ -31,8 +31,7 @@ import Foundation
 final class DecisionLedger {
     static let shared = DecisionLedger()
 
-    static let fileURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".agentbar/decisions.jsonl", isDirectory: false)
+    static let fileURL = AgentBarHome.url("decisions.jsonl")
 
     /// The same span and ceiling `history.jsonl` keeps, for the same reasons.
     static let maxAge: TimeInterval = 30 * 86_400
@@ -239,8 +238,11 @@ final class DecisionLedger {
     static func verb(of command: String) -> String {
         // Only the first command of a pipeline or a chain: what follows is
         // consequence, and `cmd && rm -rf /` must never be counted as `cmd`.
-        let head = command.split(whereSeparator: { "|;&\n".contains($0) }).first.map(String.init)
-            ?? command
+        // By scalar: `\r\n` is one Character to Swift and would not equal "\n", so a
+        // CRLF-joined second command used to stay in the head. `\r` splits too, as it
+        // does in the CLI's `decisionVerb` — the two must cut the same head.
+        let head = command.split(whereSeparator: { $0.unicodeScalars.contains { "|;&\r\n".unicodeScalars.contains($0) } })
+            .first.map(String.init) ?? command
         var words = head.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
         // Leading environment assignments and `sudo` are how the same command
         // arrives wearing a different hat.

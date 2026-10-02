@@ -3,6 +3,7 @@
 // Pure helpers up top; the fs edge lives in the exported functions below.
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 
@@ -24,6 +25,16 @@ const sliceSafe = (s, n) => {
   return last >= 0xd800 && last <= 0xdbff ? cut.slice(0, -1) : cut;
 };
 const oneLine = (s, n) => sliceSafe(String(s || "").replace(/\s+/g, " ").trim(), n);
+
+// The state root (docs/protocol.md, "Where state lives"): AGENTBAR_HOME when set,
+// ~/.agentbar otherwise. A relative value throws: the poller is not a hook, and a
+// typo must not quietly write into the real directory. No `~` expansion.
+const stateRoot = (env = process.env) => {
+  const v = env.AGENTBAR_HOME || "";
+  if (!v) return path.join(os.homedir(), ".agentbar");
+  if (!path.isAbsolute(v)) throw new Error(`AGENTBAR_HOME must be an absolute path, not "${v}"`);
+  return v.replace(/\/+$/, "") || "/";
+};
 
 const fileFor = (stateDir, id) => path.join(stateDir, `${id}.json`);
 
@@ -68,4 +79,4 @@ const reconcile = (stateDir, prefix, keepIds) => {
   }
 };
 
-module.exports = { safeId, oneLine, writeRow, readRow, listIds, reconcile };
+module.exports = { stateRoot, safeId, oneLine, writeRow, readRow, listIds, reconcile };

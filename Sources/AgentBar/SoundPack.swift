@@ -34,8 +34,7 @@ enum SoundPack {
     static let maxSeconds = 3.0
 
     static var directory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".agentbar/sounds", isDirectory: true)
+        AgentBarHome.url("sounds", isDirectory: true)
     }
 
     /// One file in the folder, as much of it as choosing needs. The modification

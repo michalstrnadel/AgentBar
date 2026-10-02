@@ -46,8 +46,7 @@ enum ApprovalSelfTest {
     /// Runs the hook and calls back on the main queue. `timeout` is the hook's own
     /// wait, so the test ends when the hook does rather than racing it.
     static func run(timeout: TimeInterval = 90,
-                    base: URL = FileManager.default.homeDirectoryForCurrentUser
-                        .appendingPathComponent(".agentbar", isDirectory: true),
+                    base: URL = AgentBarHome.root(),
                     completion: @escaping (Outcome) -> Void) {
         func finish(_ outcome: Outcome) {
             cleanUp(base: base)

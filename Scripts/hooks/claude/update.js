@@ -12,7 +12,14 @@ const path = require("path");
 // Claude by default; agents with Claude-compatible hooks (Qwen Code) register
 // this same script with AGENTBAR_AGENT set to their id.
 const AGENT = String(process.env.AGENTBAR_AGENT || "claude").replace(/[^a-z]/g, "") || "claude";
-const stateDir = path.join(os.homedir(), ".agentbar", "state.d");
+// The state root (docs/protocol.md, "Where state lives"): AGENTBAR_HOME when it is
+// an absolute path, ~/.agentbar otherwise. A relative value is ignored, not refused:
+// a hook must never fail its host.
+const stateRoot = () => {
+  const v = process.env.AGENTBAR_HOME || "";
+  return path.isAbsolute(v) ? v.replace(/\/+$/, "") || "/" : path.join(os.homedir(), ".agentbar");
+};
+const stateDir = path.join(stateRoot(), "state.d");
 const event = process.argv[2] || "";
 
 // Written by the compact event, read by lifecycle.js and by the frontends

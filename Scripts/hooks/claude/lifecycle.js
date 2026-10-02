@@ -12,7 +12,14 @@ const cp = require("child_process");
 const BUNDLE_ID = "com.michalstrnadel.agentbar";
 const EXEC = "AgentBar";
 const AGENT = String(process.env.AGENTBAR_AGENT || "claude").replace(/[^a-z]/g, "") || "claude";
-const stateDir = path.join(os.homedir(), ".agentbar", "state.d");
+// The state root (docs/protocol.md, "Where state lives"): AGENTBAR_HOME when it is
+// an absolute path, ~/.agentbar otherwise. A relative value is ignored, not refused:
+// a hook must never fail its host.
+const stateRoot = () => {
+  const v = process.env.AGENTBAR_HOME || "";
+  return path.isAbsolute(v) ? v.replace(/\/+$/, "") || "/" : path.join(os.homedir(), ".agentbar");
+};
+const stateDir = path.join(stateRoot(), "state.d");
 const event = process.argv[2];
 
 const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";

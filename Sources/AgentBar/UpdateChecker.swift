@@ -74,8 +74,12 @@ final class UpdateChecker {
     }
 
     private static var live: Dependencies {
-        // The running signature never changes under a live process; ask once.
-        let supported = Self.autoInstallSupported(running: UpdateSignature.running())
+        // The running signature never changes under a live process; ask once. A
+        // sandbox (`AgentBarHome`) never installs by itself: the release it would
+        // swap in relaunches through LaunchServices without the variable, and would
+        // come back as the person's real AgentBar from a scratch folder.
+        let supported = !AgentBarHome.isSandbox
+            && Self.autoInstallSupported(running: UpdateSignature.running())
         return Dependencies(
             download: { url, done in
                 URLSession.shared.downloadTask(with: url) { tmp, _, err in done(tmp, err) }.resume()

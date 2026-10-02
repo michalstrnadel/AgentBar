@@ -210,3 +210,31 @@ test("epoch: ISO, numeric seconds, numeric ms; garbage in, 0 out", () => {
   assert.equal(epoch("nope"), 0);
   assert.equal(epoch(undefined), 0);
 });
+
+// --- the state root (docs/protocol.md "Where state lives")
+
+test("stateRoot: AGENTBAR_HOME replaces ~/.agentbar, trailing slashes go", () => {
+  const { stateRoot } = require("../lib/state");
+  const os = require("os"), path = require("path");
+  assert.strictEqual(stateRoot({}), path.join(os.homedir(), ".agentbar"));
+  assert.strictEqual(stateRoot({ AGENTBAR_HOME: "" }), path.join(os.homedir(), ".agentbar"));
+  assert.strictEqual(stateRoot({ AGENTBAR_HOME: "/tmp/sandbox//" }), "/tmp/sandbox");
+  assert.strictEqual(stateRoot({ AGENTBAR_HOME: "/" }), "/");
+  assert.throws(() => stateRoot({ AGENTBAR_HOME: "rel/root" }), /AGENTBAR_HOME/);
+  assert.throws(() => stateRoot({ AGENTBAR_HOME: "~/x" }), /AGENTBAR_HOME/); // no ~ expansion
+});
+
+test("poller refuses a relative AGENTBAR_HOME before writing anything", () => {
+  const fs = require("fs"), os = require("os"), path = require("path");
+  const { spawnSync } = require("child_process");
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "agentbar-cloud-"));
+  try {
+    const r = spawnSync(process.execPath, [path.join(__dirname, "..", "index.js"), "--once"],
+      { cwd: home, env: { PATH: process.env.PATH, HOME: home, AGENTBAR_HOME: "rel" }, encoding: "utf8" });
+    assert.notStrictEqual(r.status, 0);
+    assert.match(r.stderr, /AGENTBAR_HOME/);
+    assert.deepStrictEqual(fs.readdirSync(home), []);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

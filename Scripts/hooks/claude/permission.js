@@ -20,7 +20,14 @@ const os = require("os");
 const path = require("path");
 const cp = require("child_process");
 
-const base = path.join(os.homedir(), ".agentbar");
+// The state root (docs/protocol.md, "Where state lives"): AGENTBAR_HOME when it is
+// an absolute path, ~/.agentbar otherwise. A relative value is ignored, not refused:
+// a hook must never fail its host.
+const stateRoot = () => {
+  const v = process.env.AGENTBAR_HOME || "";
+  return path.isAbsolute(v) ? v.replace(/\/+$/, "") || "/" : path.join(os.homedir(), ".agentbar");
+};
+const base = stateRoot();
 const stateDir = path.join(base, "state.d");
 const reqDir = path.join(base, "requests.d");
 const ansDir = path.join(base, "answers.d");

@@ -3,10 +3,8 @@ import Foundation
 /// Watches `~/.agentbar/requests.d/` — one JSON per permission request a blocking
 /// hook is currently waiting on. Same folder-is-the-protocol pattern as SessionStore.
 final class RequestStore {
-    static let requestsDir = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".agentbar/requests.d", isDirectory: true)
-    static let answersDir = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".agentbar/answers.d", isDirectory: true)
+    static let requestsDir = AgentBarHome.url("requests.d", isDirectory: true)
+    static let answersDir = AgentBarHome.url("answers.d", isDirectory: true)
 
     /// Longest a request can be pending: the hook's default 600s wait plus slack.
     /// (A raised AGENTBAR_APPROVAL_TIMEOUT outlives this and gets pruned early —

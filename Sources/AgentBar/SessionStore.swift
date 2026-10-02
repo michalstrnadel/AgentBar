@@ -3,8 +3,7 @@ import Foundation
 /// Watches `~/.agentbar/state.d/` and publishes the current set of live sessions.
 /// The folder is the whole protocol: hooks write one JSON per session, remove it on end.
 final class SessionStore {
-    static let stateDir = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".agentbar/state.d", isDirectory: true)
+    static let stateDir = AgentBarHome.url("state.d", isDirectory: true)
 
     /// Called on the main queue with sessions sorted by (priority, recency), most urgent first.
     var onChange: (([Session]) -> Void)?

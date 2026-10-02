@@ -21,7 +21,7 @@ enum WiringPrefs {
     static let fileName = "wire-disabled"
 
     static func url(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
-        home.appendingPathComponent(".agentbar/\(fileName)")
+        AgentBarHome.url(fileName, home: home)
     }
 
     /// The ids in `text`. Everything after a `#` is a comment; surrounding blanks go;

@@ -13,11 +13,10 @@
 //   from the dead pid anyway — this just makes it immediate).
 
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
 
 const config = require("./lib/config");
-const { writeRow, readRow, reconcile, listIds } = require("./lib/state");
+const { stateRoot, writeRow, readRow, reconcile, listIds } = require("./lib/state");
 const { keepRow, toProtocolRow } = require("./lib/policy");
 
 const ADAPTERS = [
@@ -39,7 +38,9 @@ const FIX_LABELS = {
   codex: "Codex: run `codex login`",
 };
 
-const stateDir = path.join(os.homedir(), ".agentbar", "state.d");
+let root;
+try { root = stateRoot(); } catch (e) { console.error(`agentbar-cloud: ${e.message}`); process.exit(2); }
+const stateDir = path.join(root, "state.d");
 const log = (msg) => console.error(`[${new Date().toISOString()}] ${msg}`);
 
 const now = () => Math.floor(Date.now() / 1000);

@@ -43,8 +43,7 @@ enum ConfigBackup {
     static let diffLimit = 64 * 1024
 
     static var defaultLog: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".agentbar/config-changes.json")
+        AgentBarHome.url("config-changes.json")
     }
 
     /// One write AgentBar made (or, from a preview pass, would make).

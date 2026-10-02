@@ -19,8 +19,7 @@ import Foundation
 /// Only a frontend writes here, never a hook: rule 3 says hooks exit fast, and a
 /// session-ended line is exactly what several agents have no event for anyway.
 final class HistoryStore {
-    static let fileURL = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".agentbar/history.jsonl", isDirectory: false)
+    static let fileURL = AgentBarHome.url("history.jsonl")
 
     /// Dropped on launch. A month is long enough for "what did I do this sprint"
     /// and short enough that the file stays a file rather than an archive.
