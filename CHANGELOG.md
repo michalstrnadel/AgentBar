@@ -3,6 +3,53 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.32.0 - 2026-10-02
+
+### Added
+
+- **Any agent shows up as itself.** AgentBar knew nine agents, and everything else
+  quietly became the first of them: a row written as `"agent": "aider"` showed
+  Claude's crab in Claude's orange, a banner said *"Claude needs approval"*, and a
+  click opened Claude Desktop. An agent AgentBar has no entry for now gets its own
+  mark — its initial knocked out of a rounded square, in a muted colour worked out
+  from its id, the same in Color and System mode — and the name it gives in a new
+  optional `agent_name` field, everywhere a name appears: the island, the menu,
+  Today, history, notifications. It opens the terminal it runs in and is never
+  sent a keystroke: typing into a terminal AgentBar has never seen is not an
+  answer anybody gave.
+- **`agentbar report` — bring your own agent in a few lines.** A wrapper script or
+  a vendor hook can now put any tool in the bar without writing JSON:
+  `agentbar report --agent aider --name Aider --state tool --label "Editing" --pid $$`,
+  and `--state end` when it stops. It is status only on purpose: `permission` is
+  refused, because an approval needs a hook that waits for the answer and a report
+  has none. *Bring your own agent* in `docs/protocol.md` has the eight-line
+  wrapper and the raw-file form.
+- **Choose which agents AgentBar wires.** It used to wire every agent it found, on
+  every launch. **Settings ▸ Diagnostics** now lists each one with a switch, and
+  turning one off first shows exactly what will be taken out of its settings, then
+  removes only AgentBar's own entries — backed up beside the file and recorded like
+  every other write. Launches respect the choice, Diagnostics reports the agent as
+  turned off rather than broken, and sessions already running keep their hooks
+  until they end. The choice lives in `~/.agentbar/wire-disabled`, which the Linux
+  CLI shares: `agentbar unwire cursor`, `agentbar wire cursor`, and
+  `install-hooks --skip`/`--only`.
+- **Clawd says hello** *(with "Let the mascot react" on)*. Once, as the island comes
+  up at launch, he raises a claw — twice, in about a second. Never on a later peek,
+  never while an agent is working, never under Reduce Motion, and without a sound.
+- **The tour as a video.** `Scripts/demo/make-gifs.sh` now writes the tour as an
+  H.264 MP4 and a poster next to the GIF, from the same frames the app's own views
+  draw.
+
+### Changed
+
+- **Usage quota matches agents by their exact id.** A third-party id that merely
+  started with `codex` or `claude` could claim that vendor's quota line.
+- **`agentbar status` shows a row that has no `started` field,** as the app always
+  did; only an explicit `"started": false` hides one.
+- **Contributors are credited.** `CONTRIBUTING.md` has a first-contribution path —
+  a bridge built on `agentbar report` — and every change from outside the repo ends
+  its changelog entry with a thank-you; 1.13.0's cloud agents now carry theirs.
+
 ## 1.31.1 - 2026-10-01
 
 ### Fixed

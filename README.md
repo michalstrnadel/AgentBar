@@ -32,6 +32,8 @@ do, or a rule you wrote yourself, and every answer is written down.
 | **New task…** in the menu (or ⌥⌘N, once switched on) | A project, an agent and one line of what you want; the agent opens in a terminal with the prompt given |
 | Turn on **Hide the island when nothing is running** (or **…while you're away**) | The pill slips out of sight; push the pointer up to the notch to peek. Anything waiting on you keeps it up |
 | **Settings ▸ Diagnostics ▸ Show changes…** | Every write AgentBar made into an agent's settings, as a unified diff, with the copy it kept beside the file |
+| Flip an agent's switch off in **Settings ▸ Diagnostics** | Shows what it will take out of that agent's settings, then removes only AgentBar's own entries — and leaves them out from then on |
+| `agentbar report --agent aider --name Aider --state tool --label Editing --pid $$` | Any tool you run joins the bar under its own name and mark — wrap it in a few lines, no Swift |
 | `open agentbar://focus` from Shortcuts or Raycast | Jumps to the session waiting on you — and no link can approve or deny anything |
 
 **What it covers.** Agents: Claude Code and Claude Cowork, Codex, Cursor CLI, Gemini
