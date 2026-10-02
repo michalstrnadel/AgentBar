@@ -189,10 +189,16 @@ final class UpdateChecker {
 
     // MARK: - Helpers
 
+    /// Posted on every status change. `onChange` belongs to the menu bar item; the
+    /// island's own menu listens here, because in Island-only mode it is the only
+    /// place an update can be seen at all.
+    static let didChange = Notification.Name("AgentBarUpdateStatusDidChange")
+
     private func setStatus(_ s: Status) {
         guard s != status else { return }
         status = s
         onChange?()
+        NotificationCenter.default.post(name: Self.didChange, object: self)
     }
 
     @discardableResult

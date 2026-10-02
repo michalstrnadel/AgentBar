@@ -1002,14 +1002,31 @@ final class IslandController: NSObject {
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings),
                      keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Check for Updates…", action: #selector(checkUpdates), keyEquivalent: "")
+        let update = MenuBuilder.updateRow(target: self, check: #selector(checkUpdates),
+                                           install: #selector(installUpdate))
+        menu.addItem(update)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit AgentBar", action: #selector(NSApplication.terminate(_:)),
                      keyEquivalent: "")
-        for item in menu.items where item.action != #selector(NSApplication.terminate(_:)) {
+        // The update row carries its own target, and nil while it has nothing to do
+        // (checking, downloading) — overwriting it would make those rows clickable.
+        for item in menu.items where item.action != #selector(NSApplication.terminate(_:))
+            && item !== update {
             item.target = self
         }
+        // A check started from this menu answers while it is still open: redraw the
+        // one row in place, the way the menu bar's own dropdown does.
+        let watch = NotificationCenter.default.addObserver(
+            forName: UpdateChecker.didChange, object: nil, queue: .main) { [weak self] _ in
+            guard let self else { return }
+            MenuBuilder.configureUpdateRow(update, target: self, check: #selector(self.checkUpdates),
+                                           install: #selector(self.installUpdate))
+        }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+        NotificationCenter.default.removeObserver(watch)
+        // "Up to date" and "failed" are answers for the open that saw them, as in the
+        // menu bar's dropdown; left standing, the row would have no action next time.
+        UpdateChecker.shared.clearTransient()
     }
 
     @objc private func chooseColor(_ sender: NSMenuItem) {
@@ -1033,4 +1050,5 @@ final class IslandController: NSObject {
     @objc private func openWelcome() { WelcomeWindow.shared.show() }
     @objc private func openSettings() { SettingsWindow.shared.show() }
     @objc private func checkUpdates() { UpdateChecker.shared.check(manual: true) }
+    @objc private func installUpdate() { UpdateChecker.shared.installAvailable() }
 }

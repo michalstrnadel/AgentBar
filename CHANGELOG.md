@@ -3,6 +3,18 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- **Updates work in Island-only mode.** The island's **⋯** menu had a bare *Check for
+  Updates…* that checked and then had nowhere to say what it found: no *Up to date*,
+  no *Install & Relaunch*, so anyone who chose the island alone could never update
+  from the app. The row is now the same one the menu bar shows — checking, the
+  result, and the install — and it redraws in place if the answer lands while the
+  menu is open. Until this release reaches you, `brew upgrade --cask
+  michalstrnadel/tap/agentbar` or the one-line installer gets you there.
+
 ## 1.33.0 - 2026-10-02
 
 ### Added

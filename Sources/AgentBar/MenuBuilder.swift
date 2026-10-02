@@ -300,15 +300,31 @@ enum MenuBuilder {
     /// Carries an icon so the bottom section (Quit gets a system icon on new macOS)
     /// keeps one consistent icon gutter instead of ragged indents.
     private static func updateRow(_ controller: StatusItemController) -> NSMenuItem {
+        updateRow(target: controller,
+                  check: #selector(StatusItemController.checkForUpdatesClicked(_:)),
+                  install: #selector(StatusItemController.installUpdateClicked(_:)))
+    }
+
+    /// The same row for any menu — the island's ⋯ menu is the only menu there is in
+    /// Island-only mode, and a bare "Check for Updates…" there checked and then had
+    /// nowhere to say what it found, so nobody on that mode could ever update.
+    static func updateRow(target: AnyObject, check: Selector, install: Selector) -> NSMenuItem {
         let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         item.identifier = NSUserInterfaceItemIdentifier("updateRow")
-        configureUpdateRow(item, controller: controller)
+        configureUpdateRow(item, target: target, check: check, install: install)
         return item
     }
 
     /// (Re)applies the whole update-row appearance — also called by `updateInPlace`
     /// on the live item, so every field it can set is reset first.
     private static func configureUpdateRow(_ item: NSMenuItem, controller: StatusItemController) {
+        configureUpdateRow(item, target: controller,
+                           check: #selector(StatusItemController.checkForUpdatesClicked(_:)),
+                           install: #selector(StatusItemController.installUpdateClicked(_:)))
+    }
+
+    static func configureUpdateRow(_ item: NSMenuItem, target: AnyObject,
+                                   check: Selector, install: Selector) {
         item.attributedTitle = nil
         item.action = nil
         item.target = nil
@@ -318,8 +334,8 @@ enum MenuBuilder {
         switch UpdateChecker.shared.status {
         case .idle:
             item.title = "Check for Updates…"
-            item.action = #selector(StatusItemController.checkForUpdatesClicked(_:))
-            item.target = controller
+            item.action = check
+            item.target = target
         case .checking:
             item.title = "Checking for updates…"
         case .upToDate:
@@ -330,8 +346,8 @@ enum MenuBuilder {
                 string: "Update to \(v) — Install & Relaunch",
                 attributes: [.foregroundColor: NSColor.controlAccentColor,
                              .font: NSFont.menuFont(ofSize: 0)])
-            item.action = #selector(StatusItemController.installUpdateClicked(_:))
-            item.target = controller
+            item.action = install
+            item.target = target
             symbol = "arrow.down.circle.fill"
             badge = ""
         case .downloading(let v):
@@ -340,8 +356,8 @@ enum MenuBuilder {
             badge = ""
         case .failed(let reason):
             item.title = "\(reason) — Retry"
-            item.action = #selector(StatusItemController.checkForUpdatesClicked(_:))
-            item.target = controller
+            item.action = check
+            item.target = target
             symbol = "exclamationmark.arrow.triangle.2.circlepath"
         }
         item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
