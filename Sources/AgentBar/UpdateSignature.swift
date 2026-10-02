@@ -62,12 +62,48 @@ enum UpdateSignature {
         return nil
     }
 
+    /// Signers a release may move to, besides the one that signed the running copy.
+    ///
+    /// Empty, and it should stay empty until the day releases change certificate —
+    /// moving from the project's own certificate to an Apple Developer ID for
+    /// notarization. Every copy in the field pins the old certificate, so the first
+    /// Developer ID release would be refused by all of them, with a click or
+    /// without. The way across is one bridge release, still signed with the old
+    /// certificate, that adds the new signer here, e.g.
+    ///
+    ///     anchor apple generic and identifier "com.michalstrnadel.agentbar"
+    ///         and certificate leaf[subject.OU] = "<TEAM ID>"
+    ///
+    /// Copies that installed the bridge accept the next release; from then on the
+    /// running requirement is the Developer ID one and this list can empty again.
+    /// Compiled into the binary, so nothing downloaded can add to it.
+    static let successors: [String] = []
+
+    /// `text` as a requirement, or nil when it does not compile.
+    static func requirement(_ text: String) -> SecRequirement? {
+        var req: SecRequirement?
+        guard SecRequirementCreateWithString(text as CFString, [], &req) == errSecSuccess else { return nil }
+        return req
+    }
+
+    /// nil when `staged` satisfies the running requirement or any `successors` one.
+    /// The reason given is the running requirement's: that is the one that should
+    /// have held for any release but the first under a new signer.
+    static func check(_ staged: URL, against requirement: SecRequirement,
+                      successors: [String]) -> String? {
+        guard let why = check(staged, against: requirement) else { return nil }
+        for text in successors {
+            if let next = Self.requirement(text), check(staged, against: next) == nil { return nil }
+        }
+        return why
+    }
+
     /// What every install checks right before the swap. An ad-hoc or unsigned
     /// running copy has nothing to compare against, so it passes the staged bundle
     /// through as before this check existed — which is why such a copy never
     /// installs anything without a click (`UpdateChecker.autoInstallSupported`).
     static func verifyAgainstRunning(_ staged: URL) -> String? {
         guard case .signed(let requirement) = running() else { return nil }
-        return check(staged, against: requirement)
+        return check(staged, against: requirement, successors: successors)
     }
 }

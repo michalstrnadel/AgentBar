@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The hardened runtime notarization requires refuses Apple Events unless the
+	     app asks for them; selecting the exact terminal tab a session runs in is
+	     an Apple Event (NSAppleEventsUsageDescription in Info.plist). Nothing else
+	     the app does needs an exception. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+</dict>
+</plist>

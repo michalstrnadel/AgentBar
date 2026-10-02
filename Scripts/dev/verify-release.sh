@@ -44,8 +44,9 @@ grep -qx "Authority=$IDENTITY" <<<"$SIGNATURE" \
 ARCHS="$(lipo -archs "$REL_APP/$BIN")"
 [ "$ARCHS" = "x86_64 arm64" ] || fail "release binary is \"$ARCHS\", not \"x86_64 arm64\""
 
-# Everything but the binary and the signature must be the same bytes.
-if ! DIFF="$(diff -r -x _CodeSignature -x AgentBar "$CI_APP" "$REL_APP")"; then
+# Everything but the binary and the signature must be the same bytes. A notarized
+# release also carries Contents/CodeResources, the ticket `stapler` attaches.
+if ! DIFF="$(diff -r -x _CodeSignature -x AgentBar -x CodeResources "$CI_APP" "$REL_APP")"; then
   echo "$DIFF" >&2
   fail "bundle contents differ outside the signature"
 fi
@@ -53,6 +54,11 @@ fi
 # and nothing else in the bundle may be called that.
 [ "$(find "$CI_APP" "$REL_APP" -name AgentBar -not -path "*/Contents/MacOS/AgentBar" | wc -l)" -eq 0 ] \
   || fail "unexpected file named AgentBar inside the bundle"
+# Same for -x CodeResources: the ticket may sit at Contents/CodeResources of the
+# release and nowhere else, and the CI build has none.
+[ "$(find "$CI_APP" "$REL_APP" -name CodeResources -not -path "*/_CodeSignature/CodeResources" \
+     -not -path "$REL_APP/Contents/CodeResources" | wc -l)" -eq 0 ] \
+  || fail "unexpected file named CodeResources inside the bundle"
 
 # The binary: same code once both carry the same (ad-hoc) signature.
 for side in ci rel; do
