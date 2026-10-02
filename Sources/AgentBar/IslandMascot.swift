@@ -7,10 +7,12 @@ import QuartzCore
 /// the frames `MascotDriver` hands the island's sink and owns the island's mark
 /// views; the menu bar's sink never passes through here (CLAUDE.md, rule 2).
 ///
-/// It adds no timer. The gaze and the blink ride the controller's existing 0.12 s
-/// pointer poll and do nothing but compare numbers when there is nothing to draw;
-/// the squish, the dizzy beat and the sparkle are Core Animation, played by the
-/// render server and gone when they finish. The decisions are `MascotPersonality`'s.
+/// It keeps no timer running. The gaze and the blink ride the controller's existing
+/// 0.12 s pointer poll and do nothing but compare numbers when there is nothing to
+/// draw; the squish, the dizzy beat and the sparkle are Core Animation, played by
+/// the render server and gone when they finish. The one timer is the launch hello's,
+/// about a second long, once per launch, invalidated when the wave ends. The
+/// decisions are `MascotPersonality`'s.
 final class IslandMascot {
     private var gaze = MascotPersonality.Gaze()
     private var blink = MascotPersonality.Blink(firstAt: CACurrentMediaTime() + 4)
@@ -22,6 +24,12 @@ final class IslandMascot {
     /// and the walk's first frame IS the resting frame — decorating it would make
     /// the eyes jump once per stride.
     private var working = false
+    /// Once per launch, not per controller: the island is stopped and started
+    /// again when the presentation changes, and that is not a new launch.
+    private static var greeting = MascotPersonality.Greeting()
+    /// The wave frame on screen, while the hello plays; nil the rest of the time.
+    private var waveStep: Int?
+    private var waveTimer: Timer?
 
     static var plays: Bool {
         MascotPersonality.plays(enabled: MascotPersonality.Prefs.enabled,
@@ -70,11 +78,57 @@ final class IslandMascot {
     /// resting mark is ever changed; everything else — the walk, a badge dot, a
     /// hop's offset copy, the multi-agent row — passes through untouched.
     func decorate(_ image: NSImage?) -> NSImage? {
-        guard let image, Self.plays, !working, pupil != .ahead || closed,
-              let crab = Crab.shared,
+        guard let image, Self.plays, !working, let crab = Crab.shared,
               image === crab.color || image === crab.template
         else { return image }
-        return crab.variant(template: image === crab.template, pupil: pupil, closed: closed)
+        let template = image === crab.template
+        // Mid-wave the wave owns the mark: the driver's frames and the pointer poll
+        // both come through here, and either would put the resting frame back.
+        if let step = waveStep, let frames = crab.wave(template: template),
+           frames.indices.contains(step) {
+            return frames[step]
+        }
+        guard pupil != .ahead || closed else { return image }
+        return crab.variant(template: template, pupil: pupil, closed: closed)
+    }
+
+    // MARK: - Hello
+
+    /// The launch's one chance at a hello — see `MascotPersonality.Greeting`. The
+    /// caller says what the pill is doing; `mark` is what it shows, and only
+    /// Clawd's bare resting mark waves. True when the wave started; `redraw` is
+    /// called for each frame and once more when it is over, and from then on
+    /// nothing is left running.
+    @discardableResult
+    func greet(pillVisible: Bool, collapsed: Bool, flashing: Bool, mark: NSImage?,
+               redraw: @escaping () -> Void) -> Bool {
+        let go = Self.greeting.consider(plays: Self.plays, pillVisible: pillVisible,
+                                        collapsed: collapsed, flashing: flashing,
+                                        working: working)
+        guard go, waveTimer == nil, let crab = Crab.shared, let mark,
+              mark === crab.color || mark === crab.template,
+              let frames = crab.wave(template: mark === crab.template)
+        else { return false }
+        waveStep = 0
+        redraw()
+        waveTimer = Timer.scheduledTimer(withTimeInterval: MascotPersonality.Greeting.frameLength,
+                                         repeats: true) { [weak self] timer in
+            guard let self, let step = self.waveStep else { timer.invalidate(); return }
+            if step + 1 < frames.count {
+                self.waveStep = step + 1
+            } else {
+                self.endGreeting()
+            }
+            redraw()
+        }
+        return true
+    }
+
+    /// Stop a wave where it is — the island is going away.
+    func endGreeting() {
+        waveTimer?.invalidate()
+        waveTimer = nil
+        waveStep = nil
     }
 
     /// Wire a row's mark for pokes, and pick up a reaction that was still playing
@@ -103,7 +157,9 @@ final class IslandMascot {
         let color: NSImage
         let template: NSImage
         private let eyes: MascotEyes.Eyes
+        private let claw: MascotEyes.Claw?
         private var cache: [String: NSImage] = [:]
+        private var waves: [Bool: [NSImage]] = [:]
 
         private init?() {
             let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
@@ -111,6 +167,20 @@ final class IslandMascot {
             color = sprite.restingColor
             template = sprite.restingTemplate
             self.eyes = eyes
+            // Searched on the colour frame and used for both: the template one is
+            // the same ink at the same size.
+            claw = MascotEyes.findClaw(in: color)
+        }
+
+        /// The hello, drawn once per colour mode. Nil when no claw was found —
+        /// then there is no wave, and nothing else changes.
+        func wave(template: Bool) -> [NSImage]? {
+            if let hit = waves[template] { return hit }
+            guard let claw,
+                  let frames = MascotEyes.waveFrames(of: template ? self.template : color, claw: claw)
+            else { return nil }
+            waves[template] = frames
+            return frames
         }
 
         func variant(template: Bool, pupil: MascotPersonality.Pupil, closed: Bool) -> NSImage {

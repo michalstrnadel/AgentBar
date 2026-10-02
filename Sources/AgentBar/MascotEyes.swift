@@ -126,3 +126,122 @@ enum MascotEyes {
         return out
     }
 }
+
+// MARK: - Wave
+
+/// Clawd's hello: his right claw raised and lowered a couple of times, drawn from
+/// the resting frame rather than from a second set of hand-drawn frames — there is
+/// no wave in the walk cycle, and the walk is all the artwork there is.
+///
+/// Found the way the eyes are: read off the artwork, never written down. The body
+/// is the run of columns that are mostly ink top to bottom; the claw is whatever
+/// ink sits to the right of it, which on Clawd is the arm band sticking out of his
+/// side. Anything else — no ink out there, ink reaching half the height (that is
+/// body, not an arm), nothing above it to lift into — and there is no wave.
+extension MascotEyes {
+    struct Claw: Equatable {
+        /// The stub to the right of the body, in bitmap pixels, y down.
+        let stub: PixelBox
+        /// The last column of the body — the shoulder the claw turns about.
+        let shoulder: Int
+        let pixelsWide: Int
+        let pixelsHigh: Int
+
+        /// How far the tip goes up at the top of the wave, in pixels: the stub's
+        /// own height, so it reads as the arm turned up rather than nudged, and
+        /// never past the top of the canvas.
+        var lift: Int { min(stub.minY, max(2, stub.height)) }
+    }
+
+    /// The right claw in a grid. Pure, so the search can be tested on a grid drawn
+    /// in the test itself. `isInk` should count faint pixels too: whatever is left
+    /// behind when the stub moves reads as a ghost of the old arm, and the body's
+    /// antialiased rim, faint top to bottom, is what keeps that rim with the body.
+    static func clawStub(width: Int, height: Int,
+                         isInk: (Int, Int) -> Bool) -> (shoulder: Int, stub: PixelBox)? {
+        guard width > 2, height > 2 else { return nil }
+        // The body: the widest run of columns inked for at least half the height.
+        let tall = (0..<width).map { x in
+            (0..<height).reduce(0) { $0 + (isInk(x, $1) ? 1 : 0) } * 2 >= height
+        }
+        var best: ClosedRange<Int>?
+        var start: Int?
+        for x in 0...width {
+            if x < width, tall[x] { if start == nil { start = x }; continue }
+            if let s = start {
+                if x - s > best?.count ?? 0 { best = s...(x - 1) }
+                start = nil
+            }
+        }
+        guard let body = best, body.upperBound < width - 2 else { return nil }
+        var box: PixelBox?
+        for x in (body.upperBound + 1)..<width {
+            for y in 0..<height where isInk(x, y) {
+                if var b = box {
+                    b.minX = min(b.minX, x); b.maxX = max(b.maxX, x)
+                    b.minY = min(b.minY, y); b.maxY = max(b.maxY, y)
+                    box = b
+                } else {
+                    box = PixelBox(minX: x, minY: y, maxX: x, maxY: y)
+                }
+            }
+        }
+        guard let stub = box, stub.minX == body.upperBound + 1, stub.width >= 2,
+              stub.height * 2 < height, stub.minY >= 2
+        else { return nil }
+        return (body.upperBound, stub)
+    }
+
+    /// The right claw of `image`, or nil when there is no claw to wave.
+    static func findClaw(in image: NSImage) -> Claw? {
+        guard let tiff = image.tiffRepresentation, let bmp = NSBitmapImageRep(data: tiff)
+        else { return nil }
+        let pw = bmp.pixelsWide, ph = bmp.pixelsHigh
+        func alpha(_ x: Int, _ y: Int) -> CGFloat { bmp.colorAt(x: x, y: y)?.alphaComponent ?? 0 }
+        guard let found = clawStub(width: pw, height: ph, isInk: { alpha($0, $1) > 0.02 })
+        else { return nil }
+        return Claw(stub: found.stub, shoulder: found.shoulder, pixelsWide: pw, pixelsHigh: ph)
+    }
+
+    /// `image` with the claw turned up by `fraction` of `claw.lift`: each column of
+    /// the stub goes up by its share of the lift, nothing at the shoulder and all
+    /// of it at the tip, so the arm angles up from the body instead of sliding up
+    /// its side. Like `redraw`, nothing is painted in a colour of its own — the
+    /// stub is cleared and its own pixels go back higher up — so the template
+    /// image is the same code.
+    static func raise(_ image: NSImage, claw: Claw, by fraction: Double) -> NSImage {
+        let sx = image.size.width / CGFloat(claw.pixelsWide)
+        let sy = image.size.height / CGFloat(claw.pixelsHigh)
+        let s = claw.stub
+        let out = NSImage(size: image.size, flipped: false) { _ in
+            image.draw(in: NSRect(origin: .zero, size: image.size))
+            let y = CGFloat(claw.pixelsHigh - 1 - s.maxY) * sy
+            let stub = NSRect(x: CGFloat(s.minX) * sx, y: y,
+                              width: CGFloat(s.width) * sx, height: CGFloat(s.height) * sy)
+            NSColor.clear.set()
+            stub.fill(using: .copy)
+            for i in 0..<s.width {
+                let share = Double(i + 1) / Double(s.width)
+                let up = (Double(claw.lift) * fraction * share).rounded()
+                let column = NSRect(x: CGFloat(s.minX + i) * sx, y: y,
+                                    width: sx, height: stub.height)
+                image.draw(in: column.offsetBy(dx: 0, dy: CGFloat(up) * sy), from: column,
+                           operation: .copy, fraction: 1)
+            }
+            return true
+        }
+        out.isTemplate = image.isTemplate
+        return out
+    }
+
+    /// Half up, up, half, up, half, and back to `image` itself: two waves in six
+    /// frames. Nil when the art has no claw to wave — `claw` is found on `image`
+    /// unless the caller already has it (the template frame is searched as the
+    /// colour one, whose ink it shares).
+    static func waveFrames(of image: NSImage, claw: Claw? = nil) -> [NSImage]? {
+        guard let claw = claw ?? findClaw(in: image) else { return nil }
+        let half = raise(image, claw: claw, by: 0.5)
+        let up = raise(image, claw: claw, by: 1)
+        return [half, up, half, up, half, image]
+    }
+}

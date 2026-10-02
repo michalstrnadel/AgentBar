@@ -164,6 +164,21 @@ final class IslandController: NSObject {
             else if self.flash == nil { self.pill.update(mark: self.personality.decorate(image)) }
         }
         rebuild()
+        // The hello, once the pill has dropped out of the notch and settled. The
+        // pill as it is at that moment decides, once for the whole launch.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.sayHello() }
+    }
+
+    /// Clawd waves from the pill — opt-in personality only, never with Reduce
+    /// Motion, and only from a pill that is up, collapsed and his. It changes the
+    /// mark and nothing else: no sound, nothing opens, the pill stays click-through.
+    private func sayHello() {
+        personality.greet(pillVisible: panel.isVisible && !hiding && !hidden,
+                          collapsed: mode == .collapsed, flashing: flash != nil,
+                          mark: mark) { [weak self] in
+            guard let self, self.mode == .collapsed, self.flash == nil, !self.hidden else { return }
+            self.pill.update(mark: self.personality.decorate(self.mark))
+        }
     }
 
     private var mark: NSImage?
@@ -193,6 +208,7 @@ final class IslandController: NSObject {
         elapsedTimer?.invalidate()
         elapsedTimer = nil
         mascot.sink("island", nil)
+        personality.endGreeting()
         expandWork?.cancel()
         collapseWork?.cancel()
         wantsExpanded = false
@@ -555,7 +571,7 @@ final class IslandController: NSObject {
             // The list leads with whatever needs the user, so the first row is the
             // hero — boxed, with the mark; the rest stay one quiet line each.
             let style: IslandRowView.Style = i == 0 ? .hero : .compact
-            let mark = IconRenderer.shared.sprite(for: Agent.byID(s.agentID)).restingColor
+            let mark = IconRenderer.shared.sprite(for: s.agent).restingColor
             let row = IslandRowView(session: s, mark: mark, style: style) { [weak self] session in
                 self?.click(session)
             }
@@ -697,7 +713,7 @@ final class IslandController: NSObject {
         }
         var q = s.label
         if q.hasPrefix("❓") { q.removeFirst(); q = q.trimmingCharacters(in: .whitespaces) }
-        if q.isEmpty { q = "\(Agent.byID(s.agentID).name) has a question" }
+        if q.isEmpty { q = "\(s.agent.name) has a question" }
         return card(IslandQuestionView(
             question: q,
             deferTitle: deferTitle(for: s),

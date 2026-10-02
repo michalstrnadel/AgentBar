@@ -289,7 +289,7 @@ final class IslandRowView: NSView {
         // When the prompt takes the title, the repo identity survives here; a
         // recap rides along so even a compact one-liner can say what finished.
         toolTip = session.recap.isEmpty ? Self.name(session)
-            : "\(Self.name(session))\n\(Agent.byID(session.agentID).name): \(session.recap)"
+            : "\(Self.name(session))\n\(session.agent.name): \(session.recap)"
 
         let chips = NSStackView(views: Self.chips(session))
         chips.orientation = .horizontal
@@ -445,7 +445,7 @@ final class IslandRowView: NSView {
 
     /// "Claude: Fixed the auth bug…" — what the turn ended with, under "Done".
     private static func recapLine(_ s: Session) -> NSAttributedString {
-        let out = NSMutableAttributedString(string: "\(Agent.byID(s.agentID).name): ", attributes: [
+        let out = NSMutableAttributedString(string: "\(s.agent.name): ", attributes: [
             .font: NSFont.systemFont(ofSize: 11),
             .foregroundColor: NSColor.white.withAlphaComponent(0.4),
         ])
@@ -481,7 +481,7 @@ final class IslandRowView: NSView {
             }
             return out
         case .question:
-            let out = NSMutableAttributedString(string: "\(Agent.byID(s.agentID).name) asks", attributes: [
+            let out = NSMutableAttributedString(string: "\(s.agent.name) asks", attributes: [
                 .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
                 .foregroundColor: IconRenderer.questionDot,
             ])
@@ -558,7 +558,7 @@ final class IslandRowView: NSView {
     /// that tell two otherwise identical rows apart. Elapsed stays a plain quiet
     /// number, not a chip, the way the reference panels keep it.
     private static func chips(_ s: Session) -> [NSView] {
-        let agent = Agent.byID(s.agentID)
+        let agent = s.agent
         var out = [chip(agent.name, tint: agent.brand)]
         if let m = s.modelChip { out.append(chip(m, tint: NSColor.white.withAlphaComponent(0.85))) }
         if s.entrypoint == "cloud" {

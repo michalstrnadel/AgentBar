@@ -241,4 +241,36 @@ enum MascotPersonality {
             return (p.reaction, now - p.since)
         }
     }
+
+    // MARK: - Greeting
+
+    /// Clawd waves once when AgentBar starts — the one moment the pill appearing is
+    /// news, because the user just launched it. Once per launch and only at that
+    /// moment: if the pill is not there to wave from (hidden while nothing runs,
+    /// hidden while away, the panel open, a flash on it, a session already
+    /// working), the hello is skipped for the whole launch rather than saved up.
+    /// A wave on some later peek would be a greeting nobody arrived for.
+    struct Greeting {
+        /// The first chance decides, whichever way it goes.
+        private(set) var asked = false
+
+        static func shouldGreet(pillVisible: Bool, collapsed: Bool, flashing: Bool,
+                                working: Bool, alreadyGreeted: Bool) -> Bool {
+            !alreadyGreeted && pillVisible && collapsed && !flashing && !working
+        }
+
+        /// The launch's one chance. True at most once, ever, for this value. `plays`
+        /// is `MascotPersonality.plays` — with the switch off or Reduce Motion on,
+        /// the chance is spent all the same: switching it on later is not a launch.
+        mutating func consider(plays: Bool, pillVisible: Bool, collapsed: Bool,
+                               flashing: Bool, working: Bool) -> Bool {
+            defer { asked = true }
+            return plays && Self.shouldGreet(pillVisible: pillVisible, collapsed: collapsed,
+                                             flashing: flashing, working: working,
+                                             alreadyGreeted: asked)
+        }
+
+        /// Frame length: six frames of `MascotEyes.waveFrames`, about a second.
+        static let frameLength: TimeInterval = 0.17
+    }
 }

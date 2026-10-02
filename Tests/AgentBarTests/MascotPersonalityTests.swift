@@ -275,4 +275,148 @@ struct MascotPersonalityTests {
             #expect(e.minX - 1 > 0 && e.maxX + 1 < size.width && e.maxY + 1 < size.height)
         }
     }
+
+    // MARK: - Wave
+
+    /// A body with an arm out of each side, drawn as a grid: what Clawd looks like
+    /// to the claw search. The right arm is the one that waves.
+    @Test func findsTheRightClawStub() throws {
+        let art = [
+            "..........",
+            "...####...",
+            "...####...",
+            ".########.",
+            ".########.",
+            "...####...",
+            "...####...",
+            "...#..#...",
+        ].map { Array($0) }
+        let found = try #require(MascotEyes.clawStub(width: 10, height: 8) { x, y in art[y][x] == "#" })
+        #expect(found.shoulder == 6)
+        #expect(found.stub == MascotEyes.PixelBox(minX: 7, minY: 3, maxX: 8, maxY: 4))
+    }
+
+    @Test func refusesArtWithNoClawToWave() {
+        func stub(_ rows: [String]) -> MascotEyes.PixelBox? {
+            let art = rows.map { Array($0) }
+            return MascotEyes.clawStub(width: art[0].count, height: art.count) { x, y in
+                art[y][x] == "#"
+            }?.stub
+        }
+        // Nothing out to the right.
+        #expect(stub(["......", ".###..", ".###..", ".###..", ".###..", "......"]) == nil)
+        // Up against the top: nowhere to lift it.
+        #expect(stub([".#####", ".###..", ".###..", ".###..", ".###..", "......"]) == nil)
+        // Not touching the body: a speck, not an arm.
+        #expect(stub(["......", ".###..", ".###.#", ".###.#", ".###..", "......"]) == nil)
+    }
+
+    /// Draws `image` into a bitmap of exactly `w` × `h` pixels, RGBA, y down.
+    private func pixels(_ image: NSImage, _ w: Int, _ h: Int) throws -> [UInt8] {
+        let rep = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: w * 4, bitsPerPixel: 32))
+        rep.size = image.size
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        image.draw(in: NSRect(origin: .zero, size: image.size))
+        NSGraphicsContext.restoreGraphicsState()
+        return Array(UnsafeBufferPointer(start: rep.bitmapData, count: w * h * 4))
+    }
+
+    /// The real sprite: his right claw is found, and every wave frame differs from
+    /// the resting one only out past the shoulder — the face, the body, the legs
+    /// and the other arm stay exactly where they were, in both colour modes.
+    @Test func clawdWavesOnlyHisClaw() throws {
+        let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
+        let claw = try #require(MascotEyes.findClaw(in: sprite.restingColor))
+        let eyes = try #require(MascotEyes.find(in: sprite.restingColor))
+        let sx = sprite.restingColor.size.width / CGFloat(claw.pixelsWide)
+        #expect(CGFloat(claw.stub.minX) * sx > eyes.ink.map(\.maxX).max()!)
+        #expect(claw.stub.height * 2 < claw.pixelsHigh)
+        #expect(claw.lift >= 2)
+        for rest in [sprite.restingColor, sprite.restingTemplate] {
+            let frames = try #require(MascotEyes.waveFrames(of: rest, claw: claw))
+            #expect(frames.count == 6)
+            #expect(frames.last === rest)
+            #expect(frames.dropLast().allSatisfy { $0.isTemplate == rest.isTemplate })
+            let (w, h) = (claw.pixelsWide, claw.pixelsHigh)
+            let base = try pixels(rest, w, h)
+            var raised: [Int] = []
+            for frame in frames.dropLast() {
+                let px = try pixels(frame, w, h)
+                var changed = 0
+                for y in 0..<h {
+                    for x in 0..<w where px[(y * w + x) * 4 ..< (y * w + x) * 4 + 4]
+                        != base[(y * w + x) * 4 ..< (y * w + x) * 4 + 4] {
+                        #expect(x > claw.shoulder, "pixel \(x),\(y) changed inside the body")
+                        changed += 1
+                    }
+                }
+                #expect(changed > 0)
+                // How high the tip column's ink reaches, y down.
+                let tip = claw.stub.maxX
+                raised.append((0..<h).first { px[($0 * w + tip) * 4 + 3] > 128 } ?? h)
+            }
+            // Half, up, half, up, half: the tip goes up, and up further.
+            #expect(raised[1] < raised[0] && raised[0] < claw.stub.minY)
+            #expect(raised[0] == raised[2] && raised[1] == raised[3])
+        }
+    }
+
+    // MARK: - Greeting
+
+    @Test func greetsOnlyFromAQuietCollapsedPillThatIsUp() {
+        typealias G = P.Greeting
+        #expect(G.shouldGreet(pillVisible: true, collapsed: true, flashing: false,
+                              working: false, alreadyGreeted: false))
+        #expect(!G.shouldGreet(pillVisible: false, collapsed: true, flashing: false,
+                               working: false, alreadyGreeted: false))
+        #expect(!G.shouldGreet(pillVisible: true, collapsed: false, flashing: false,
+                               working: false, alreadyGreeted: false))
+        #expect(!G.shouldGreet(pillVisible: true, collapsed: true, flashing: true,
+                               working: false, alreadyGreeted: false))
+        #expect(!G.shouldGreet(pillVisible: true, collapsed: true, flashing: false,
+                               working: true, alreadyGreeted: false))
+        #expect(!G.shouldGreet(pillVisible: true, collapsed: true, flashing: false,
+                               working: false, alreadyGreeted: true))
+    }
+
+    /// `consider` mutates, and `#expect` will not take a mutating call.
+    private func ask(_ g: inout P.Greeting, plays: Bool, pillVisible: Bool, collapsed: Bool,
+                     flashing: Bool, working: Bool) -> Bool {
+        g.consider(plays: plays, pillVisible: pillVisible, collapsed: collapsed,
+                   flashing: flashing, working: working)
+    }
+
+    @Test func greetsOncePerLaunch() {
+        var g = P.Greeting()
+        #expect(ask(&g, plays: true, pillVisible: true, collapsed: true,
+                    flashing: false, working: false))
+        #expect(!ask(&g, plays: true, pillVisible: true, collapsed: true,
+                     flashing: false, working: false))
+    }
+
+    /// A pill that starts hidden spends the hello: the later peek is not a launch.
+    @Test func aHiddenStartSkipsTheHelloForTheLaunch() {
+        var g = P.Greeting()
+        #expect(!ask(&g, plays: true, pillVisible: false, collapsed: true,
+                     flashing: false, working: false))
+        #expect(g.asked)
+        #expect(!ask(&g, plays: true, pillVisible: true, collapsed: true,
+                     flashing: false, working: false))
+    }
+
+    /// Switch off or Reduce Motion on: no wave, and none saved up for later.
+    @Test func noHelloWithoutThePersonality() {
+        for (enabled, reduce) in [(false, false), (true, true), (false, true)] {
+            var g = P.Greeting()
+            #expect(!ask(&g, plays: P.plays(enabled: enabled, reduceMotion: reduce),
+                         pillVisible: true, collapsed: true,
+                         flashing: false, working: false))
+            #expect(!ask(&g, plays: true, pillVisible: true, collapsed: true,
+                         flashing: false, working: false))
+        }
+    }
 }
