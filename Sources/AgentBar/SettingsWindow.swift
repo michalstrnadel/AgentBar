@@ -24,11 +24,12 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     var onChange: (() -> Void)?
 
     enum Page: String, CaseIterable {
-        case general, notifications, shortcuts, usage, approvals, rules, diagnostics
+        case general, agents, notifications, shortcuts, usage, approvals, rules, diagnostics
 
         var title: String {
             switch self {
             case .general:     return "General"
+            case .agents:      return "Agents"
             case .notifications: return "Notifications"
             case .shortcuts:   return "Shortcuts"
             case .usage:       return "Usage"
@@ -45,6 +46,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         var tint: NSColor {
             switch self {
             case .general:       return .systemGray
+            // The one page that writes into other programs' files.
+            case .agents:        return .systemTeal
             case .notifications: return .systemRed
             case .shortcuts:     return NSColor.darkGray
             case .usage:         return .systemBlue
@@ -59,6 +62,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         var symbol: String {
             switch self {
             case .general:     return "gearshape"
+            case .agents:      return "point.3.connected.trianglepath.dotted"
             case .notifications: return "bell"
             case .shortcuts:   return "keyboard"
             case .usage:       return "speedometer"
@@ -89,6 +93,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     /// The Agents card, rebuilt by `syncAgents` — its subtitles say each agent's
     /// state, and a row's subtitle is fixed once the row is made.
     private var agentsHost: NSStackView!
+    private var copyExampleButton: NSButton!
     private var claudeQuotaBox: NSSwitch!
     private var quotaStatus: NSTextField!
     private var quotaCheck: NSButton!
@@ -391,6 +396,9 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                                          action: #selector(showConfigChanges))
         configChangesButton.toolTip = "What AgentBar wrote into each agent's settings, as a "
             + "diff, where it kept the file as it was — and what a re-install would change now."
+        copyExampleButton = SettingsChrome.smallButton("Copy example", target: self,
+                                                       action: #selector(copyAgentExample))
+        copyExampleButton.toolTip = "A five-line wrapper that shows any command as a session while it runs."
         agentsHost = NSStackView()
         agentsHost.orientation = .vertical
         agentsHost.alignment = .leading
@@ -542,19 +550,25 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                       + "itself is set up always comes back to you. Kept in "
                                       + "~/.agentbar/rules.json; `agentbar rules` lists them."),
             ])
+        case .agents:
+            add([
+                // One switch per agent, the record of what those switches — and
+                // every launch — wrote, and the agents nobody had to wire. All three
+                // answer "which of my tools does AgentBar see, and what did it do to
+                // them", so they are one page.
+                agentsHost,
+                SettingsChrome.header("Before AgentBar writes into an agent's settings it "
+                                      + "keeps the file as it was, beside it. Switching an "
+                                      + "agent off takes out only AgentBar's own entries; "
+                                      + "sessions already running keep their hooks until "
+                                      + "they end."),
+            ])
         case .diagnostics:
             add([
                 SettingsChrome.card([SettingsChrome.customRow(diagnostics)]),
-                // One switch per agent, and under them the record of what those
-                // switches — and every launch — wrote. Both answer "what does
-                // AgentBar do to my files", so they share a card.
-                agentsHost,
                 SettingsChrome.header("Why an agent isn't showing up: hooks wired, the node "
-                                      + "they point at still there, folders writable. Before "
-                                      + "AgentBar writes into a settings file it keeps the "
-                                      + "file as it was, beside it. Switching an agent off "
-                                      + "takes out only AgentBar's own entries; sessions "
-                                      + "already running keep their hooks until they end."),
+                                      + "they point at still there, folders writable. "
+                                      + "Settings ▸ Agents switches each one on or off."),
             ])
         }
         return column
@@ -817,16 +831,13 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         ConfigChangesSheet.present(on: window)
     }
 
-    /// What an agent's row says under its name.
-    static func agentState(present: Bool, off: Bool) -> String {
-        guard present else { return "Not on this Mac" }
-        return off ? "Off — your choice" : "Wired"
-    }
-
     /// The Agents card from scratch: one row per `Diagnostics.integrations`, a switch
     /// on each (disabled where the agent is not installed), and the changes row last.
     private func syncAgents() {
         let off = WiringPrefs.load()
+        let history = HistoryStore.read()
+        let last = AgentsPage.lastSessions(history)
+        let now = Date().timeIntervalSince1970
         var rows: [NSView] = Diagnostics.integrations.map { i in
             let present = i.isPresent()
             let toggle = SettingsChrome.toggle(target: self, action: #selector(toggleAgent(_:)))
@@ -836,8 +847,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             toggle.setAccessibilityLabel("Wire AgentBar into \(i.name)")
             // The state beside the switch rather than under the name: one line a
             // row keeps eight agents a card, not a page.
-            let state = NSTextField(labelWithString: Self.agentState(present: present,
-                                                                     off: off.contains(i.id)))
+            let state = NSTextField(labelWithString: AgentsPage.state(
+                present: present, off: off.contains(i.id), lastSession: last[i.id], now: now))
             state.font = .systemFont(ofSize: 11.5)
             state.textColor = .secondaryLabelColor
             let control = NSStackView(views: [state, toggle])
@@ -850,9 +861,29 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         // this wide, and the page's footnote says the rest.
         rows.append(SettingsChrome.row("Changes to your agents' settings", control: configChangesButton))
         for old in agentsHost.arrangedSubviews { old.removeFromSuperview() }
-        let card = SettingsChrome.card(rows)
-        agentsHost.addArrangedSubview(card)
-        card.widthAnchor.constraint(equalTo: agentsHost.widthAnchor).isActive = true
+        let note = NSTextField(wrappingLabelWithString: AgentsPage.ownAgentsNote(AgentsPage.ownAgents(history)))
+        let own = SettingsChrome.card([
+            SettingsChrome.row("Your own agent",
+                               "Any tool can report itself with `agentbar report` and appear "
+                               + "with its own name. Nothing to wire, no switch.",
+                               control: copyExampleButton),
+            SettingsChrome.noteRow(note),
+        ])
+        for card in [SettingsChrome.card(rows), own] {
+            agentsHost.addArrangedSubview(card)
+            card.widthAnchor.constraint(equalTo: agentsHost.widthAnchor).isActive = true
+        }
+    }
+
+    /// The wrapper from `AgentsPage.example`, on the clipboard. The button says so
+    /// for a moment rather than opening anything.
+    @objc private func copyAgentExample() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(AgentsPage.example, forType: .string)
+        copyExampleButton.title = "Copied"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.copyExampleButton.title = "Copy example"
+        }
     }
 
     /// A switch is a request, not the change: it opens the changes sheet on what

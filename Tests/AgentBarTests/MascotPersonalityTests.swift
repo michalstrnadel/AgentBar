@@ -419,4 +419,35 @@ struct MascotPersonalityTests {
                          flashing: false, working: false))
         }
     }
+
+    // MARK: - Who gets it switched on
+
+    private func scratchDefaults() -> UserDefaults {
+        let name = "agentbar-personality-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: name)!
+        d.removePersistentDomain(forName: name)
+        return d
+    }
+
+    @Test func aNewInstallMeetsTheMascot() {
+        let d = scratchDefaults()
+        #expect(MascotPersonality.Prefs.seedForNewInstall(d, domain: nil))
+        #expect(d.bool(forKey: MascotPersonality.Prefs.key))
+        #expect(MascotPersonality.Prefs.seedForNewInstall(scratchDefaults(), domain: [:]))
+    }
+
+    /// Someone who had AgentBar before relies on a click on the mark jumping to the
+    /// session; switching the personality on for them would change that unasked.
+    @Test func anExistingInstallKeepsWhatItHad() {
+        let d = scratchDefaults()
+        #expect(!MascotPersonality.Prefs.seedForNewInstall(d, domain: ["presentation": "island"]))
+        #expect(!d.bool(forKey: MascotPersonality.Prefs.key))
+    }
+
+    @Test func aChoiceAlreadyMadeIsNeverOverwritten() {
+        let d = scratchDefaults()
+        d.set(false, forKey: MascotPersonality.Prefs.key)
+        #expect(!MascotPersonality.Prefs.seedForNewInstall(d, domain: nil))
+        #expect(!d.bool(forKey: MascotPersonality.Prefs.key))
+    }
 }

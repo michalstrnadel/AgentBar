@@ -132,7 +132,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // every rebuild, which is how a window ships unlooked-at. CONTRIBUTING lists
         // it next to islandExpandDebug.
         if UserDefaults.standard.bool(forKey: "settingsOnLaunchDebug") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { SettingsWindow.shared.show() }
+            // `settingsPageDebug` names the page (`SettingsWindow.Page`'s raw value).
+            let page = UserDefaults.standard.string(forKey: "settingsPageDebug")
+                .flatMap(SettingsWindow.Page.init(rawValue:))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { SettingsWindow.shared.show(page: page) }
         }
         // Same reason, for the launcher: it is a panel that closes the instant it
         // loses focus, which is exactly what happens when you go to look at it.
@@ -263,8 +266,9 @@ if CommandLine.arguments.contains("--quota-status") {
 // running AgentBar is told to quit. One exception: hooks auto-launch the app by
 // bundle ID, which LaunchServices may resolve to an OLDER installed copy — that
 // stale launch must bow out instead of stomping the newer running one (and
-// downgrading the installed hook scripts with it).
-if let bundleID = Bundle.main.bundleIdentifier {
+// downgrading the installed hook scripts with it). A sandbox (`AgentBarHome`)
+// stays out of it both ways: it exists to run next to the installed copy.
+if let bundleID = Bundle.main.bundleIdentifier, !AgentBarHome.isSandbox {
     let me = ProcessInfo.processInfo.processIdentifier
     let myVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
     for other in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
@@ -277,6 +281,12 @@ if let bundleID = Bundle.main.bundleIdentifier {
         }
         other.terminate()
     }
+}
+
+// Before anything below writes a preference, while an empty domain still means a
+// copy that has never run here (`MascotPersonality.Prefs`).
+if let bundleID = Bundle.main.bundleIdentifier {
+    MascotPersonality.Prefs.seedForNewInstall(domain: UserDefaults.standard.persistentDomain(forName: bundleID))
 }
 
 let app = NSApplication.shared

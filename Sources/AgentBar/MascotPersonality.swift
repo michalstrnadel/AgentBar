@@ -8,20 +8,31 @@ import Foundation
 /// menu bar mark is a status glyph among other status glyphs, and a crab in it
 /// looking around would be the one thing in the bar that moves for no reason.
 enum MascotPersonality {
-    /// Off by default (`bool(forKey:)` gives false), like the island's other
-    /// switches. It stays inside the pill and the open panel and the largest motion
-    /// is a pupil moving by one point, but it is still motion nobody asked for: the
-    /// blink plays whenever the pill shows Clawd at rest, pointer near or not, in a
-    /// chin the rest of the design works hard to keep still — and with it on, a
-    /// click on a row's mark pokes it instead of jumping to the session. Both are
-    /// changes to what someone already relies on, so they wait to be switched on in
-    /// Settings ▸ General, and Reduce Motion turns all of it off whatever the switch
-    /// says.
+    /// On for a new install, off for everyone who had AgentBar before it existed.
+    /// It stays inside the pill and the open panel and the largest motion is a pupil
+    /// moving by one point, but with it on the blink plays whenever the pill shows
+    /// Clawd at rest, and a click on a row's mark pokes it instead of jumping to the
+    /// session. For someone who already relies on that click, both are a change
+    /// nobody asked for, so an existing install keeps it off (`bool(forKey:)` gives
+    /// false) until switched on in Settings ▸ General. Someone meeting AgentBar for
+    /// the first time relies on nothing yet, and the mascot is most of its charm.
+    /// Reduce Motion turns all of it off whatever the switch says.
     enum Prefs {
         static let key = "islandMascotPersonality"
         static var enabled: Bool {
             get { UserDefaults.standard.bool(forKey: key) }
             set { UserDefaults.standard.set(newValue, forKey: key) }
+        }
+
+        /// Called once, before anything at launch has written a preference: an
+        /// empty domain is a copy that has never run on this account. Returns
+        /// whether it switched the personality on.
+        @discardableResult
+        static func seedForNewInstall(_ defaults: UserDefaults = .standard,
+                                      domain: [String: Any]?) -> Bool {
+            guard domain?.isEmpty ?? true, defaults.object(forKey: key) == nil else { return false }
+            defaults.set(true, forKey: key)
+            return true
         }
     }
 
