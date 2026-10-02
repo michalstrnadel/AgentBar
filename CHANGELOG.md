@@ -3,6 +3,78 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Settings ▸ Agents.** The agent switches moved out of Diagnostics onto a page of
+  their own, and each now says whether the agent is actually reporting — *Wired · last
+  session today*, *Wired · no session yet*, *Off — your choice*, *Not on this Mac* — so
+  a wired agent that never shows up is visible without running a check. Below them,
+  **Your own agent**: any tool that reports itself with `agentbar report` is listed by
+  the name it gave itself, and **Copy example** puts a five-line wrapper on the
+  clipboard that shows any command as a session while it runs.
+- **Send Feedback…** in both menus opens a new GitHub discussion with your AgentBar and
+  macOS versions filled in, and nothing else. AgentBar itself sends nothing.
+- **`AGENTBAR_HOME`.** Set to an absolute path, it moves the whole state directory
+  (`~/.agentbar`) for the app, the hooks, the CLI and the cloud poller — for test
+  sandboxes and a dev copy running next to the installed one. A copy running under it
+  wires no agent and never installs an update by itself, and the CLI's `install-hooks`,
+  `wire` and `unwire` refuse to run under it. `Scripts/dev/sandbox.sh` starts such a
+  copy, with its own preferences, beside the installed app.
+
+### Changed
+
+- **Clawd has a little life in it from the first launch** — for a new install. Eyes
+  that follow the pointer, a blink, the hello, a poke on the mark. Anyone who already
+  had AgentBar keeps it off, because with it on a click on a row's mark pokes Clawd
+  instead of jumping to the session; **Settings ▸ General ▸ Let the mascot react**
+  switches it either way.
+- **The island's ⋯ menu and the menu bar's menu are drawn from one list**, so neither
+  can lose a row the other has — the way the island's update row did before 1.34.0. The
+  island menu gains **Diagnostics…** with its failure count, so Island-only users see a
+  broken hook too; the menu bar gains a plain **Settings…**; both end in **Quit AgentBar
+  ⌘Q**, and **Diagnostics…** opens Settings on that page.
+
+### Fixed
+
+- **A rule no longer approves a second command hidden behind a carriage return.**
+  `ls x\r\nreboot` under a rule for `bash:ls` was approved: Swift reads `\r\n` as one
+  character, so the check for a line break never saw the `\n`. Lines are now searched
+  byte by byte, and a lone `\r` refuses too. Also refused now: a command with a quote
+  that never closes, and a request whose command starts with an invisible U+FEFF —
+  the app's JSON reader drops that character, so the command it checked was not the
+  one the shell would run. Each falls through to you, as everything the engine cannot
+  read does (SECURITY.md, F18–F20).
+- **`rules.json` means the same thing to the app and to `agentbar rules`.** A key
+  written twice (`"decision":"deny", …, "decision":"allow"` was applied as deny and
+  listed as allow), a trailing comma, a `v` of `1.5`, or a field of the wrong type
+  (`"agent": 5` read as "every agent", `"cwd": null` as "anywhere") now refuses the
+  whole file on both sides. A rules file starting with a byte-order mark is read on
+  both.
+- **The app leaves an agent settings file with a trailing comma alone**, as the CLI
+  always did, rather than rewriting it.
+- **`agentbar status` no longer deletes a session row** whose `pid` or `ts` is text or
+  out of range — the app showed those rows — and it strips control characters from an
+  `agent_name` before printing it. `"started": 0` no longer hides a session in the app;
+  only an explicit `false` does, as the protocol says.
+
+### Internal
+
+- Every rule the CLI implements a second time — rule shapes, the rules file, the
+  wire-disabled file, unwiring, session rows — is held to one set of shared fixtures
+  (`Tests/Fixtures/*/cases.json`, about 270 cases) that both the Swift tests and the
+  CLI tests read, so the two can no longer drift apart unnoticed. That is how the
+  fixes above were found.
+
+- The island controller and its view, and the menu builder, are split by
+  responsibility into files of a few hundred lines each; code moved, behaviour did not.
+- Releases are ready to move to an Apple Developer ID: `Scripts/dev/notarize.sh`
+  (hardened runtime, notarization, stapling, a Gatekeeper check), the one entitlement
+  it needs, and `UpdateSignature.successors`, so a bridge release can teach the copies
+  in the field to accept the new certificate before the first notarized release
+  arrives. CONTRIBUTING.md has the order. Nothing changes until there is an account.
+
 ## 1.34.0 - 2026-10-02
 
 ### Added

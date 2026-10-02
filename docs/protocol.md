@@ -24,6 +24,29 @@ locks. All timestamps (`ts`) are Unix seconds.
   wire-disabled  agents the installers leave unwired, one id per line (writer: frontends)
 ```
 
+### Where state lives
+
+`~/.agentbar` is the default. `AGENTBAR_HOME`, set to a non-empty **absolute**
+path, replaces that directory itself: everything above (and every other file this
+document names, `rules.json`, `sounds/`, `cloud.json` included) lives directly
+under it. It exists for test sandboxes and side-by-side dev copies; the app, the
+hooks, the CLI and the cloud poller all honour it.
+
+- It moves the state root and nothing else. Agent configs (`~/.claude`,
+  `~/.codex`, …) are still found through `HOME` and their own variables.
+- Unset or empty means `~/.agentbar`, exactly as before.
+- No `~` expansion; trailing slashes are dropped (`/tmp/x/` is `/tmp/x`).
+- A relative value is a mistake, and each reader handles it by what it cannot
+  afford: a hook ignores it and uses the default (a hook must never fail its
+  agent); the CLI and the cloud poller exit non-zero with a one-line error naming
+  the variable (a typo must not quietly write into the real directory).
+- A hook reads it from its own environment, which is the agent's: an agent started
+  with `AGENTBAR_HOME` set reports there, one started without it reports to
+  `~/.agentbar`. Hooks never derive the root from where they are installed.
+- `agentbar install-hooks`, `wire` and `unwire` refuse to run under a root other
+  than `~/.agentbar`: they write the agents' real configs, which would then point
+  at hooks under a sandbox. To test installation, borrow `HOME` instead.
+
 ## state.d — sessions
 
 File name: `<sessionId>.json` where `sessionId` is sanitized `[A-Za-z0-9_.-]`,
@@ -465,7 +488,13 @@ Normative, and the reason each one is here:
   leaves someone believing they wrote four rules while three are running, with
   nothing on screen saying which. A frontend SHOULD surface the refusal (AgentBar
   does, in Diagnostics) rather than fail silently, because silence here looks
-  exactly like working correctly.
+  exactly like working correctly. "Parses" means strict JSON: a trailing comma, or
+  a key written twice in one object, is refused — readers disagree about what
+  either means (one JSON library keeps the first of two equal keys, another the
+  last), and a rule that says `deny` and then `allow` must not mean one thing to
+  the app and another to `agentbar rules`. A field that is present must have its
+  type: `"agent": 5` is a refusal, not "any agent".
+- `v` is the number `1` exactly; `"1"`, `1.5` and `true` are not it.
 - An unknown `v` is refused for the same reason: a later version may add a field
   that *narrows* a rule, and ignoring it would apply a wider rule than was written.
 
@@ -481,7 +510,10 @@ background or substitution; elevation (`sudo` and friends); a destructive or
 history-rewriting subcommand; anything that reaches off the machine; a path outside
 the rule's `cwd`; a path that configures permission itself (`~/.agentbar`, an
 agent's settings directory, `.git/hooks`, `.git/config`); a plan review or a
-question; and anything it cannot parse. `deny` skips these checks. The list is not
+question; and anything it cannot parse — an unterminated quote, a line break of
+any kind (`\n`, `\r`, `\r\n`), or a request whose text the reader could not keep
+exactly (a JSON string that begins with U+FEFF loses it in some decoders, and the
+command it leaves is not the one that runs). `deny` skips these checks. The list is not
 exhaustive and is expected to grow; the rule is that it may only ever grow.
 
 Today only the macOS app applies rules. `agentbar rules` lists them and says so:
@@ -489,6 +521,10 @@ the live-request check is one table, and a second implementation of it is a seco
 thing to keep byte-identical in the one place where drifting apart means approving
 something nobody meant to. (`shape` is already normalised twice — in
 `DecisionLedger.swift` and in the CLI — and that is one copy too many already.)
+Every rule the two halves both implement — `shape`, reading `rules.json`,
+`wire-disabled`, unwiring, session rows — is pinned by one language-neutral fixture
+per rule under `Tests/Fixtures/`, which the Swift suite and the CLI suite both read;
+a case is added there, never to one side alone.
 
 ## wire-disabled — agents the person switched off
 
@@ -497,7 +533,7 @@ app's on every launch, the CLI's `install-hooks` — must **unwire** instead of 
 
 ```
 # Agents AgentBar leaves unwired, one id per line.
-# Written by AgentBar (Settings > Diagnostics > Agents) and the agentbar CLI.
+# Written by AgentBar (Settings > Agents) and the agentbar CLI.
 cursor
 gemini   # a trailing comment too
 ```

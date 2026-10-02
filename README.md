@@ -31,8 +31,8 @@ do, or a rule you wrote yourself, and every answer is written down.
 | Switch on ⌥⌘A / ⌥⌘D in **Settings ▸ Shortcuts** | Allows or denies the newest request from any app |
 | **New task…** in the menu (or ⌥⌘N, once switched on) | A project, an agent and one line of what you want; the agent opens in a terminal with the prompt given |
 | Turn on **Hide the island when nothing is running** (or **…while you're away**) | The pill slips out of sight; push the pointer up to the notch to peek. Anything waiting on you keeps it up |
-| **Settings ▸ Diagnostics ▸ Show changes…** | Every write AgentBar made into an agent's settings, as a unified diff, with the copy it kept beside the file |
-| Flip an agent's switch off in **Settings ▸ Diagnostics** | Shows what it will take out of that agent's settings, then removes only AgentBar's own entries — and leaves them out from then on |
+| **Settings ▸ Agents ▸ Show changes…** | Every write AgentBar made into an agent's settings, as a unified diff, with the copy it kept beside the file |
+| Flip an agent's switch off in **Settings ▸ Agents** | Shows what it will take out of that agent's settings, then removes only AgentBar's own entries — and leaves them out from then on |
 | `agentbar report --agent aider --name Aider --state tool --label Editing --pid $$` | Any tool you run joins the bar under its own name and mark — wrap it in a few lines, no Swift |
 | `open agentbar://focus` from Shortcuts or Raycast | Jumps to the session waiting on you — and no link can approve or deny anything |
 
@@ -97,12 +97,12 @@ The install touches exactly these, all reversible (see [Uninstall](#uninstall)):
   it** — `settings.json.agentbar-bak-20261001-142233` (local time) — and keeps only the
   newest three of its own copies per file. A launch that would change nothing writes
   nothing and keeps nothing, so the copies only appear when something actually moved.
-  **Settings ▸ Diagnostics ▸ Show changes…** (or **See what changed…** in the welcome
+  **Settings ▸ Agents ▸ Show changes…** (or **See what changed…** in the welcome
   window) shows every write as a unified diff with the copy it kept, and what a re-install
   would change right now before you let it. On Linux, `agentbar install-hooks` prints the
   same diff for each file before writing it and keeps the same copies.
 - Every agent it finds is wired, unless you turned it off: the switch in **Settings ▸
-  Diagnostics ▸ Agents**, `agentbar unwire <id>` on Linux (or `install-hooks --skip a,b`
+  Agents**, `agentbar unwire <id>` on Linux (or `install-hooks --skip a,b`
   / `--only a,b`). Turning one off takes AgentBar's entries back out of that agent's
   settings — backed up and diffed like any other write — and every later run leaves it
   alone (`~/.agentbar/wire-disabled`). `agentbar wire <id>` or the switch puts it back.
@@ -425,7 +425,7 @@ The CLI works on macOS too (same protocol, handy over SSH). A native tray app
 ## Uninstall
 
 To take **one** agent out and keep the rest, don't edit its settings by hand: flip its
-switch in **Settings ▸ Diagnostics ▸ Agents**, or run `agentbar unwire <id>` (e.g.
+switch in **Settings ▸ Agents**, or run `agentbar unwire <id>` (e.g.
 `agentbar unwire cursor`). Either one removes exactly AgentBar's entries — keeping a
 copy of the file beside it first — and remembers the choice, so the next launch or
 `install-hooks` doesn't wire it again. `agentbar wire <id>` undoes it.
@@ -556,14 +556,16 @@ the notch:
   duration, tokens and what changed in its repo. Both are off until you ask, because
   the strip costs height and a day spent in a single agent draws one long bar that
   does not earn it.
-- **A mascot with a little life in it** *(off by default)* — on the island only,
+- **A mascot with a little life in it** *(on for a new install)* — on the island only,
   never in the menu bar. At rest, Clawd's eyes follow the pointer as it comes near and blink now and then;
   click a mark in the open panel and it squishes (three quick clicks make it dizzy)
   — the mark is for poking, the rest of the row still jumps to the session. A long
   task finishing gets a short sparkle in the pill: only after a minute and a half of
   work, at most once per session every fifteen minutes, so a conversation of quick
-  turns never sets it off. No sounds of its own. **Settings ▸ General ▸ Let the
-  mascot react** turns it on, and Reduce Motion keeps it off whatever the switch says.
+  turns never sets it off. No sounds of its own. It starts on for a new
+  install and stays off for one that had AgentBar before, where a click on the mark
+  used to jump to the session; **Settings ▸ General ▸ Let the mascot react** is the
+  switch either way, and Reduce Motion keeps it off whatever the switch says.
 - **It scrolls when it must** — the panel is sized to its content, and past the
   screen limit the rows scroll while the day's strip, the **⋯** menu and the quota
   line stay pinned along the bottom.
@@ -580,7 +582,9 @@ the notch:
   and re-pins itself when it returns, so AgentBar never goes missing.
 
 In Island-only mode the menu bar item is hidden, so the panel's **⋯** button carries
-Appearance, Color, the Sounds toggle, Settings, Check for Updates and Quit.
+everything the menu bar's own menu ends with — Color, Sounds, Appearance, Diagnostics,
+Settings, updates, Send Feedback and Quit. Both menus are drawn from one list, so
+neither can lose a row the other has.
 
 ### Appearance
 

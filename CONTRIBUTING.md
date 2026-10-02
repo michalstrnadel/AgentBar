@@ -67,6 +67,17 @@ once both watch *and write* `~/.agentbar/state.d/`, so they overwrite each other
 rows — the two live-app suites go red in ways that look like watcher bugs and
 aren't. `pkill -f AgentBar` first, then launch the one you mean to test.
 
+**`AGENTBAR_HOME` points everything at another state root.** Set to an absolute
+path, it replaces `~/.agentbar` for the app, the hooks, the CLI and the cloud
+poller (`docs/protocol.md`, "Where state lives"), so a sandbox or a second dev
+copy never touches your real sessions, rules or ledger:
+`AGENTBAR_HOME=$(mktemp -d) Scripts/cli/agentbar report --agent x --state tool`.
+It does not move agent configs, which is why `install-hooks`, `wire` and `unwire`
+refuse to run under it — to test wiring, borrow `HOME` instead, and always as
+`env -u CLAUDE_CONFIG_DIR -u COPILOT_HOME -u CODEX_HOME HOME=$(mktemp -d) …`, or an
+inherited config dir points your real agent at the throwaway hooks. A relative
+value is refused by the CLI and ignored by the hooks.
+
 **macOS re-asks for folder permissions on every rebuild** unless you sign with a
 stable identity: TCC keys its grants to the signing certificate, and the ad-hoc
 fallback (`-s -`) is a brand-new identity each build. Create a local cert once
@@ -96,6 +107,7 @@ defaults write com.michalstrnadel.agentbar presentationMode -string island  # or
 defaults delete com.michalstrnadel.agentbar showWelcomeOnLaunch             # first-run window back
 defaults write com.michalstrnadel.agentbar islandExpandDebug -bool true     # hold the island open (layout work)
 defaults write com.michalstrnadel.agentbar settingsOnLaunchDebug -bool true # open Settings on launch (layout work)
+defaults write com.michalstrnadel.agentbar settingsPageDebug agents     # …on that page (general, agents, rules, diagnostics, …)
 ./build/AgentBar.app/Contents/MacOS/AgentBar --render-settings /tmp/settings.png   # every settings page as one picture
 /Applications/AgentBar.app/Contents/MacOS/AgentBar --quota-status                 # can Claude's quota be read here, and
                                                                            # if not, why — macOS decides Keychain access
@@ -227,3 +239,27 @@ universal bundle, and it is signed locally.
    ```
    A failed run means the asset is not the CI build re-signed; it gets no
    attestation, and it should not stay published.
+
+### Moving to a Developer ID (notarization)
+
+Releases are signed with the project's own certificate and not notarized, so a zip
+downloaded by hand meets Gatekeeper's "cannot verify" dialog (the cask and the
+install script clear quarantine instead). Notarization needs an Apple Developer
+account; the tooling is ready for the day there is one, in this order:
+
+1. **Bridge release, old certificate.** Every copy in the field pins the old
+   certificate (`UpdateSignature`) and would refuse a Developer ID release, with a
+   click or without. Add the new signer to `UpdateSignature.successors`
+   (`anchor apple generic and identifier "com.michalstrnadel.agentbar" and
+   certificate leaf[subject.OU] = "<TEAM ID>"`) and release that as usual. Wait
+   until most installs have updated — automatic updates make that days, not weeks.
+2. **First notarized release.** In step 3 above, replace the `codesign` line with
+   `Scripts/dev/notarize.sh AgentBar.app` (hardened runtime, the Apple Events
+   entitlement in `Scripts/dev/AgentBar.entitlements`, notarytool, staple,
+   Gatekeeper check). It refuses to run until step 1's line is in the source.
+   Verify with `AGENTBAR_SIGN_ID="Developer ID Application: … (TEAM ID)"
+   Scripts/dev/verify-release.sh …`, and set the same identity in
+   `release-provenance.yml`.
+3. **Then:** drop the quarantine strip from the cask and `Scripts/install.sh`, the
+   "Open Anyway" steps from the README, and empty `successors` again a few releases
+   later.
