@@ -134,4 +134,19 @@ import Testing
         #expect(out.trimmingCharacters(in: .whitespacesAndNewlines) == "hello")
     }
 
+    /// The reader must not wait for a free worker thread. CI caught it: with the
+    /// suite's other tests blocking threads in parallel, a reader queued on a
+    /// global queue sat behind them, and `echo` came back as a timeout. Here the
+    /// utility queue is filled with work that blocks until the child has answered.
+    @Test func aChildIsReadEvenWhenEveryWorkerIsBusy() throws {
+        let release = DispatchSemaphore(value: 0)
+        let blockers = 256
+        for _ in 0..<blockers {
+            DispatchQueue.global(qos: .utility).async { release.wait() }
+        }
+        defer { for _ in 0..<blockers { release.signal() } }
+        let out = WorkDiff.run("/bin/echo", ["hello"], in: NSTemporaryDirectory(), timeout: 3)
+        #expect(out?.trimmingCharacters(in: .whitespacesAndNewlines) == "hello")
+    }
+
 }

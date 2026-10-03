@@ -244,14 +244,21 @@ final class WorkDiff {
         // a stalled network mount, or a `git` waiting on a lock somebody else holds,
         // took the utility queue with it — and a full pipe would deadlock the pair
         // before the wait even began.
+        //
+        // The reader gets a thread of its own rather than a global queue: a queue
+        // hands it a worker only when one is free, and when every worker is blocked
+        // — the caller's own queue among them — the reader never starts, and a
+        // child that answered at once comes back as a timeout. CI caught that.
         var data = Data()
         let lock = NSLock()
         let done = DispatchSemaphore(value: 0)
-        DispatchQueue.global(qos: .utility).async {
+        let reader = Thread {
             let read = out.fileHandleForReading.readDataToEndOfFile()
             lock.lock(); data = read; lock.unlock()
             done.signal()
         }
+        reader.qualityOfService = .utility
+        reader.start()
         if done.wait(timeout: .now() + timeout) == .timedOut {
             p.terminate()
             _ = done.wait(timeout: .now() + 1)   // let the reader finish on the EOF

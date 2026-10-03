@@ -3,6 +3,16 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- **A session's line counts no longer go missing when the Mac is busy.** The git
+  runner behind them read the child's output on a shared worker queue, and with every
+  worker blocked that read never started: a `git` that answered at once came back
+  as a timeout eight seconds later, and the row showed no numbers. The reader now
+  has a thread of its own. CI caught it as a flaky test.
+
 ## 1.36.0 - 2026-10-03
 
 ### Changed
