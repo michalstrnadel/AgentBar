@@ -30,6 +30,7 @@ const TOOL_LABELS = {
   Bash: "Running command", Edit: "Editing", Write: "Writing", MultiEdit: "Editing",
   NotebookEdit: "Editing", Read: "Reading", Grep: "Searching", Glob: "Searching",
   WebFetch: "Browsing web", WebSearch: "Searching web", Task: "Delegating",
+  Agent: "Delegating", // Task's name since Claude Code 2.1.63
   TodoWrite: "Planning",
   // Qwen Code tool ids (Gemini CLI heritage: lowercase snake_case).
   run_shell_command: "Running command", write_file: "Writing", edit: "Editing",

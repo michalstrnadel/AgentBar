@@ -9,14 +9,25 @@ final class IconRenderer {
         let fps: Double
         let restingColor: NSImage      // idle/done mark (markFrames: dot-free)
         let restingTemplate: NSImage
+        /// Clawd's working loops, one per scene, in both modes; empty for
+        /// everyone else. `colorFrames` is then the walk, the scene with no
+        /// picture of its own.
+        let scenes: [ClawdScene: Loop]
+
+        struct Loop {
+            let color: [NSImage]
+            let template: [NSImage]
+        }
 
         init(colorFrames: [NSImage], templateFrames: [NSImage], fps: Double,
-             restingColor: NSImage? = nil, restingTemplate: NSImage? = nil) {
+             restingColor: NSImage? = nil, restingTemplate: NSImage? = nil,
+             scenes: [ClawdScene: Loop] = [:]) {
             self.colorFrames = colorFrames
             self.templateFrames = templateFrames
             self.fps = fps
             self.restingColor = restingColor ?? colorFrames[0]
             self.restingTemplate = restingTemplate ?? templateFrames[0]
+            self.scenes = scenes
         }
     }
 
@@ -41,6 +52,35 @@ final class IconRenderer {
             let color = frames
             let template = frames.map { Self.adaptiveTemplate($0) }
             return Sprite(colorFrames: color, templateFrames: template, fps: fps)
+
+        case .clawd(let pngs, let fps):
+            // Every scene shares one canvas, so the mark keeps its width while
+            // it works and the words beside it don't shuffle at every cut. The
+            // resting mark stays the walk's own first frame, unpadded: the
+            // island finds Clawd's eyes in it.
+            let walk = pngs.compactMap(Self.decode)
+            let pixel = (walk.first?.size.height ?? 36) / CGFloat(ClawdSceneArt.rows)
+            let width = max(walk.map(\.size.width).max() ?? 0,
+                            CGFloat(ClawdSceneArt.columns) * pixel)
+            let strides = walk.map { Self.fit(Self.pad($0, toWidth: width), height: 17) }
+            var scenes: [ClawdScene: Sprite.Loop] = [
+                .walk: Sprite.Loop(color: strides, template: Self.templates(of: strides)),
+            ]
+            for scene in ClawdScene.allCases {
+                guard let reel = scene.reel else { continue }
+                let poses = reel.poses.map {
+                    Self.fit(ClawdSceneArt.image($0, pixel: pixel, canvasWidth: width), height: 17)
+                }
+                let loop = reel.rhythm.map { poses[$0] }
+                scenes[scene] = Sprite.Loop(color: loop, template: Self.templates(of: loop))
+            }
+            let resting = Self.fit(walk[0], height: 17)
+            return Sprite(colorFrames: strides,
+                          templateFrames: scenes[.walk]?.template ?? [],
+                          fps: fps,
+                          restingColor: resting,
+                          restingTemplate: Self.adaptiveTemplate(resting),
+                          scenes: scenes)
 
         case .markFrames(let pngs, let fps):
             // Frame 0 is the dot-free resting mark; the working loop is 1…N.
@@ -227,6 +267,28 @@ final class IconRenderer {
     }
 
     /// Gentle vertical bob for single-image mascots: same mark drawn at sine offsets.
+    /// `src` at the left of a wider transparent canvas, same height.
+    static func pad(_ src: NSImage, toWidth width: CGFloat) -> NSImage {
+        guard width > src.size.width else { return src }
+        let out = NSImage(size: NSSize(width: width, height: src.size.height))
+        out.lockFocus()
+        src.draw(in: NSRect(origin: .zero, size: src.size))
+        out.unlockFocus()
+        return out
+    }
+
+    /// Templates of a loop that repeats frames, each distinct frame converted once
+    /// and repeated where it repeats.
+    static func templates(of loop: [NSImage]) -> [NSImage] {
+        var done: [ObjectIdentifier: NSImage] = [:]
+        return loop.map { frame in
+            if let hit = done[ObjectIdentifier(frame)] { return hit }
+            let t = adaptiveTemplate(frame)
+            done[ObjectIdentifier(frame)] = t
+            return t
+        }
+    }
+
     static func bobFrames(_ mark: NSImage) -> [NSImage] {
         let steps = 6
         let amplitude: CGFloat = 1.5

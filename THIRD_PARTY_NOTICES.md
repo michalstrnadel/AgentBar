@@ -19,6 +19,9 @@ tool a session belongs to — and remain the property of their respective owners
   to identify the tool.
 - **Clawd crab sprite** (shown for Claude sessions) — pixel-art frames derived from
   `Clawd-CrabWalking.gif`; Clawd is the community mascot of Anthropic's Claude.
+  The laptop and thinking poses in `ClawdSceneArt.swift` are adapted from
+  scoobynko/claude-code-mods, MIT License, Copyright (c) 2026 scoobynko; that
+  license's permission notice applies to them.
 - **Qwen name** (shown for Qwen Code sessions) — "Qwen" is a trademark of Alibaba
   Group. The Q-ring mark AgentBar shows is original artwork drawn for this project,
   not Alibaba's logo; the name is used nominatively to identify the tool.

@@ -19,7 +19,10 @@ final class MascotDriver {
     private var animationTimer: Timer?
     private var wordTimer: Timer?
     private var hopTimer: Timer?
-    private var frameIndex = 0
+    private var reel: MascotReel?
+    /// Turns the reel's frame into the published image: as is for one agent,
+    /// composed with the others' marks when several are live.
+    private var draw: (NSImage) -> NSImage = { $0 }
     private var currentWord = ""
     private var previousTopState: Session.State?
 
@@ -73,7 +76,6 @@ final class MascotDriver {
         if row.count > 1 { return renderMulti(row) }
         let agent = topSession?.agent ?? Agent.byID("claude")
         let sprite = IconRenderer.shared.sprite(for: agent)
-        let frames = systemColor ? sprite.templateFrames : sprite.colorFrames
         let resting = systemColor ? sprite.restingTemplate : sprite.restingColor
         let state = topSession?.state
         defer { previousTopState = state }
@@ -81,7 +83,9 @@ final class MascotDriver {
         switch state {
         case .some(let s) where s.isWorking:
             stopHop()
-            startAnimation(frames: frames, fps: sprite.fps)
+            // Redrawn even when the reel carries on: coming back from several
+            // agents to one, the image on screen is still the composed one.
+            play(reel(for: agent, sprite: sprite), fps: sprite.fps, redraw: true)
             // Rotating verbs are Clawd's voice; other agents' dot clusters carry
             // the "working" signal on their own. A fixed word (compacting) is not
             // a mood but a fact, so it holds still and shows for any agent. The id
@@ -129,7 +133,7 @@ final class MascotDriver {
                                sprite: IconRenderer.shared.sprite(for: $0.agent),
                                state: $0.state) }
         let sys = systemColor
-        let build: (Int) -> NSImage = { idx in
+        let build: (NSImage?) -> NSImage = { frame in
             IconRenderer.compose(parts.map { p in
                 let resting = sys ? p.sprite.restingTemplate : p.sprite.restingColor
                 switch p.state {
@@ -138,39 +142,72 @@ final class MascotDriver {
                 case .question:
                     return IconRenderer.withPermissionDot(resting, color: IconRenderer.questionDot)
                 case let s where s.isWorking && p.id == animatorID:
-                    let frames = sys ? p.sprite.templateFrames : p.sprite.colorFrames
-                    return frames.isEmpty ? resting : frames[idx % frames.count]
+                    return frame ?? resting
                 default:
                     return resting
                 }
             })
         }
-        stopAnimation()
-        image = build(0)
-        guard animatorID != nil else { return }
-        frameIndex = 0
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.frameIndex += 1
-            self.image = build(self.frameIndex)
+        guard let animator = row.first(where: { $0.agent.id == animatorID }) else {
+            stopAnimation()
+            image = build(nil)
+            return
+        }
+        let sprite = IconRenderer.shared.sprite(for: animator.agent)
+        // Redrawn now, not at the next tick: a store tick may have put a dot on
+        // someone else's mark.
+        if !play(reel(for: animator.agent, sprite: sprite), fps: sprite.fps, draw: build, redraw: true) {
+            image = build(nil)
         }
     }
 
-    private func startAnimation(frames: [NSImage], fps: Double) {
-        stopAnimation()
-        guard !frames.isEmpty else { return }
-        frameIndex = 0
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / fps, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.frameIndex = (self.frameIndex + 1) % frames.count
-            self.image = frames[self.frameIndex]
+    /// The loop a working agent plays. Clawd's is a reel of scenes, re-chosen at
+    /// the end of each from whatever his session is doing by then; everyone
+    /// else's is their one loop.
+    private func reel(for agent: Agent, sprite: IconRenderer.Sprite) -> MascotReel {
+        let sys = systemColor
+        guard !sprite.scenes.isEmpty else {
+            let frames = sys ? sprite.templateFrames : sprite.colorFrames
+            return MascotReel(key: frames.first.map { AnyHashable(ObjectIdentifier($0)) } ?? AnyHashable(agent.id),
+                              frames: frames)
         }
-        image = frames[0]
+        let pick: () -> [NSImage] = { [weak self] in
+            let session = self?.sessions.first { $0.agentID == agent.id }
+            let scene = session.map { ClawdScene.scene(for: $0, now: Date().timeIntervalSince1970) } ?? .walk
+            guard let loop = sprite.scenes[scene] ?? sprite.scenes[.walk] else { return [] }
+            return sys ? loop.template : loop.color
+        }
+        return MascotReel(key: "\(agent.id) scenes \(sys)", frames: pick(), next: pick)
+    }
+
+    /// Plays `candidate` unless a reel with the same key is already playing — then
+    /// that one keeps its place. Every store tick lands here while a turn runs,
+    /// several a second during tool calls, and starting over each time would
+    /// replay the first frames forever.
+    /// False when there was nothing to play, and so nothing was drawn.
+    @discardableResult
+    private func play(_ candidate: MascotReel, fps: Double,
+                      draw: @escaping (NSImage) -> NSImage = { $0 }, redraw: Bool = false) -> Bool {
+        self.draw = draw
+        if animationTimer != nil, reel?.key == candidate.key {
+            if redraw, let frame = reel?.current { image = draw(frame) }
+            return true
+        }
+        stopAnimation()
+        guard let first = candidate.current else { return false }
+        reel = candidate
+        image = draw(first)
+        animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / fps, repeats: true) { [weak self] _ in
+            guard let self, let frame = self.reel?.advance() else { return }
+            self.image = self.draw(frame)
+        }
+        return true
     }
 
     private func stopAnimation() {
         animationTimer?.invalidate()
         animationTimer = nil
+        reel = nil
     }
 
     /// A word that says what the session is actually doing, in place of the

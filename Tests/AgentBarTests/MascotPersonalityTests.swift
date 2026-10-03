@@ -262,7 +262,7 @@ struct MascotPersonalityTests {
 
     /// The real sprite: if Clawd is ever regenerated and the search stops finding
     /// his eyes, the gaze switches itself off — this is what says so out loud.
-    @Test func findsClawdsEyes() throws {
+    @Test @MainActor func findsClawdsEyes() throws {
         let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
         let eyes = try #require(MascotEyes.find(in: sprite.restingColor))
         #expect(eyes.ink.count == 2)
@@ -328,7 +328,7 @@ struct MascotPersonalityTests {
     /// The real sprite: his right claw is found, and every wave frame differs from
     /// the resting one only out past the shoulder — the face, the body, the legs
     /// and the other arm stay exactly where they were, in both colour modes.
-    @Test func clawdWavesOnlyHisClaw() throws {
+    @Test @MainActor func clawdWavesOnlyHisClaw() throws {
         let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
         let claw = try #require(MascotEyes.findClaw(in: sprite.restingColor))
         let eyes = try #require(MascotEyes.find(in: sprite.restingColor))

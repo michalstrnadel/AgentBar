@@ -58,7 +58,7 @@ import Testing
         #expect(one.saturationComponent < 0.6)
     }
 
-    @Test func aGenericSpriteHasInkInBothModes() throws {
+    @Test @MainActor func aGenericSpriteHasInkInBothModes() throws {
         let sprite = IconRenderer.shared.sprite(for: Agent.byID("aider-test-sprite"))
         #expect(!sprite.colorFrames.isEmpty)
         #expect(!sprite.templateFrames.isEmpty)
@@ -77,8 +77,22 @@ import Testing
         #expect(mark.size == MenuBuilder.menuMark(for: Agent.byID("codex")).size)
     }
 
+    /// Every one of Clawd's scenes shares one canvas, so the mark never changes
+    /// width mid-turn; at rest he is the walk's first frame, unpadded, which is
+    /// where the island looks for his eyes.
+    @Test @MainActor func clawdsScenesShareOneCanvas() {
+        let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
+        #expect(Set(sprite.scenes.keys) == Set(ClawdScene.allCases))
+        let loops = sprite.scenes.values
+        let widths = Set(loops.flatMap { $0.color.map(\.size.width) + $0.template.map(\.size.width) })
+        #expect(widths.count == 1)
+        #expect(loops.allSatisfy { $0.color.count == $0.template.count && !$0.color.isEmpty })
+        #expect(sprite.restingColor.size.width < widths.first ?? 0)
+        #expect(sprite.restingTemplate.isTemplate)
+    }
+
     /// A rename under the same id must redraw the letter, not reuse the cache.
-    @Test func aRenameRedrawsTheLetter() {
+    @Test @MainActor func aRenameRedrawsTheLetter() {
         let a = IconRenderer.shared.sprite(for: Agent.byID("renamed-bot", name: "Alpha")).restingColor
         let b = IconRenderer.shared.sprite(for: Agent.byID("renamed-bot", name: "Beta")).restingColor
         #expect(a !== b)

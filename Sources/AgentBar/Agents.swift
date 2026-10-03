@@ -9,6 +9,9 @@ struct Agent {
         /// Like `frames`, but frame 0 is a resting-only mark (shown when the agent
         /// is idle/done) and the animation loops over frames 1…N while working.
         case markFrames([String], fps: Double)
+        /// Clawd: `frames` for the walk (frame 0 rests), plus a scene of
+        /// `ClawdSceneArt` for each thing a session can be seen doing.
+        case clawd([String], fps: Double)
         /// Single monochrome mark (base64 PNG), tinted with `brand`; animated as a bob.
         case tintedMark(String)
         /// Single full-color mark (base64 PNG); animated as a bob.
@@ -54,7 +57,7 @@ struct Agent {
     static let all: [Agent] = [
         Agent(id: "claude", name: "Claude",
               brand: NSColor(srgbRed: 0.851, green: 0.467, blue: 0.341, alpha: 1), // #D97757
-              artwork: .frames(clawdCrabFramePNGs, fps: 12.5),
+              artwork: .clawd(clawdCrabFramePNGs, fps: 12.5),
               open: .bundle("com.anthropic.claudefordesktop"),
               approveKeys: nil,
               cli: "claude", takesPrompt: true),        // claude [options] [prompt]
