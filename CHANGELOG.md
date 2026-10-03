@@ -3,6 +3,31 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+
+- **Clawd shows what Claude is doing.** While a session works he no longer just
+  walks: he reads a book when it reads, sweeps a magnifier when it searches, types on
+  a laptop when it edits or writes, hammers on an anvil when it runs a command, sends
+  waves from an antenna when it is on the web, works beside a little Clawd when it
+  hands off to a subagent, squashes a box shut while it compacts, and turns to face
+  you, thinking, at the start of a turn or when it has been quiet for a few seconds.
+  A tool with no picture of its own keeps the walk. Each scene plays to its end before
+  the next one starts, so a session hopping between thinking and tools several times
+  a second does not flicker. In the menu bar and the island; his working mark is a
+  few points wider so every scene fits one canvas and the words beside him stay put.
+  The README shows all nine; `docs/clawd-scenes.md` explains how they are chosen and
+  drawn, and `Scripts/mascots/render-clawd-scenes.swift` re-renders the GIFs from
+  the app's own code.
+- The Claude hook names Claude Code's `Agent` tool (the newer name of `Task`)
+  *Delegating* instead of *Using tool*.
+
+### Fixed
+
+- The working animation no longer restarts at its first frame on every state
+  update; during a run of tool calls it used to replay the same stride.
+
 ## 1.35.0 - 2026-10-02
 
 ### Added

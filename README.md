@@ -131,7 +131,8 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   change it any time from **Appearance…**; no relaunch. See
   [Dynamic Island](#dynamic-island).
 - **Live status per agent** — an animated mascot works the bar while an agent works:
-  Clawd the crab (Claude), the knot + a braille dot-matrix that literally spells
+  Clawd the crab (Claude), who acts out what the session is doing in
+  [nine scenes](#clawds-scenes), the knot + a braille dot-matrix that literally spells
   *codex* (Codex), the pixel mascot head + dots spelling *copilot* (Copilot), and the
   animated pixel rainbow arch (Antigravity).
 - **Notifications that only carry what wants you** — off by default, and three
@@ -276,6 +277,32 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
 - **Nothing else** — no dock icon, no countdown timers, no sounds unless you ask
   for them, nothing that unfolds over your screen on its own. One process, tiny
   footprint.
+
+## Clawd's scenes
+
+While Claude works, Clawd shows what it's doing. There are **nine scenes**, each chosen
+from what the session reports and none of them made up. Each plays to the end of its
+loop before the next starts, so he doesn't flicker when Claude moves between thinking
+and tools.
+
+<p align="center">
+  <img src="docs/assets/clawd-scenes.gif?v=2026-10-03" width="760" alt="Nine island pills, each with Clawd doing something different: thinking with dots above his head, reading a book, sweeping a magnifier, typing on a laptop, hammering on an anvil, sending waves from an antenna, walking beside a little Clawd, squashing a box shut, and walking">
+</p>
+
+| Claude is… | Clawd… |
+|---|---|
+| starting a turn, or quiet for 6 s | faces you and thinks, dots filling in above his head |
+| reading (`Read`) | turns the pages of a book |
+| searching (`Grep`, `Glob`) | sweeps a magnifier |
+| editing (`Edit`, `Write`) | types on a laptop |
+| running a command (`Bash`) | hammers on an anvil |
+| on the web (`WebFetch`, `WebSearch`) | sends waves from an antenna |
+| delegating to a subagent | works beside a little Clawd |
+| compacting its context | squashes a box shut |
+| using any other tool | walks |
+
+They are drawn as text art in the source and rendered at runtime, in both colour
+modes. [How they were made, and how to add one →](docs/clawd-scenes.md)
 
 ## Requirements
 

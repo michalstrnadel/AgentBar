@@ -9,6 +9,11 @@ swift generate-copilot.swift              # writes to ./final
 swift generate-cursor-gemini-marks.swift  # the Cursor pointer + Gemini spark menu marks
 ```
 
+`render-clawd-scenes.swift` is different: it renders no frames to ship, because
+Clawd's scenes are drawn at runtime from `Sources/AgentBar/Sprites/ClawdSceneArt.swift`.
+It builds against the app's sources and renders the README's scene GIF and the
+share video — see `docs/clawd-scenes.md`.
+
 Frames land in `<outDir>/frames/<agent>/f*.png`. To ship them, base64 each
 frame into the matching `Sources/AgentBar/Sprites/*Frames.swift` array (the
 files' headers say which). The Copilot head and Antigravity arch grids were
