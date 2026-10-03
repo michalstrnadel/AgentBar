@@ -286,7 +286,7 @@ loop before the next starts, so he doesn't flicker when Claude moves between thi
 and tools.
 
 <p align="center">
-  <img src="docs/assets/clawd-scenes.gif?v=2026-10-03" width="760" alt="Nine island pills, each with Clawd doing something different: thinking with dots above his head, reading a book, sweeping a magnifier, typing on a laptop, hammering on an anvil, sending waves from an antenna, walking beside a little Clawd, squashing a box shut, and walking">
+  <img src="docs/assets/clawd-scenes.gif?v=2026-10-03b" width="760" alt="Nine island pills, each with Clawd doing something different: thinking with dots above his head, reading a book, sweeping a magnifier, typing on a laptop, hammering on an anvil, sending waves from an antenna, walking beside a little Clawd, squashing a box shut, and walking">
 </p>
 
 | Claude is… | Clawd… |
