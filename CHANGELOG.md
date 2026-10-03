@@ -3,7 +3,7 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 1.36.0 - 2026-10-03
 
 ### Changed
 
