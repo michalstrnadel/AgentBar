@@ -17,6 +17,9 @@ final class IconRenderer {
         struct Loop {
             let color: [NSImage]
             let template: [NSImage]
+            /// The scene's first pose, held still — what a surface that must not
+            /// move (the menu bar at rest) shows of it.
+            var still: (color: NSImage, template: NSImage)?
         }
 
         init(colorFrames: [NSImage], templateFrames: [NSImage], fps: Double,
@@ -72,7 +75,20 @@ final class IconRenderer {
                     Self.fit(ClawdSceneArt.image($0, pixel: pixel, canvasWidth: width), height: 17)
                 }
                 let loop = reel.rhythm.map { poses[$0] }
-                scenes[scene] = Sprite.Loop(color: loop, template: Self.templates(of: loop))
+                var templates = Self.templates(of: loop)
+                if !scene.keepsColour.isEmpty {
+                    let marks = reel.poses.map {
+                        Self.fit(ClawdSceneArt.image($0, pixel: pixel, canvasWidth: width,
+                                                     only: scene.keepsColour), height: 17)
+                    }
+                    let inked = Self.templates(of: poses).enumerated().map {
+                        Self.ink($0.element, keeping: marks[$0.offset])
+                    }
+                    templates = reel.rhythm.map { inked[$0] }
+                }
+                let first = loop.firstIndex { $0 === poses[0] }
+                scenes[scene] = Sprite.Loop(color: loop, template: templates,
+                                            still: first.map { (loop[$0], templates[$0]) })
             }
             let resting = Self.fit(walk[0], height: 17)
             return Sprite(colorFrames: strides,
@@ -267,6 +283,22 @@ final class IconRenderer {
     }
 
     /// Gentle vertical bob for single-image mascots: same mark drawn at sine offsets.
+    /// A System-mode frame drawn in the bar's ink with `colour` laid over it in
+    /// its own colours — the way `withPermissionDot` keeps its dot amber. Drawn
+    /// at render time, so the ink follows the bar's appearance.
+    static func ink(_ template: NSImage, keeping colour: NSImage) -> NSImage {
+        let size = template.size
+        let out = NSImage(size: size, flipped: false) { rect in
+            template.draw(in: rect)
+            NSColor.labelColor.setFill()
+            rect.fill(using: .sourceAtop)
+            colour.draw(in: rect)
+            return true
+        }
+        out.isTemplate = false
+        return out
+    }
+
     /// `src` at the left of a wider transparent canvas, same height.
     static func pad(_ src: NSImage, toWidth width: CGFloat) -> NSImage {
         guard width > src.size.width else { return src }

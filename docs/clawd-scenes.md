@@ -1,10 +1,11 @@
 # Clawd's scenes
 
-While a Claude session works, Clawd shows what it is doing. There are **nine
-scenes**: eight drawn for the job, plus the walk for everything else.
+Clawd shows what a Claude session is doing, and what it is waiting for. There are
+**twelve scenes**: eight for work, the walk for any other tool, two for waiting on
+you, and sleep.
 
 <p align="center">
-  <img src="assets/clawd-scenes.gif" width="760" alt="Nine island pills, each with Clawd doing something different: thinking with dots above his head, reading a book, sweeping a magnifier, typing on a laptop, hammering on an anvil, sending waves from an antenna, walking beside a little Clawd, squashing a box shut, and walking">
+  <img src="assets/clawd-scenes.gif" width="760" alt="Twelve island pills, each with Clawd doing something different: thinking with dots above his head, reading a book, sweeping a magnifier, typing on a laptop, hammering on an anvil, sending waves from an antenna, walking beside a little Clawd, squashing a box shut, walking, a raised hand with an amber exclamation mark, a raised hand with a blue question mark, and asleep">
 </p>
 
 | Scene | When | What he does |
@@ -18,6 +19,9 @@ scenes**: eight drawn for the job, plus the walk for everything else.
 | Delegating | `Agent` (formerly `Task`) | a little Clawd steps along beside him; now and then he waves |
 | Compacting | the session is summarising its context | squashes an overfull box shut |
 | Walking | any tool with no picture of its own | the walk cycle |
+| Needs approval | a permission request waits on you | raises a hand, an amber **!** beside him, waving now and then |
+| Has a question | a question waits on you | the same hand, with a blue **?** |
+| Asleep | no session has worked or waited on you for 10 minutes | eyes shut, breathing, a small z and a big Z drifting up |
 
 ## How a scene is chosen
 
@@ -31,6 +35,15 @@ scenes**: eight drawn for the job, plus the walk for everything else.
   bare state would show *Thinking* nearly the whole time and the other scenes for
   a few milliseconds each.
 - **Compacting** wins over everything.
+- **Waiting and sleeping** come from the state, never from a tool: a permission
+  request raises the hand with **!**, a question with **?**. Either takes the place
+  of the badge dot other agents wear. The **!** and **?** keep their colour in System
+  mode too, as the dot did.
+- **Sleep** is a still picture in the menu bar, because AgentBar's menu bar mark
+  doesn't move at rest. Only the island lets him breathe, and only with the mascot's
+  personality on (**Settings ▸ General ▸ Let the mascot react**), on the pointer poll
+  that already drives his eyes. No separate timer runs for it. A launch counts as
+  busy, so he never wakes up asleep.
 
 `MascotReel` decides **when** the scene changes: it asks for the next one only
 after the current loop has played through. A session switches between thinking and

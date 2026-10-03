@@ -77,6 +77,32 @@ import Testing
         }
     }
 
+    @Test func heFallsAsleepOnlyAfterALongQuiet() {
+        #expect(!ClawdScene.asleep(lastBusy: 1_000, now: 1_000 + ClawdScene.sleepsAfter - 1))
+        #expect(ClawdScene.asleep(lastBusy: 1_000, now: 1_000 + ClawdScene.sleepsAfter))
+    }
+
+    /// Waiting and sleeping come from the state, never from a tool's label.
+    @Test func noToolPutsHimToSleepOrRaisesHisHand() throws {
+        for state in ["tool", "thinking"] {
+            for label in ["Reading", "Using tool", "Thinking…", ""] {
+                let scene = ClawdScene.scene(for: try session(state, label: label), now: 1_000)
+                #expect(![.approve, .ask, .sleep].contains(scene))
+            }
+        }
+    }
+
+    /// The menu bar shows sleep as one still picture, so it has to exist, and it is
+    /// one of the loop's own frames — the island breathes from that same loop.
+    @Test @MainActor func sleepHasAStillPictureInBothModes() throws {
+        let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
+        let loop = try #require(sprite.scenes[.sleep])
+        let still = try #require(loop.still)
+        #expect(loop.color.contains { $0 === still.color })
+        #expect(loop.template.contains { $0 === still.template })
+        #expect(still.template.isTemplate)
+    }
+
     @Test func aReelCutsOnlyAtTheEndOfItsLoop() {
         let a = (0..<3).map { _ in NSImage(size: NSSize(width: 1, height: 1)) }
         let b = (0..<2).map { _ in NSImage(size: NSSize(width: 1, height: 1)) }

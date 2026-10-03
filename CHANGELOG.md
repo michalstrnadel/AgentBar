@@ -3,6 +3,27 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Clawd raises a hand when Claude waits on you** — with an amber **!** for a
+  permission request and a blue **?** for a question, waving now and then. It takes
+  the place of the badge dot, and the **!** and **?** keep their colour in System mode
+  as the dot did.
+- **Clawd falls asleep** after ten minutes with nothing working or waiting: eyes
+  shut, a z and a Z. In the menu bar he is a still picture, since the mark there never
+  moves at rest; in the island, with the mascot's personality on, he breathes and the
+  z's drift up. That makes twelve scenes; the README and `docs/clawd-scenes.md` show
+  them all.
+
+### Fixed
+
+- **In System mode on a light Mac, the island's mark vanished when it wore a dot** —
+  an approval, a question or a failure. The mark is drawn in the bar's ink, which was
+  resolved against the light system appearance: black on the black pill. The island
+  now draws it as the island looks.
+
 ## 1.36.1 - 2026-10-03
 
 ### Fixed

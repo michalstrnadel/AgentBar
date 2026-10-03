@@ -19,6 +19,11 @@ final class MascotDriver {
     private var animationTimer: Timer?
     private var wordTimer: Timer?
     private var hopTimer: Timer?
+    /// When a session last worked or waited on the human; Clawd sleeps once
+    /// this is `ClawdScene.sleepsAfter` old. Launch counts as busy, so a fresh
+    /// start never opens on a sleeping crab.
+    private var lastBusy = Date().timeIntervalSince1970
+    private var sleepTimer: Timer?
     private var reel: MascotReel?
     /// Turns the reel's frame into the published image: as is for one agent,
     /// composed with the others' marks when several are live.
@@ -41,6 +46,9 @@ final class MascotDriver {
     func update(sessions: [Session], systemColor: Bool) {
         self.sessions = sessions
         self.systemColor = systemColor
+        if sessions.contains(where: { $0.state.isWorking || $0.state.waitsOnHuman }) {
+            lastBusy = Date().timeIntervalSince1970
+        }
         render()
     }
 
@@ -82,7 +90,7 @@ final class MascotDriver {
 
         switch state {
         case .some(let s) where s.isWorking:
-            stopHop()
+            stopHop(); stopSleep()
             // Redrawn even when the reel carries on: coming back from several
             // agents to one, the image on screen is still the composed one.
             play(reel(for: agent, sprite: sprite), fps: sprite.fps, redraw: true)
@@ -94,16 +102,23 @@ final class MascotDriver {
             if let fixed = Self.fixedWord(for: topSession) {
                 stopWords(); word = fixed
             } else if agent.id == "claude" { startWords() } else { stopWords() }
-        case .permission:
-            stopHop(); stopAnimation(); stopWords()
-            image = IconRenderer.withPermissionDot(resting)
-        case .question:
-            stopHop(); stopAnimation(); stopWords()
-            image = IconRenderer.withPermissionDot(resting, color: IconRenderer.questionDot)
+        case .permission, .question:
+            stopHop(); stopWords(); stopSleep()
+            // Clawd raises a hand with the "!" or "?" in the badge's colour,
+            // in place of the badge; everyone else wears the dot.
+            let scene: ClawdScene = state == .permission ? .approve : .ask
+            if let loop = sprite.scenes[scene] {
+                let frames = systemColor ? loop.template : loop.color
+                play(MascotReel(key: "\(agent.id) \(scene) \(systemColor)", frames: frames), fps: sprite.fps)
+            } else {
+                stopAnimation()
+                image = IconRenderer.withPermissionDot(
+                    resting, color: state == .permission ? IconRenderer.amberDot : IconRenderer.questionDot)
+            }
         case .error:
             // Marked, not celebrated: the same dot the waiting states use, in
             // the failure colour, and never the finish hop.
-            stopHop(); stopAnimation(); stopWords()
+            stopHop(); stopAnimation(); stopWords(); stopSleep()
             image = IconRenderer.withPermissionDot(resting, color: .systemRed)
         default:
             stopAnimation()
@@ -115,7 +130,7 @@ final class MascotDriver {
                topSession?.decayed != true {
                 playHop(resting: resting)
             } else if hopTimer == nil {
-                image = resting
+                image = restingOrAsleep(sprite: sprite, resting: resting)
             }
         }
     }
@@ -125,7 +140,7 @@ final class MascotDriver {
     /// otherwise the most urgent working one. Everyone else shows the plain resting
     /// mark; a waiting session still carries its amber/blue dot.
     private func renderMulti(_ row: [(agent: Agent, state: Session.State)]) {
-        stopHop(); stopWords()
+        stopHop(); stopWords(); stopSleep()
         defer { previousTopState = topSession?.state }
         let workingIDs = row.filter { $0.state.isWorking }.map(\.agent.id)
         let animatorID = workingIDs.contains("claude") ? "claude" : workingIDs.first
@@ -250,6 +265,33 @@ final class MascotDriver {
             self.image = Self.offset(resting, dy: CGFloat(dy))
             i += 1
         }
+    }
+
+    /// Clawd at rest, or asleep once nothing has happened for a while. Asleep
+    /// is a still picture here: the menu bar mark does not move at rest, and
+    /// only the island, with the mascot's personality on, lets him breathe.
+    /// Until then a one-shot timer waits for the moment, so he nods off even
+    /// when no store tick arrives to say so.
+    private func restingOrAsleep(sprite: IconRenderer.Sprite, resting: NSImage) -> NSImage {
+        guard let still = sprite.scenes[.sleep]?.still else { return resting }
+        let now = Date().timeIntervalSince1970
+        if ClawdScene.asleep(lastBusy: lastBusy, now: now) {
+            stopSleep()
+            return systemColor ? still.template : still.color
+        }
+        if sleepTimer == nil {
+            let wait = lastBusy + ClawdScene.sleepsAfter - now
+            sleepTimer = Timer.scheduledTimer(withTimeInterval: wait, repeats: false) { [weak self] _ in
+                self?.sleepTimer = nil
+                self?.render()
+            }
+        }
+        return resting
+    }
+
+    private func stopSleep() {
+        sleepTimer?.invalidate()
+        sleepTimer = nil
     }
 
     private func stopHop() {

@@ -9,6 +9,17 @@ enum ClawdScene: CaseIterable {
     /// Nothing more specific is known — a tool AgentBar has no picture for.
     case walk
     case think, type, read, search, hammer, web, delegate, compact
+    /// Waiting on the human, not working — `MascotDriver` picks these from the
+    /// state itself: a permission request, a question, and a long quiet.
+    case approve, ask, sleep
+
+    /// How long nothing has to happen before Clawd falls asleep.
+    static let sleepsAfter: TimeInterval = 10 * 60
+
+    /// Asleep when no session has worked or waited on you for `sleepsAfter`.
+    static func asleep(lastBusy: TimeInterval, now: TimeInterval) -> Bool {
+        now - lastBusy >= sleepsAfter
+    }
 
     /// After this long without a word from the session it is chewing on
     /// something, not still busy with its last tool.

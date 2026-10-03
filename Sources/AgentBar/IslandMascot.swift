@@ -30,6 +30,10 @@ final class IslandMascot {
     /// The wave frame on screen, while the hello plays; nil the rest of the time.
     private var waveStep: Int?
     private var waveTimer: Timer?
+    /// The frame of the sleep loop last handed out, while the pill shows Clawd
+    /// asleep; nil when it doesn't. The poll compares against it to know when the
+    /// next breath is due.
+    private var sleepStep: Int?
 
     static var plays: Bool {
         MascotPersonality.plays(enabled: MascotPersonality.Prefs.enabled,
@@ -54,6 +58,11 @@ final class IslandMascot {
     /// not showing it (hidden, open, flashing) — then the eyes rest. True when what
     /// the mark should look like changed and the pill has to be handed it again.
     func look(pointer: NSPoint, from mark: NSPoint?) -> Bool {
+        // Asleep, he breathes on the same poll — no timer of his own.
+        if let step = sleepStep, mark != nil, Self.plays, let crab = Crab.shared,
+           crab.sleepStep(at: CACurrentMediaTime()) != step {
+            return true
+        }
         let before = (pupil, closed)
         if let mark, Self.plays, !working, Crab.shared != nil {
             let now = CACurrentMediaTime()
@@ -78,6 +87,12 @@ final class IslandMascot {
     /// resting mark is ever changed; everything else — the walk, a badge dot, a
     /// hop's offset copy, the multi-agent row — passes through untouched.
     func decorate(_ image: NSImage?) -> NSImage? {
+        sleepStep = nil
+        if let image, Self.plays, let crab = Crab.shared,
+           let sleeping = crab.sleeping(image, at: CACurrentMediaTime()) {
+            sleepStep = sleeping.step
+            return sleeping.frame
+        }
         guard let image, Self.plays, !working, let crab = Crab.shared,
               image === crab.color || image === crab.template
         else { return image }
@@ -160,12 +175,16 @@ final class IslandMascot {
         private let claw: MascotEyes.Claw?
         private var cache: [String: NSImage] = [:]
         private var waves: [Bool: [NSImage]] = [:]
+        private let sleep: IconRenderer.Sprite.Loop?
+        private let fps: Double
 
         private init?() {
             let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
             guard let eyes = MascotEyes.find(in: sprite.restingColor) else { return nil }
             color = sprite.restingColor
             template = sprite.restingTemplate
+            sleep = sprite.scenes[.sleep]
+            fps = sprite.fps
             self.eyes = eyes
             // Searched on the colour frame and used for both: the template one is
             // the same ink at the same size.
@@ -181,6 +200,21 @@ final class IslandMascot {
             else { return nil }
             waves[template] = frames
             return frames
+        }
+
+        /// Which frame of the sleep loop plays at `time`.
+        func sleepStep(at time: CFTimeInterval) -> Int? {
+            guard let sleep, !sleep.color.isEmpty else { return nil }
+            return Int(time * fps) % sleep.color.count
+        }
+
+        /// The breathing frame for `image` when it is the still sleeping picture
+        /// the driver publishes; nil for anything else.
+        func sleeping(_ image: NSImage, at time: CFTimeInterval) -> (frame: NSImage, step: Int)? {
+            guard let sleep, let still = sleep.still, let step = sleepStep(at: time) else { return nil }
+            if image === still.color { return (sleep.color[step], step) }
+            if image === still.template { return (sleep.template[step], step) }
+            return nil
         }
 
         func variant(template: Bool, pupil: MascotPersonality.Pupil, closed: Bool) -> NSImage {
@@ -243,8 +277,31 @@ final class IslandMascotView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let image else { return }
         let f = imageLayer.frame
-        image.draw(in: NSRect(x: f.minX, y: f.minY, width: image.size.width,
-                              height: image.size.height))
+        Self.islandAppearance.performAsCurrentDrawingAppearance {
+            image.draw(in: NSRect(x: f.minX, y: f.minY, width: image.size.width,
+                                  height: image.size.height))
+        }
+    }
+
+    private static let islandAppearance = NSAppearance(named: .darkAqua) ?? NSAppearance.currentDrawing()
+
+    private static func rasterised(_ image: NSImage, scale: CGFloat) -> CGImage? {
+        let w = Int((image.size.width * scale).rounded(.up))
+        let h = Int((image.size.height * scale).rounded(.up))
+        guard w > 0, h > 0,
+              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: w, pixelsHigh: h,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                         isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0)
+        else { return nil }
+        rep.size = image.size
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        islandAppearance.performAsCurrentDrawingAppearance {
+            image.draw(in: NSRect(origin: .zero, size: image.size))
+        }
+        return rep.cgImage
     }
 
     override func layout() {
@@ -279,7 +336,15 @@ final class IslandMascotView: NSView {
         CATransaction.setDisableActions(true)
         let s = scale
         imageLayer.contentsScale = s
-        imageLayer.contents = image?.layerContents(forContentsScale: s)
+        // A mark drawn at render time in `labelColor` (a badge dot over the mark,
+        // Clawd's "!") is rasterised here, as the island looks — always dark.
+        // Handed over as is, it would be drawn later in the system's appearance:
+        // black ink on a light Mac, gone into the black pill.
+        if let image, !image.isTemplate, let cg = Self.rasterised(image, scale: s) {
+            imageLayer.contents = cg
+        } else {
+            imageLayer.contents = image?.layerContents(forContentsScale: s)
+        }
         CATransaction.commit()
     }
 

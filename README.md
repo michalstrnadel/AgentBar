@@ -132,7 +132,7 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   [Dynamic Island](#dynamic-island).
 - **Live status per agent** — an animated mascot works the bar while an agent works:
   Clawd the crab (Claude), who acts out what the session is doing in
-  [nine scenes](#clawds-scenes), the knot + a braille dot-matrix that literally spells
+  [twelve scenes](#clawds-scenes), the knot + a braille dot-matrix that literally spells
   *codex* (Codex), the pixel mascot head + dots spelling *copilot* (Copilot), and the
   animated pixel rainbow arch (Antigravity).
 - **Notifications that only carry what wants you** — off by default, and three
@@ -280,13 +280,13 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
 
 ## Clawd's scenes
 
-While Claude works, Clawd shows what it's doing. There are **nine scenes**, each chosen
-from what the session reports and none of them made up. Each plays to the end of its
+Clawd shows what Claude is doing, and what it's waiting for. There are **twelve
+scenes**, each chosen from what the session reports and none of them made up. Each plays to the end of its
 loop before the next starts, so he doesn't flicker when Claude moves between thinking
 and tools.
 
 <p align="center">
-  <img src="docs/assets/clawd-scenes.gif?v=2026-10-03b" width="760" alt="Nine island pills, each with Clawd doing something different: thinking with dots above his head, reading a book, sweeping a magnifier, typing on a laptop, hammering on an anvil, sending waves from an antenna, walking beside a little Clawd, squashing a box shut, and walking">
+  <img src="docs/assets/clawd-scenes.gif?v=2026-10-03c" width="760" alt="Twelve island pills, each with Clawd doing something different: thinking with dots above his head, reading a book, sweeping a magnifier, typing on a laptop, hammering on an anvil, sending waves from an antenna, walking beside a little Clawd, squashing a box shut, walking, a raised hand with an amber exclamation mark, a raised hand with a blue question mark, and asleep with a z drifting up">
 </p>
 
 | Claude is… | Clawd… |
@@ -300,9 +300,13 @@ and tools.
 | delegating to a subagent | works beside a little Clawd |
 | compacting its context | squashes a box shut |
 | using any other tool | walks |
+| waiting for your approval | raises a hand, with an amber **!** |
+| asking you a question | raises a hand, with a blue **?** |
+| quiet for 10 minutes | falls asleep, z's drifting up |
 
 They are drawn as text art in the source and rendered at runtime, in both colour
-modes. [How they were made, and how to add one →](docs/clawd-scenes.md)
+modes. At rest the menu bar never moves, so there Clawd sleeps as a still picture;
+only the island, with the mascot's personality on, lets him breathe. [How they were made, and how to add one →](docs/clawd-scenes.md)
 
 ## Requirements
 

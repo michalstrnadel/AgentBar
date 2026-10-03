@@ -31,6 +31,9 @@ enum RenderClawdScenes {
         (.delegate, "Delegating", "a subagent"),
         (.compact, "Compacting", "the context is summarised"),
         (.walk, "Using tool", "any other tool"),
+        (.approve, "Needs approval", "a permission request waits on you"),
+        (.ask, "Has a question", "a question waits on you"),
+        (.sleep, "Asleep", "nothing has happened for 10 minutes"),
     ]
     static let fps = 12.5
 
@@ -70,7 +73,7 @@ enum RenderClawdScenes {
         let size = NSSize(width: margin * 2 + CGFloat(columns) * pill.width + CGFloat(columns - 1) * gap,
                           height: margin * 2 + CGFloat(rows) * pill.height + CGFloat(rows - 1) * gap)
         let loops = cast.map { loop($0.scene, pixel: pixel) }
-        let count = 150   // 12 s; long enough for every scene's slow beat to come round
+        let count = 200   // 16 s; long enough for every scene's slow beat to come round
         let frames = (0..<count).map { t in
             canvas(size) {
                 NSColor(white: 0.11, alpha: 1).setFill()
