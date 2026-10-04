@@ -3,6 +3,59 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.38.0 - 2026-10-05
+
+Claude Code 2.1.287 runs **mods** — plugins whose code lives inside its process, sees
+every tool call, and can approve one before anyone is asked. That is a new way for
+something to answer on your behalf, and until now AgentBar could not see it. This
+release is about making it visible, without AgentBar answering anything itself.
+
+### Added
+
+- **The AgentBar Claude Code mod** (`Scripts/mods/claude`), off until you switch it on
+  in **Settings ▸ Agents ▸ Claude Code mod** (or `agentbar wire claude-mod` on Linux).
+  Switching on adds one entry to `env.CLAUDE_CODE_PLUGIN_DIRS` in your Claude Code
+  settings, beside any of your own — backed up and shown as a diff first, like every
+  write AgentBar makes — and needs Claude Code 2.1.287 or later. The mod **observes
+  only**: every hook hands Claude Code's own result back untouched, and CI pins what
+  it may call (`claude plugin validate`) so it cannot quietly gain a capability
+  (SECURITY.md ▸ The Claude Code mod). It writes one file per session to
+  `~/.agentbar/mods.d/` (`docs/protocol.md` ▸ mods.d).
+- **Settings ▸ Claude Code**, a page for what answers for you inside Claude Code:
+  - **Answered without you** — what Claude Code ran or refused on its own, today and
+    over seven days, by your Claude Code rule (`Bash(git status:*)` — 2 ran), by its
+    permission mode, or by a hook or another mod, with the commands it ran most. It
+    says what it cannot see: what auto mode's classifier or don't-ask mode settles
+    after Claude Code would have asked happens after the mod looks.
+  - **Claude Code plugins that can answer for you** — every enabled plugin or mod that
+    can settle a prompt before AgentBar sees it, with what it can do ("Can hold or
+    refuse Bash commands before they run"), read from `claude plugin validate`. Works
+    without the mod. `agentbar doctor` lists them too.
+  - **Show other agents waiting, above Claude Code's prompt** — an optional line the
+    mod draws inside Claude Code while another session needs you, with a key that
+    jumps to it. It never answers anything.
+- **Claude's quota, live from Claude Code.** With the mod on, the five-hour and weekly
+  windows come straight from Claude Code after every turn — no Keychain, no sign-in,
+  no request of AgentBar's own — and the Claude meter uses them first, saying "from
+  Claude Code, live". The last reading stays for half an hour after the session ends.
+- **`ctx 82%`** on a Claude Code session's row, on the island and in the menu, once
+  its context window passes 70 % (amber from 85 %, red from 95 %): the one context
+  number worth a glance, because a full window is about to compact.
+- Claude Code's own decisions land in your record as `via: "claude"` rows, one per
+  tool call, with the rule or mode behind them; the export gains `by` and
+  `claude rule` columns. They never count as you: not toward "Allowed N× here", the
+  *Always* nudge, rule offers, rule agreement or the time agents waited, and they have
+  a ceiling of their own so a busy day cannot push your answers out. `agentbar
+  approvals` counts them on their own line. A rule of yours notes when Claude Code
+  already allows the same command itself.
+- `~/.agentbar/wire-enabled`, for integrations that start off (the mod is the first).
+
+### Fixed
+
+- **A Fix-it button no longer takes Settings ▸ Diagnostics down.** A row with a
+  repair button pinned its width to the list before it was in the list; AppKit raises
+  on that, and the rest of the report went with it.
+
 ## 1.37.0 - 2026-10-03
 
 ### Added
