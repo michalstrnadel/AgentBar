@@ -46,7 +46,16 @@ struct AnsweredWithoutYouTests {
             "Claude Code's permission mode — 1 run",
             "A hook or another mod — 1 refused",
             "Most often: git status 4×",
+            AnsweredWithoutYou.blindSpotText,
         ])
+    }
+
+    /// The mod cannot see what auto mode settles after an `ask`, and the card says
+    /// so every time it shows a number — never "everything that ran".
+    @Test func theBlindSpotIsAlwaysSaid() {
+        let m = model([row()])
+        #expect(AnsweredWithoutYou.lines(m).last == AnsweredWithoutYou.blindSpotText)
+        #expect(!AnsweredWithoutYou.nothingText.contains("everything"))
     }
 
     @Test func atMostFiveRulesThenTheRestTogether() {

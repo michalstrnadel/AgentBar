@@ -44,8 +44,14 @@ enum AnsweredWithoutYou {
         + "Claude Code runs without asking you."
     static let ledgerOffText = "Remember what I decided is off, so what Claude Code decides "
         + "on its own is not kept either."
-    static let nothingText = "Nothing in the last 7 days — Claude Code asked you about "
-        + "everything it ran."
+    static let nothingText = "Nothing in the last 7 days that Claude Code settled before "
+        + "a prompt was due."
+    /// Said under every non-empty card. The mod looks before Claude Code's permission
+    /// mode has its say, so what auto mode's classifier or don't-ask mode settles on an
+    /// `ask` never reaches it — and a card that read as "everything that ran unasked"
+    /// would be the confident wrong number this page exists to replace.
+    static let blindSpotText = "Not counted: what auto mode or don't-ask mode decides "
+        + "after Claude Code would have asked."
 
     /// The card's contents. `modInstalled` and `ledgerOn` only choose between the
     /// empty states: rows in the ledger are counted whatever they say now.
@@ -114,6 +120,7 @@ enum AnsweredWithoutYou {
                 "\(RulesView.readable($0.shape)) \($0.count)×"
             }.joined(separator: ", "))
         }
+        out.append(blindSpotText)
         return out
     }
 
