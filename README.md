@@ -538,7 +538,8 @@ the rest.
 the calls Claude Code allowed or refused on its own — by which rule, by your mode, or
 by a hook — and Claude Code's own figures for the context window and the five-hour and
 weekly limits. AgentBar turns each of those decisions into a line of your record
-(**Settings ▸ Approvals**) and shows the quota without asking Anthropic's servers.
+(**Settings ▸ Claude Code ▸ Answered without you**) and shows the quota without asking
+Anthropic's servers.
 Read-only tools (Read, Grep, Glob and the like) are left out: they change nothing.
 
 **What it never does.** It answers nothing, holds nothing and changes nothing: every
@@ -557,7 +558,7 @@ switch stays disabled and says so.
 
 **Plugins that can answer for you.** A mod is not the only thing that can settle a
 prompt before AgentBar sees it: any plugin with a `PreToolUse` or `PermissionRequest`
-hook can, and so can a mod hooked on `tool.call` or `tool.check`. **Settings ▸ Agents ▸
+hook can, and so can a mod hooked on `tool.call` or `tool.check`. **Settings ▸ Claude Code ▸
 Claude Code plugins that can answer for you** lists every enabled plugin that could,
 with a sentence on what it can do ("can hold or refuse Bash commands before they run"),
 and names the rest that are loaded. Nothing there is a problem — it is so that a prompt

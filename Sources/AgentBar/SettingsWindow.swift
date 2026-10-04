@@ -24,7 +24,10 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     var onChange: (() -> Void)?
 
     enum Page: String, CaseIterable {
-        case general, agents, notifications, shortcuts, usage, approvals, rules, diagnostics
+        case general, agents, notifications, shortcuts, usage, approvals, rules
+        // Spelled the way `agentbar://settings/claude-code` reads: links are lowercase.
+        case claudeCode = "claude-code"
+        case diagnostics
 
         var title: String {
             switch self {
@@ -35,6 +38,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             case .usage:       return "Usage"
             case .approvals:   return "Approvals"
             case .rules:       return "Rules"
+            case .claudeCode:  return "Claude Code"
             case .diagnostics: return "Diagnostics"
             }
         }
@@ -55,6 +59,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             // The one page where something acts on your behalf, so it does not
             // share a colour with the page that only remembers.
             case .rules:         return .systemIndigo
+            // Claude's own colour: the one page about one vendor says whose it is.
+            case .claudeCode:    return Agent.byID("claude").brand
             case .diagnostics:   return .systemOrange
             }
         }
@@ -68,6 +74,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             case .usage:       return "speedometer"
             case .approvals:   return "checkmark.shield"
             case .rules:       return "list.bullet.rectangle"
+            case .claudeCode:  return "sparkle"
             case .diagnostics: return "stethoscope"
             }
         }
@@ -93,6 +100,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     /// The Agents card, rebuilt by `syncAgents` — its subtitles say each agent's
     /// state, and a row's subtitle is fixed once the row is made.
     private var agentsHost: NSStackView!
+    /// The Claude Code page's plugin card, rebuilt by `syncPlugins` when the reading lands.
+    private var pluginsHost: NSStackView!
     /// The plugins card's last reading (`PluginInventory`), nil until the first one
     /// lands; the page shows a loading line meanwhile. Read again when it is older
     /// than a minute, so a plugin installed while Settings was closed shows up.
@@ -409,6 +418,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         agentsHost.orientation = .vertical
         agentsHost.alignment = .leading
         agentsHost.translatesAutoresizingMaskIntoConstraints = false
+        pluginsHost = NSStackView()
+        pluginsHost.orientation = .vertical
+        pluginsHost.alignment = .leading
+        pluginsHost.spacing = SettingsChrome.Space.gap
+        pluginsHost.translatesAutoresizingMaskIntoConstraints = false
     }
 
     private func buildPage(_ page: Page) -> NSView {
@@ -538,8 +552,15 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                       + "also what a rule is offered from, so switching it "
                                       + "off means no prompt ever offers one. What a rule "
                                       + "answers is written down either way."),
-                // What Claude Code decided itself, kept apart from what you did.
+            ])
+        case .claudeCode:
+            add([
+                // Everything that answers for you inside Claude Code, where AgentBar
+                // is never asked: what it decided itself, and the plugins that can.
+                // One vendor's page, because these are one vendor's mechanisms — the
+                // Agents page stays a list of every tool, not a tour of one.
                 SettingsChrome.card([SettingsChrome.customRow(AnsweredWithoutYouView())]),
+                pluginsHost,
             ])
         case .rules:
             add([
@@ -891,14 +912,23 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                control: copyExampleButton),
             SettingsChrome.noteRow(note),
         ])
-        let pluginsCard = SettingsChrome.card(pluginRows())
-        for view in [SettingsChrome.card(rows), SettingsChrome.header(AgentsPage.pluginsTitle),
-                     pluginsCard, SettingsChrome.caption(AgentsPage.pluginsFootnote), own] {
+        for view in [SettingsChrome.card(rows), own] {
             agentsHost.addArrangedSubview(view)
-            if view is NSTextField { continue }
             view.widthAnchor.constraint(equalTo: agentsHost.widthAnchor).isActive = true
         }
+        syncPlugins()
         refreshPluginsIfStale()
+    }
+
+    /// The Claude Code page's plugin card, from the last reading.
+    private func syncPlugins() {
+        for old in pluginsHost.arrangedSubviews { old.removeFromSuperview() }
+        for view in [SettingsChrome.header(AgentsPage.pluginsTitle), SettingsChrome.card(pluginRows()),
+                     SettingsChrome.caption(AgentsPage.pluginsFootnote)] {
+            pluginsHost.addArrangedSubview(view)
+            if view is NSTextField { continue }
+            view.widthAnchor.constraint(equalTo: pluginsHost.widthAnchor).isActive = true
+        }
     }
 
     /// One row per plugin that can answer Claude Code's prompts, then a dim line
@@ -946,7 +976,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             self.plugins = found
             self.pluginsReadAt = Date()
             self.pluginsReading = false
-            self.syncAgents()
+            self.syncPlugins()
         }
     }
 

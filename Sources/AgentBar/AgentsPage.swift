@@ -83,8 +83,9 @@ enum AgentsPage {
     static let pluginsEmpty = "No plugin can answer Claude Code's prompts for you."
     /// Under the card: why the card exists at all.
     static let pluginsFootnote = "A plugin that answers settles the prompt inside Claude Code: it never "
-        + "reaches AgentBar, and no rule of yours was asked. With the Claude Code mod on, "
-        + "each such answer still lands in your record, marked as a hook's."
+        + "reaches AgentBar, and no rule of yours was asked. With the Claude Code mod on, what "
+        + "one decides before a prompt is due lands in your record, marked as a hook's; a hook "
+        + "that answers the prompt itself does not."
 
     /// The line under a plugin's name: what it can do, and where it is enabled when
     /// more than one Claude config dir is in play.

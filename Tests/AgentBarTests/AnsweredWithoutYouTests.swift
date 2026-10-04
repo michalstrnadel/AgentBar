@@ -33,17 +33,17 @@ struct AnsweredWithoutYouTests {
         let m = model([row(), row("deny"), row(ago: 2 * 86_400), row(ago: 8 * 86_400)])
         #expect(m.today == .init(allowed: 1, denied: 1))
         #expect(m.week == .init(allowed: 2, denied: 1))   // eight days ago is out
-        #expect(AnsweredWithoutYou.lines(m).first == "Today 1 run, 1 refused · last 7 days 2 run, 1 refused")
+        #expect(AnsweredWithoutYou.lines(m).first == "Today 1 ran, 1 refused · last 7 days 2 ran, 1 refused")
     }
 
     @Test func eachSourceIsNamed() {
         let m = model([row(), row(), row(rule: "Bash(npm test:*)"), row(by: "mode"),
                        row("deny", by: "hook")])
         #expect(AnsweredWithoutYou.lines(m) == [
-            "Today 4 run, 1 refused · last 7 days 4 run, 1 refused",
-            "Your Claude Code rule `Bash(git:*)` — 2 run",
-            "Your Claude Code rule `Bash(npm test:*)` — 1 run",
-            "Claude Code's permission mode — 1 run",
+            "Today 4 ran, 1 refused · last 7 days 4 ran, 1 refused",
+            "Your Claude Code rule `Bash(git:*)` — 2 ran",
+            "Your Claude Code rule `Bash(npm test:*)` — 1 ran",
+            "Claude Code's permission mode — 1 ran",
             "A hook or another mod — 1 refused",
             "Most often: git status 4×",
             AnsweredWithoutYou.blindSpotText,

@@ -26,6 +26,10 @@ final class ClaudeLiveQuota {
 
     private let lock = NSLock()
     private var current: [ModReport] = []
+    /// The newest report with windows ever seen, kept after its session's sidecar is
+    /// cleaned up: a quota is the account's, not the session's, and it should not
+    /// vanish from the meter the moment the last session ends. `maxAge` still retires it.
+    private var lastKnown: ModReport?
     private var lastSignature = ""
     private var pending = false
     private let refreshUsage: () -> Void
@@ -39,9 +43,12 @@ final class ClaudeLiveQuota {
     /// once per burst, not once per file.
     func update(_ reports: [ModReport], now: Date = Date()) {
         let withLimits = reports.filter { !$0.rateLimits.isEmpty }
-        let signature = Self.signature(Self.snapshot(from: withLimits, now: now))
         lock.lock()
+        if let newest = withLimits.max(by: { $0.ts < $1.ts }), newest.ts >= lastKnown?.ts ?? 0 {
+            lastKnown = newest
+        }
         current = withLimits
+        let signature = Self.signature(Self.snapshot(from: current + (lastKnown.map { [$0] } ?? []), now: now))
         let moved = signature != lastSignature
         lastSignature = signature
         let schedule = moved && !pending
@@ -58,7 +65,7 @@ final class ClaudeLiveQuota {
     /// The freshest windows, or nil when no session reported any recently. Any queue.
     func latest(now: Date = Date()) -> ClaudeQuota.Snapshot? {
         lock.lock(); defer { lock.unlock() }
-        return Self.snapshot(from: current, now: now)
+        return Self.snapshot(from: current + (lastKnown.map { [$0] } ?? []), now: now)
     }
 
     // MARK: - Pure

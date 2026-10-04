@@ -1,6 +1,6 @@
 import Cocoa
 
-/// **Settings ▸ Approvals ▸ Answered without you**: what Claude Code ran or refused
+/// **Settings ▸ Claude Code ▸ Answered without you**: what Claude Code ran or refused
 /// on its own, before any prompt existed, as the AgentBar mod saw it — and on
 /// whose say-so: one of your Claude Code rules, its permission mode, or a hook.
 ///
@@ -105,7 +105,7 @@ enum AnsweredWithoutYou {
     /// "38 run, 2 refused" — the verbs a person would use about commands.
     static func phrase(_ t: Tally) -> String {
         var parts: [String] = []
-        if t.allowed > 0 { parts.append("\(t.allowed) run") }
+        if t.allowed > 0 { parts.append("\(t.allowed) ran") }
         if t.denied > 0 { parts.append("\(t.denied) refused") }
         return parts.isEmpty ? "none" : parts.joined(separator: ", ")
     }
@@ -194,6 +194,11 @@ final class AnsweredWithoutYouView: NSView {
         NotificationCenter.default.addObserver(self, selector: #selector(windowBecameKey),
                                                name: NSWindow.didBecomeKeyNotification,
                                                object: window)
+        // While it is on screen, new rows count at once: Claude Code's decisions
+        // arrive in the background, and a card that only caught up when clicked
+        // would show "turn the mod on" beside a ledger that already has them.
+        NotificationCenter.default.addObserver(self, selector: #selector(windowBecameKey),
+                                               name: DecisionLedger.didAppend, object: nil)
         reload()
     }
 

@@ -651,6 +651,11 @@ final class DecisionLedger {
     private static let cacheLock = NSLock()
     private static var cache: (url: String, stamp: (TimeInterval, Int), records: [Record])?
 
+    /// Posted on the main queue after rows were appended, by anyone — a click, a
+    /// rule, or Claude Code's own decisions arriving from `mods.d`. A view showing
+    /// counts from the ledger listens here instead of waiting to be shown again.
+    static let didAppend = Notification.Name("AgentBarDecisionLedgerDidAppend")
+
     static func append(_ records: [Record], to url: URL = DecisionLedger.fileURL) {
         let lines = records.compactMap { r -> String? in
             guard let data = try? JSONSerialization.data(withJSONObject: r.json,
@@ -668,6 +673,7 @@ final class DecisionLedger {
         guard fd >= 0 else { return }
         defer { close(fd) }
         _ = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+        DispatchQueue.main.async { NotificationCenter.default.post(name: didAppend, object: nil) }
     }
 
     /// Claude Code's own decisions have a ceiling of their own. A busy day can

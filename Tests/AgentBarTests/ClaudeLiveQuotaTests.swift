@@ -21,6 +21,16 @@ struct ClaudeLiveQuotaTests {
         return r
     }
 
+    /// The quota is the account's: when the last session ends and its sidecar is
+    /// cleaned up, the meter keeps the last reading until it is too old to trust.
+    @Test func theLastReadingOutlivesItsSession() {
+        let live = ClaudeLiveQuota(refreshUsage: {})
+        live.update([report("a", age: 60)], now: Self.now)
+        live.update([], now: Self.now)
+        #expect(live.latest(now: Self.now)?.windows.count == 2)
+        #expect(live.latest(now: Self.now.addingTimeInterval(ClaudeLiveQuota.maxAge)) == nil)
+    }
+
     @Test func theWindowsCarryTheNamesTheOtherDoorsUse() throws {
         let snap = try #require(ClaudeLiveQuota.snapshot(from: [report("a", age: 10)], now: Self.now))
         #expect(snap.windows.map(\.name) == ["5h", "weekly"])
