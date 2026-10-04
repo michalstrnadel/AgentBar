@@ -5,7 +5,7 @@ AgentBar has no daemon and no IPC: **the folder is the protocol**. Hook scripts
 the macOS menu bar app, the cross-platform `agentbar` CLI, a waybar module — reads
 them. This document is the normative contract; it is OS-neutral (macOS, Linux).
 
-All writes MUST be atomic: write to `<file>.<pid>.tmp` in the same directory, then
+All writes MUST be atomic (one exception: `mods.d/`, below): write to `<file>.<pid>.tmp` in the same directory, then
 `rename(2)` over the final name. Readers never observe partial files and need no
 locks. All timestamps (`ts`) are Unix seconds.
 
@@ -22,6 +22,8 @@ locks. All timestamps (`ts`) are Unix seconds.
   hooks/       installed copies of the hook scripts (refreshed by the installer)
   claude-config-dir  optional hint: custom CLAUDE_CONFIG_DIR path (one line)
   wire-disabled  agents the installers leave unwired, one id per line (writer: frontends)
+  mods.d/      one JSON per Claude Code session the AgentBar mod sees (writer: the mod; reader: frontends)
+  mods/        installed copy of the AgentBar Claude Code mod, and its config.json (writer: frontends)
 ```
 
 ### Where state lives
@@ -405,14 +407,24 @@ decisions about the same command are two decisions, and counting them is the poi
   would be if one were ever typed into a command.
 - `display` is the request's own one-line summary, already capped by the hook, kept
   so a count can be shown next to what it refers to.
-- `via` names what answered: `app` | `cli` | **`rule`**. `rule` means nobody was
-  asked — a rule the user wrote answered on their behalf (see `rules.json` below).
+- `via` names what answered: `app` | `cli` | **`rule`** | **`claude`**. `rule` means
+  nobody was asked — a rule the user wrote answered on their behalf (see `rules.json`
+  below). `claude` means Claude Code decided the call itself, before any prompt existed,
+  and the AgentBar mod saw it (see `mods.d` below); such a row also carries `by`
+  (`rule` — a Claude Code settings rule, named in `claudeRule`; `mode` — the permission
+  mode or the tool's own check; `hook` — a hook or another mod, which Claude Code does
+  not name), `reason` (Claude Code's sentence, capped at 300 characters) and
+  `toolUseId`, which is unique: a frontend writes one row per id, ever. Its `waited`
+  is `0`.
 - `rule` is the id of that rule, and is empty for every other `via`. It is what
   makes a rule auditable: "what has this rule ever done" is answered by filtering
   the ledger on it, which is why the rules file itself holds no counters.
 - A reader that reports how many prompts a person answered, or how long agents
-  waited on them, MUST count `via:"rule"` rows **separately**. Nobody waited and
-  nobody was asked; folding them in overstates one number and understates the other.
+  waited on them, MUST count only `via` `app` and `cli` as the person's, and count
+  `rule` and `claude` rows **separately**. Nobody waited and nobody was asked; folding
+  them in overstates one number and understates the other. For the same reason a
+  `claude` row never pairs with a `watch` row as agreement, and never counts towards
+  "allowed N× here".
 
 **What is deliberately absent.** Keystroke approvals — the ones AgentBar sends for
 agents with no request file (Antigravity, and Codex sessions started before its
@@ -426,6 +438,54 @@ session as "nothing was ever approved there".
 Rows are the user's own record of their own decisions. Nothing is sent anywhere, a
 frontend MAY offer a switch to stop writing them (AgentBar: **Settings ▸
 Approvals**), and `agentbar forget` empties the file.
+
+## mods.d — what Claude Code decided without asking, and what it measures
+
+Claude Code 2.1.287 and later loads **mods**: plugins whose code runs inside its own
+process, sees every tool call, and may approve one before a prompt exists. The
+AgentBar mod (`Scripts/mods/claude`, opt-in: Settings ▸ Agents ▸ Claude Code mod, or
+`agentbar wire claude-mod`) **observes only** — every hook passes Claude Code's own
+result through unchanged — and writes one file per session:
+`mods.d/<session_id>.json`, where `session_id` is the same id the session's
+`state.d` row is named by.
+
+```json
+{"v":1,"agent":"claude","session_id":"0fbdbf48-…","ts":1791146583,"mod":"1.36.0",
+ "cwd":"/Users/me/AgentBar","ended":false,
+ "context":{"percent":16,"tokens":31310,"window":200000},
+ "rate_limits":[{"kind":"five_hour","percent_used":62,"resets_at":"2026-10-04T23:00:00Z"},
+                {"kind":"seven_day","percent_used":28,"resets_at":"2026-10-10T05:00:00Z"}],
+ "subagents":0,
+ "decisions":[{"id":"toolu_013T…","ts":1791146581,"tool":"Bash",
+               "input":{"command":"git status --short"},
+               "verdict":"allow","by":"rule","rule":"Bash(git status:*)","reason":""}]}
+```
+
+- **Not atomic.** A mod can only rewrite a file in place (Claude Code gives it no
+  rename), so this is the one file in the protocol a reader can catch half-written.
+  A reader MUST treat a file that does not parse as "no news" and keep what it read
+  last; the next write, at most a few seconds later, is whole again.
+- `context` and `rate_limits` are Claude Code's own figures (`$.session.usage()`): a
+  figure it does not have is left out, never zeroed. `rate_limits` is empty off a
+  subscription. `percent_used` is 0–100 and may pass 100 on an exceeded spend limit.
+- `decisions` is a ring of the newest 200 verdicts Claude Code reached **without a
+  prompt**: `allow` or `deny`, never `ask` (an `ask` reaches the person, and from
+  there `requests.d`). Read-only tools (`Read`, `Glob`, `Grep`, `LS`, `TodoWrite`,
+  `NotebookRead`, `WebSearch`, `ToolSearch`, `BashOutput`) are left out: they change
+  nothing, and listing every file read would bury the calls that did. `input` keeps
+  only `command`, `file_path`, `url` and `description`, each capped at 2 KB. `by` is
+  as in `decisions.jsonl`: `rule` with `rule` naming the settings rule, `mode`, or
+  `hook`. A `deny` with `by: "hook"` is how a mod holding a command (and the person
+  cancelling it there) shows up.
+- `ended` is set when Claude Code ends the session. The mod cannot delete a file, so
+  a frontend removes `mods.d/<id>.json` once the `state.d` row is gone and either
+  `ended` is true or `ts` is more than 24 hours old.
+- A frontend turns each decision into one `decisions.jsonl` row (`via: "claude"`),
+  keyed by `id`, and never again for the same id.
+
+The mod reads `mods/config.json` (`{"band": true}` turns on the line it draws above
+Claude Code's prompt when *another* session waits on the person — off unless set).
+`AGENTBAR_HOME` moves `mods.d/` and `mods/` with everything else.
 
 ## rules.json — what the human decided in advance
 
