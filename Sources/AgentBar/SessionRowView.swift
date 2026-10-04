@@ -25,6 +25,10 @@ final class SessionRowView: NSView {
         var agent: String
         /// Whose brand colour a working dot takes.
         var agentID: String
+        /// "ctx 82%" once a Claude Code session's context is filling up, "" until
+        /// then and for every row the mod does not report on (`ContextGauge`).
+        var context = ""
+        var contextLevel: ContextGauge.Level = .hidden
     }
 
     static func content(for s: Session, ended: Bool = false) -> Content {
@@ -56,12 +60,22 @@ final class SessionRowView: NSView {
         }
         // Accurate as of the render; a menu stays open too briefly to need ticking.
         return Content(dot: dot, name: name, detail: detail, elapsed: s.elapsed ?? "",
-                       agent: agent, agentID: s.agentID)
+                       agent: agent, agentID: s.agentID,
+                       context: ContextGauge.text(s.contextPercent) ?? "",
+                       contextLevel: ContextGauge.level(s.contextPercent))
     }
 
     /// The same words as one line, for accessibility and type-to-select.
     static func plainTitle(_ c: Content) -> String {
-        [c.name, c.detail, c.elapsed, c.agent].filter { !$0.isEmpty }.joined(separator: ", ")
+        let context = c.context.replacingOccurrences(of: "ctx ", with: "context ")
+            + (c.context.isEmpty ? "" : " full")
+        return [c.name, c.detail, context, c.elapsed, c.agent].filter { !$0.isEmpty }
+            .joined(separator: ", ")
+    }
+
+    /// Room the context figure takes beside the time, when there is one.
+    static func contextWidth(_ c: Content) -> CGFloat {
+        c.context.isEmpty ? 0 : textWidth(c.context, elapsedFont) + gap
     }
 
     // MARK: - Metrics
@@ -98,7 +112,7 @@ final class SessionRowView: NSView {
         let textX = textX(markWidth: markWidth)
         let left = textWidth(c.name, nameFont)
             + (c.detail.isEmpty ? 0 : gap + textWidth(c.detail, detailFont))
-        let right = elapsedColumn + gap + agentColumn + rightPad
+        let right = contextWidth(c) + elapsedColumn + gap + agentColumn + rightPad
         return min(maxWidth, max(minWidth, textX + left + gap * 2 + right))
     }
 
@@ -108,7 +122,8 @@ final class SessionRowView: NSView {
     static func textLayout(_ c: Content, width: CGFloat,
                            markWidth: CGFloat = defaultMarkWidth) -> (name: CGFloat, detail: CGFloat) {
         let textX = textX(markWidth: markWidth)
-        let room = max(0, width - textX - (elapsedColumn + gap + agentColumn + rightPad) - gap * 2)
+        let room = max(0, width - textX - contextWidth(c)
+                       - (elapsedColumn + gap + agentColumn + rightPad) - gap * 2)
         let name = min(textWidth(c.name, nameFont), room)
         let left = room - name - gap
         let detail = c.detail.isEmpty || left < 24 ? 0 : min(textWidth(c.detail, detailFont), left)
@@ -193,6 +208,14 @@ final class SessionRowView: NSView {
              width: min(Self.textWidth(content.agent, Self.agentFont), Self.agentColumn))
         drawRight(content.elapsed, font: Self.elapsedFont, color: tertiary, maxX: agentX - Self.gap,
                   width: Self.elapsedColumn)
+        // Context, just left of the time and in the time's type: a quiet figure
+        // until it is close to full, then the colour of something to look at.
+        if !content.context.isEmpty {
+            let color = lit ? secondary : ContextGauge.menuColor(content.contextLevel, fallback: tertiary)
+            drawRight(content.context, font: Self.elapsedFont, color: color,
+                      maxX: agentX - Self.gap - Self.elapsedColumn - Self.gap,
+                      width: Self.contextWidth(content))
+        }
 
         // A view item gets no submenu arrow from the menu; the keystroke info
         // submenu of a permission row still needs one to be found.

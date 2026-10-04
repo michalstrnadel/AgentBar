@@ -272,7 +272,8 @@ final class UsageCenter {
     /// line spent on the absence of news while "74 % of the week left" sits in a
     /// tooltip nobody opens.
     static func reading(provider: String, windows: [UsageWindow], now: Date = Date(),
-                        note: String? = nil, account: String? = nil) -> Reading? {
+                        note: String? = nil, account: String? = nil,
+                        source: String? = nil) -> Reading? {
         let lead = windows.first { !$0.expired(now: now) } ?? windows.first
         var parts: [String] = []
         if let lead { parts.append(short(lead, now: now)) }
@@ -281,6 +282,8 @@ final class UsageCenter {
         var extras = windows.filter { $0.name != lead?.name }
             .map { "\($0.name): \(short($0, now: now))" }
         if let account { extras.append("account: \(account)") }
+        // Where the number came from, when that is worth knowing.
+        if let source { extras.append(source) }
         return Reading(provider: provider, text: parts.joined(separator: " · "),
                        detail: extras.isEmpty ? nil : extras.joined(separator: "\n"),
                        windows: windows, note: note)
@@ -387,10 +390,18 @@ final class UsageCenter {
     /// Same 24h stance as the Codex staleness guard.
     private static let scanWindow: TimeInterval = maxAge
 
-    private func claudeReading() -> Reading? {
+    /// `live` is a parameter so the order of the doors is testable without a
+    /// running mod; every caller takes the default.
+    func claudeReading(live: ClaudeQuota.Snapshot? = ClaudeLiveQuota.shared.latest()) -> Reading? {
         // The real windows when the switch is on and the answer arrived; the
         // local half-measure otherwise. Never both — two Claude rows saying
         // different things is worse than either of them alone.
+        // First Claude Code's own figures, through the AgentBar mod: no network,
+        // no Keychain, and as fresh as its last request.
+        if let live {
+            return Self.reading(provider: "Claude", windows: live.windows,
+                                source: ClaudeLiveQuota.sourceLine)
+        }
         // Two doors to the same numbers: the login you signed into here, and
         // Claude Code's own stored token. Either is a real answer; whichever
         // answered is the one shown, and never both.

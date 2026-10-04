@@ -256,7 +256,10 @@ final class RuleSheet: NSObject {
                               common: [String] = RuleSheet.commonShapes) -> [String] {
         var seen = Set<String>()
         var out: [String] = []
-        for r in records.reversed() where !r.shape.isEmpty && seen.insert(r.shape).inserted {
+        // Not Claude Code's own decisions: a rule is written from what the person
+        // decided, and never from anything the agent produced.
+        for r in records.reversed() where r.via != "claude" && !r.shape.isEmpty
+            && seen.insert(r.shape).inserted {
             out.append(r.shape)
         }
         for c in common where seen.insert(c).inserted { out.append(c) }
@@ -271,7 +274,8 @@ final class RuleSheet: NSObject {
                                  history: [HistoryStore.Record] = HistoryStore.cached()) -> [String] {
         var seen = Set<String>()
         var out: [String] = []
-        for cwd in [first] + decisions.reversed().map(\.cwd) + history.reversed().map(\.cwd)
+        let decided = decisions.reversed().filter { $0.via != "claude" }.map(\.cwd)
+        for cwd in [first] + decided + history.reversed().map(\.cwd)
         where !cwd.isEmpty && seen.insert(cwd).inserted {
             out.append(cwd)
         }

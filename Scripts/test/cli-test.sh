@@ -472,6 +472,12 @@ check "rules.json holds no counter"         '! grep -q "fired" "$HOME/.agentbar/
 # A rule's row is not the person answering: it must not inflate "N answered".
 OUT="$("$CLI" approvals)"
 check "approvals keeps rules apart"         'echo "$OUT" | grep -q "0 answered" && echo "$OUT" | grep -q "1 by your rules"'
+# Claude Code deciding before any prompt existed is not the person answering either.
+printf '{"v":1,"ts":%s,"agent":"claude","sessionId":"s1","project":"proj","cwd":"%s","tool":"Bash","shape":"bash:git status","display":"Bash: git status","decision":"allow","waited":0,"via":"claude","by":"rule","claudeRule":"Bash(git status:*)","toolUseId":"toolu_1"}\n' \
+  "$(date +%s)" "$HOME/proj" >> "$HOME/.agentbar/decisions.jsonl"
+OUT="$("$CLI" approvals)"
+check "approvals keeps Claude Code apart"   'echo "$OUT" | grep -q "0 answered" && echo "$OUT" | grep -q "1 decided by Claude Code"'
+check "the export names Claude Code's rule" '"$CLI" approvals --export | grep -qF "\"claude\",\"\",\"rule\",\"Bash(git status:*)\""'
 
 # One bad rule refuses the whole file: a policy half in force is worse than none.
 printf '{"v":1,"rules":[{"id":"r-aaa111","decision":"allow","shape":"bash:git status","cwd":"%s"},{"id":"r-ccc333","decision":"allow","shape":"bash:ls"}]}' \

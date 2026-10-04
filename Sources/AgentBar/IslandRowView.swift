@@ -299,6 +299,13 @@ final class IslandRowView: NSView {
         let agent = s.agent
         var out = [chip(agent.name, tint: agent.brand)]
         if let m = s.modelChip { out.append(chip(m, tint: NSColor.white.withAlphaComponent(0.85))) }
+        // Next to the model, whose window it is: only once it is worth knowing.
+        if let ctx = ContextGauge.text(s.contextPercent) {
+            let c = chip(ctx, tint: ContextGauge.islandTint(ContextGauge.level(s.contextPercent)))
+            c.setAccessibilityElement(true)
+            c.setAccessibilityLabel(ContextGauge.spoken(s.contextPercent))
+            out.append(c)
+        }
         if s.entrypoint == "cloud" {
             out.append(chip("Cloud", tint: .white))
         } else if s.entrypoint == "claude-desktop" {

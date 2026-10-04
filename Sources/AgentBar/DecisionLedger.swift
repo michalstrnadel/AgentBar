@@ -84,19 +84,47 @@ final class DecisionLedger {
         /// How long the agent sat blocked before this landed. The half of the loop
         /// nobody measures.
         var waited: TimeInterval = 0
-        /// app | cli | rule — which frontend answered, or that nobody did and a
-        /// rule the human wrote answered for them.
+        /// app | cli | rule | claude — which frontend answered, or that nobody did:
+        /// a rule the human wrote answered for them (`rule`), or Claude Code decided
+        /// the call itself before any prompt existed and the AgentBar mod saw it
+        /// (`claude`, see `ClaudeDecisionIngest`).
         var via = ""
         /// The id of the rule that answered, when `via` is "rule". This is what
         /// makes a rule auditable: the row names the decision it came from, so
         /// "what did this rule ever do" is a question with an answer.
         var rule = ""
+        /// For a `claude` row: who in Claude Code decided — `rule` (a settings rule,
+        /// named in `claudeRule`), `mode` (the permission mode or the tool's own
+        /// check) or `hook` (a hook or another mod). Empty for every other `via`.
+        var by = ""
+        var claudeRule = ""
+        /// Claude Code's own sentence about it, capped at 300 characters.
+        var reason = ""
+        /// The tool call's id. Unique: one row per id, ever — what keeps a sidecar
+        /// read twice from becoming two decisions.
+        var toolUseId = ""
+
+        /// Whether a person made this decision. `rule` and `claude` rows are the
+        /// two kinds nobody was asked about, and every count that is a claim about
+        /// the person — "allowed 23× here", how long agents waited on you, whether
+        /// you agreed with a watching rule — leaves them out (`docs/protocol.md`).
+        /// Spelled as what it excludes rather than as `app`/`cli`, so a row written
+        /// before `via` meant anything still counts as the person's, as it always did.
+        var isPersonal: Bool { via != "rule" && via != "claude" }
 
         var json: [String: Any] {
-            ["v": 1, "ts": Int(ts), "agent": agent, "sessionId": sessionId,
-             "project": project, "cwd": cwd, "tool": tool, "shape": shape,
-             "display": display, "decision": decision,
-             "waited": Int(waited.rounded()), "via": via, "rule": rule, "would": would]
+            var o: [String: Any] = [
+                "v": 1, "ts": Int(ts), "agent": agent, "sessionId": sessionId,
+                "project": project, "cwd": cwd, "tool": tool, "shape": shape,
+                "display": display, "decision": decision,
+                "waited": Int(waited.rounded()), "via": via, "rule": rule, "would": would]
+            // Only when there is something to say, so a row of any other kind is
+            // byte for byte what it was before Claude Code's own decisions arrived.
+            if !by.isEmpty { o["by"] = by }
+            if !claudeRule.isEmpty { o["claudeRule"] = claudeRule }
+            if !reason.isEmpty { o["reason"] = reason }
+            if !toolUseId.isEmpty { o["toolUseId"] = toolUseId }
+            return o
         }
 
         init() {}
@@ -130,6 +158,10 @@ final class DecisionLedger {
             via = o["via"] as? String ?? ""
             rule = o["rule"] as? String ?? ""
             would = o["would"] as? String ?? ""
+            by = o["by"] as? String ?? ""
+            claudeRule = o["claudeRule"] as? String ?? ""
+            reason = o["reason"] as? String ?? ""
+            toolUseId = o["toolUseId"] as? String ?? ""
         }
     }
 
@@ -179,8 +211,12 @@ final class DecisionLedger {
     /// Watching rows are included and say so in `decision`: a week of what a rule
     /// *would* have done is exactly the evidence somebody would be asked for.
     static func csv(_ rows: [Record]) -> String {
+        // `by` and `claude rule` sit before the wait, which stays last: they say
+        // who inside Claude Code made one of its own decisions, and are empty on
+        // every other row.
         let header = ["when", "agent", "directory", "tool", "shape", "what",
-                      "decision", "would have", "answered by", "rule", "waited (s)"]
+                      "decision", "would have", "answered by", "rule", "by", "claude rule",
+                      "waited (s)"]
         let stamp = ISO8601DateFormatter()
         stamp.formatOptions = [.withInternetDateTime]
         var out = [header.joined(separator: ",")]
@@ -188,7 +224,7 @@ final class DecisionLedger {
             out.append([
                 stamp.string(from: Date(timeIntervalSince1970: r.ts)),
                 r.agent, r.cwd, r.tool, r.shape, r.display,
-                r.decision, r.would, r.via, r.rule,
+                r.decision, r.would, r.via, r.rule, r.by, r.claudeRule,
                 String(Int(r.waited.rounded())),
             ].map(quoted).joined(separator: ","))
         }
@@ -214,16 +250,29 @@ final class DecisionLedger {
     /// to be **free of arguments** — paths, URLs and flags are where a one-off
     /// lives, and where a secret would live if one ever got typed into a command.
     static func shape(of request: ApprovalRequest) -> String {
-        switch request.context {
-        case .bash(let command):
-            return "bash:" + verb(of: command)
-        default:
-            break
-        }
-        if let path = filePath(of: request) {
-            return "\(request.toolName.lowercased()):\(folder(of: path))"
-        }
-        return "tool:" + request.toolName
+        var command: String?
+        if case .bash(let c) = request.context { command = c }
+        return shape(tool: request.toolName, command: command, filePath: filePath(of: request))
+    }
+
+    /// The same key for a call Claude Code decided itself, from what the mod keeps
+    /// of its input (`mods.d`): `command` for Bash, `file_path` for the file tools.
+    /// Through the same core as `shape(of:)`, so a rule's shape and a Claude Code
+    /// decision's shape cannot drift apart. The CLI's `decisionShapeOfCall` mirrors
+    /// it, held to it by `Tests/Fixtures/tool-shape`.
+    static func shape(tool: String, input: [String: Any]) -> String {
+        let command = tool == "Bash" ? (input["command"] as? String ?? "") : nil
+        let path = ["file_path", "notebook_path", "path", "filePath"]
+            .lazy.compactMap { input[$0] as? String }.first { !$0.isEmpty }
+        return shape(tool: tool, command: command, filePath: path)
+    }
+
+    /// The one place a shape is made. `command` is non-nil for a shell command —
+    /// even an empty one, which is `bash:` and never a tool.
+    private static func shape(tool: String, command: String?, filePath: String?) -> String {
+        if let command { return "bash:" + verb(of: command) }
+        if let path = filePath { return "\(tool.lowercased()):\(folder(of: path))" }
+        return "tool:" + tool
     }
 
     /// The first two words that matter. `git`, `npm` and friends are multiplexers —
@@ -310,10 +359,13 @@ final class DecisionLedger {
     /// Rows a rule wrote are **not** counted here. The sentence this feeds says
     /// "Allowed 23× here", which is a claim about the person — and a rule that
     /// answered for them is precisely not them deciding again. Those rows are
-    /// counted by `firings(rule:in:)`, under the rule that made them.
+    /// counted by `firings(rule:in:)`, under the rule that made them. Neither are
+    /// Claude Code's own decisions: two hundred `git status` calls its settings
+    /// allowed are not one thing you did, and must never earn an *Always* nudge or
+    /// a rule offer.
     static func summary(shape: String, cwd: String, in records: [Record]) -> Summary {
         var out = Summary()
-        for r in records where r.shape == shape && r.via != "rule"
+        for r in records where r.shape == shape && r.isPersonal
             && (cwd.isEmpty || r.cwd == cwd) {
             switch r.decision {
             case "allow", "always": out.allowed += 1
@@ -441,7 +493,7 @@ final class DecisionLedger {
     static let agreementWindow: TimeInterval = 15 * 60
 
     /// Pairs each `watch` row of one rule with the human's answer to the same
-    /// prompt: the first unclaimed row a person wrote (`via` is not "rule") with
+    /// prompt: the first unclaimed row a person wrote (`isPersonal`: not a rule, not Claude Code) with
     /// a verdict (`allow`, `always`, `deny` — `defer` and `answer` are not
     /// verdicts), in the same session, for the same tool and shape, no earlier
     /// than the watch row and within `agreementWindow` of it. `always` is an allow.
@@ -463,7 +515,7 @@ final class DecisionLedger {
             .sorted { ($0.element.ts, $0.offset) < ($1.element.ts, $1.offset) }
         // The human's verdicts, oldest first, by index so a claimed one stays claimed.
         let answers = records.enumerated()
-            .filter { $0.element.via != "rule" && !$0.element.sessionId.isEmpty
+            .filter { $0.element.isPersonal && !$0.element.sessionId.isEmpty
                       && ["allow", "always", "deny"].contains($0.element.decision) }
             .sorted { ($0.element.ts, $0.offset) < ($1.element.ts, $1.offset) }
         var claimed = Set<Int>()
@@ -563,7 +615,8 @@ final class DecisionLedger {
         // A rule answers in milliseconds and nobody was asked, so counting its
         // rows here would inflate "18 answered" with decisions the person never
         // made and deflate the average wait with times nobody waited.
-        for r in records where r.ts >= since && r.ts <= until && r.via != "rule" {
+        // Claude Code's own decisions likewise: nobody was asked and nobody waited.
+        for r in records where r.ts >= since && r.ts <= until && r.isPersonal {
             out.answered += 1
             out.waited += r.waited
         }
@@ -617,11 +670,21 @@ final class DecisionLedger {
         _ = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
     }
 
+    /// Claude Code's own decisions have a ceiling of their own. A busy day can
+    /// write hundreds of them, and under one shared ceiling they would push the
+    /// person's own record out — the half this file exists for.
+    static let maxClaudeRecords = 5_000
+
     static func prune(url: URL = DecisionLedger.fileURL,
                       now: TimeInterval = Date().timeIntervalSince1970) {
         let all = read(url: url)
-        var kept = all.filter { now - $0.ts <= maxAge }
-        if kept.count > maxRecords { kept = Array(kept.suffix(maxRecords)) }
+        let fresh = all.enumerated().filter { now - $0.element.ts <= maxAge }
+        var own = fresh.filter { $0.element.via != "claude" }
+        var claude = fresh.filter { $0.element.via == "claude" }
+        if own.count > maxRecords { own = Array(own.suffix(maxRecords)) }
+        if claude.count > maxClaudeRecords { claude = Array(claude.suffix(maxClaudeRecords)) }
+        // Back in file order: the two ceilings choose what stays, not where it sits.
+        let kept = (own + claude).sorted { $0.offset < $1.offset }.map(\.element)
         guard kept.count != all.count else { return }
         let body = kept.compactMap { r -> String? in
             guard let d = try? JSONSerialization.data(withJSONObject: r.json,

@@ -243,6 +243,13 @@ final class RulesView: NSView {
         }
         if !rule.tell.isEmpty { text += " · tells it “\(rule.tell)”" }
         if !rule.note.isEmpty { text += " · " + rule.note }
+        // An approving rule whose prompts Claude Code mostly never shows you: worth
+        // one clause, and the whole sentence when hovered.
+        if let claude = AnsweredWithoutYou.claudeAlreadyAllows(rule, in: ledger, now: now) {
+            let note = AnsweredWithoutYou.alreadyAllowsNote(claude)
+            text += " · " + note
+            tooltip = tooltip.map { $0 + "\n" + note } ?? note
+        }
         return (text, tooltip, counts.isEmpty)
     }
 

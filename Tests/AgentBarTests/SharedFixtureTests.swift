@@ -105,6 +105,19 @@ struct SharedFixtureTests {
         }
     }
 
+    // MARK: - The shape of a call Claude Code decided itself
+
+    @Test func aClaudeCodeDecisionHasTheShapeTheFixtureSays() throws {
+        let cases = Self.cases(try Self.load("tool-shape"))
+        #expect(cases.count >= 15)
+        for c in cases {
+            let name = c["name"] as? String ?? "?"
+            let shape = DecisionLedger.shape(tool: c["tool"] as? String ?? "",
+                                             input: c["input"] as? [String: Any] ?? [:])
+            #expect(shape == c["shape"] as? String, "\(name)")
+        }
+    }
+
     // MARK: - The rules file, whole-file refusals included
 
     @Test func rulesFileReadingAgreesWithTheFixture() throws {

@@ -377,20 +377,37 @@ function decisionVerb(command) {
 // A string field or nothing — ApprovalRequest reads every field `as? String`.
 const textField = (v) => (typeof v === "string" ? withoutFeff(v) : "");
 
+const SHAPE_PATH_KEYS = ["file_path", "notebook_path", "path", "filePath"];
+
 function decisionShape(r) {
   const ctx = r.context && typeof r.context === "object" ? r.context : {};
-  if (ctx.kind === "bash") return "bash:" + decisionVerb(textField(ctx.command));
   // The hook's own field first: toolInputPretty is cut at 4 KB, and a cut is
   // not JSON, so a large edit would otherwise lose its shape.
   let p = textField(r.filePath);
-  if (!p) {
+  if (!p && ctx.kind !== "bash") {
     let input = null;
     try { input = JSON.parse(textField(r.toolInputPretty)); } catch {}
     if (input && typeof input === "object" && !Array.isArray(input)) {
-      p = ["file_path", "notebook_path", "path", "filePath"].map((k) => textField(input[k])).find(Boolean) || "";
+      p = SHAPE_PATH_KEYS.map((k) => textField(input[k])).find(Boolean) || "";
     }
   }
-  const tool = textField(r.toolName);
+  return shapeOf(textField(r.toolName), ctx.kind === "bash" ? textField(ctx.command) : null, p);
+}
+
+// The same key for a call Claude Code decided itself (mods.d): `command` for Bash,
+// `file_path` for the file tools. DecisionLedger.shape(tool:input:), held to it by
+// Tests/Fixtures/tool-shape.
+function decisionShapeOfCall(tool, input) {
+  const t = textField(tool);
+  const i = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const p = SHAPE_PATH_KEYS.map((k) => textField(i[k])).find(Boolean) || "";
+  return shapeOf(t, t === "Bash" ? textField(i.command) : null, p);
+}
+
+// The one place a shape is made, as in the app. `command` is non-null for a shell
+// command — even an empty one, which is `bash:` and never a tool.
+function shapeOf(tool, command, p) {
+  if (command !== null) return "bash:" + decisionVerb(command);
   if (p) {
     const parts = p.split("/").filter(Boolean);
     const dir = parts.length > 1 ? parts[parts.length - 2] : "";
@@ -421,6 +438,12 @@ function recordDecision(r, decision) {
   };
   try { fs.appendFileSync(decisionsFile, JSON.stringify(rec) + "\n"); } catch {}
 }
+
+// Whether a row is the person's own answer. `rule` (an AgentBar rule answered) and
+// `claude` (Claude Code decided before any prompt existed) are counted on their own:
+// nobody was asked, so they must never read as the person agreeing or as a wait.
+// Rows from before `via` existed, with it empty, are the person's.
+function isPersonal(r) { return r.via !== "rule" && r.via !== "claude"; }
 
 function readDecisions() {
   let text = ""; try { text = fs.readFileSync(decisionsFile, "utf8"); } catch { return []; }
@@ -628,11 +651,11 @@ function printApprovalsCsv(argv) {
   const since = midnight.getTime() / 1000 - (days - 1) * 86400;
   const rows = readDecisions().filter((r) => r.ts >= since).sort((a, b) => a.ts - b.ts);
   const out = [["when", "agent", "directory", "tool", "shape", "what", "decision",
-                "would have", "answered by", "rule", "waited (s)"].join(",")];
+                "would have", "answered by", "rule", "by", "claude rule", "waited (s)"].join(",")];
   for (const r of rows) {
     out.push([new Date((r.ts || 0) * 1000).toISOString().replace(/\.\d{3}Z$/, "Z"),
               r.agent, r.cwd, r.tool, r.shape, r.display, r.decision, r.would,
-              r.via, r.rule, Math.round(r.waited || 0)].map(csvField).join(","));
+              r.via, r.rule, r.by, r.claudeRule, Math.round(r.waited || 0)].map(csvField).join(","));
   }
   process.stdout.write(out.join("\n") + "\n");
 }
@@ -651,8 +674,10 @@ function printApprovals(argv, json) {
   // with time nobody waited; or a WATCHING rule answered nothing at all and only
   // wrote down what it would have done — which is not something that happened and
   // belongs in neither count.
-  const rows = all.filter((r) => r.via !== "rule" && r.decision !== "watch");
+  const rows = all.filter((r) => isPersonal(r) && r.decision !== "watch");
   const byRules = all.filter((r) => r.via === "rule" && r.decision !== "watch").length;
+  // Claude Code's own decisions, made before any prompt existed (`mods.d`).
+  const byClaude = all.filter((r) => r.via === "claude").length;
 
   // Counted per repo: the same command is routine in one checkout and the
   // opposite in another.
@@ -672,10 +697,10 @@ function printApprovals(argv, json) {
   const list = [...byShape.values()].sort((a, b) => (b.allowed + b.denied) - (a.allowed + a.denied));
 
   if (json) {
-    console.log(JSON.stringify({ answered: rows.length, byRules, waited, repeats: list }, null, 2));
+    console.log(JSON.stringify({ answered: rows.length, byRules, byClaude, waited, repeats: list }, null, 2));
     return;
   }
-  if (!rows.length && !byRules) {
+  if (!rows.length && !byRules && !byClaude) {
     console.log(dim("Nothing answered yet" + (days > 1 ? ` in ${days} days.` : " today.")));
     return;
   }
@@ -688,6 +713,7 @@ function printApprovals(argv, json) {
   // The half of the loop nothing else is standing in the right place to measure.
   const account = [`${rows.length} answered`];
   if (byRules) account.push(`${byRules} by your rules`);
+  if (byClaude) account.push(`${byClaude} decided by Claude Code without asking`);
   account.push(`they waited ${durationShort(waited)} on you`);
   console.log("\n" + account.join(` ${dim("·")} `));
 }
@@ -830,7 +856,7 @@ function agreement(id, decisions, since) {
   const indexed = decisions.map((r, i) => ({ r: { ...r, ts: plausibleTime(r.ts) }, i }));
   const watches = indexed.filter(({ r }) => r.rule === id && r.decision === "watch"
                                             && r.ts >= since).sort(byTime);
-  const answers = indexed.filter(({ r }) => r.via !== "rule" && r.sessionId
+  const answers = indexed.filter(({ r }) => isPersonal(r) && r.sessionId
                                             && ["allow", "always", "deny"].includes(r.decision)).sort(byTime);
   const claimed = new Set();
   const days = new Set();
@@ -2658,7 +2684,7 @@ const json = argv.includes("--json");
 // file's half of every rule the app implements too to Tests/Fixtures — nothing
 // runs; the functions the fixtures pin are handed over instead.
 if (require.main !== module) {
-  module.exports = { readRules, decisionShape, decisionVerb, parseWireDisabled, loadWireDisabled,
+  module.exports = { readRules, decisionShape, decisionShapeOfCall, decisionVerb, parseWireDisabled, loadWireDisabled,
                      displayName, sessions, plausibleTime };
 } else switch (cmd) {
   case "status": case undefined: printStatus(json); break;

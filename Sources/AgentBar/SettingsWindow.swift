@@ -532,6 +532,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                       + "also what a rule is offered from, so switching it "
                                       + "off means no prompt ever offers one. What a rule "
                                       + "answers is written down either way."),
+                // What Claude Code decided itself, kept apart from what you did.
+                SettingsChrome.card([SettingsChrome.customRow(AnsweredWithoutYouView())]),
             ])
         case .rules:
             add([

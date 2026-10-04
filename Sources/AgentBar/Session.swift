@@ -37,6 +37,13 @@ struct Session {
     let activity: [String]   // the turn's recent tool steps, oldest → newest ([] ok)
     let url: String          // where the session lives when it isn't local ("" ok)
 
+    // What the AgentBar Claude Code mod reports beside the row (`mods.d`), merged
+    // in by `SessionStore`. Absent for every other agent, and for Claude Code
+    // without the mod: nil and 0 there mean "not reported", never "empty".
+    var contextPercent: Int?
+    var subagents = 0
+    var modSeen = false
+
     /// The label Claude Code's PreCompact hook writes while the session summarises
     /// its context (`Scripts/hooks/claude/update.js`). Not a state of its own: the
     /// row stays `thinking`, and the label carries the detail.

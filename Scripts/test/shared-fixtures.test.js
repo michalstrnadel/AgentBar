@@ -45,6 +45,12 @@ test("rule matching: the shape a rule is matched on, and every rule set loads", 
   }
 });
 
+test("tool shape: a call Claude Code decided itself has the same shape", () => {
+  const f = fixture("tool-shape");
+  assert.ok(f.cases.length >= 15);
+  for (const c of f.cases) assert.equal(cli.decisionShapeOfCall(c.tool, c.input), c.shape, c.name);
+});
+
 test("rules file: in force, or refused for the same reason", () => {
   const f = fixture("rules-file");
   f.cases.forEach((c, i) => {

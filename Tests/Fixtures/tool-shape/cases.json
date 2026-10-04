@@ -1,0 +1,31 @@
+{
+  "about": [
+    "The shape of a call Claude Code decided itself, from what the AgentBar mod keeps of its input",
+    "(mods.d: command, file_path, url, description). Read by Tests/AgentBarTests/SharedFixtureTests.swift",
+    "(DecisionLedger.shape(tool:input:)) and by Scripts/test/shared-fixtures.test.js (the CLI's",
+    "decisionShapeOfCall). It must agree with the shape of a permission request for the same call",
+    "(Tests/Fixtures/rule-matching), because a rule matches on it and \"Claude Code already allows",
+    "this itself\" compares the two. The table may only grow."
+  ],
+  "cases": [
+    {"name": "a git command keeps its verb", "tool": "Bash", "input": {"command": "git status --short"}, "shape": "bash:git status"},
+    {"name": "a plain command is its name", "tool": "Bash", "input": {"command": "ls -la /tmp"}, "shape": "bash:ls"},
+    {"name": "only the head of a chain", "tool": "Bash", "input": {"command": "npm test && rm -rf /"}, "shape": "bash:npm test"},
+    {"name": "env and sudo are a hat", "tool": "Bash", "input": {"command": "FOO=1 sudo git push origin main"}, "shape": "bash:git push"},
+    {"name": "a path to the binary", "tool": "Bash", "input": {"command": "/opt/homebrew/bin/rg pattern"}, "shape": "bash:rg"},
+    {"name": "a CRLF ends the head", "tool": "Bash", "input": {"command": "git log\r\nrm x"}, "shape": "bash:git log"},
+    {"name": "a Bash call with no command", "tool": "Bash", "input": {}, "shape": "bash:"},
+    {"name": "a command that is not text", "tool": "Bash", "input": {"command": 5}, "shape": "bash:"},
+    {"name": "a Bash call that also names a file is still a command", "tool": "Bash", "input": {"command": "cat a.txt", "file_path": "/w/a.txt"}, "shape": "bash:cat"},
+    {"name": "an edit by folder and extension", "tool": "Edit", "input": {"file_path": "/work/proj/src/a.swift"}, "shape": "edit:src/*.swift"},
+    {"name": "a write at the root", "tool": "Write", "input": {"file_path": "/README"}, "shape": "write:*"},
+    {"name": "a file with no extension", "tool": "MultiEdit", "input": {"file_path": "/work/proj/Makefile"}, "shape": "multiedit:proj/*"},
+    {"name": "a notebook", "tool": "NotebookEdit", "input": {"notebook_path": "/w/nb/x.ipynb"}, "shape": "notebookedit:nb/*.ipynb"},
+    {"name": "a command on a tool that is not Bash is not a command", "tool": "PowerShell", "input": {"command": "Get-ChildItem"}, "shape": "tool:PowerShell"},
+    {"name": "a fetch counts by tool", "tool": "WebFetch", "input": {"url": "https://example.com/a"}, "shape": "tool:WebFetch"},
+    {"name": "an MCP tool counts by its full name", "tool": "mcp__github__create_issue", "input": {"description": "x"}, "shape": "tool:mcp__github__create_issue"},
+    {"name": "a task", "tool": "Task", "input": {"description": "Explore the repo"}, "shape": "tool:Task"},
+    {"name": "an empty path is no path", "tool": "Edit", "input": {"file_path": ""}, "shape": "tool:Edit"},
+    {"name": "a path that is not text is no path", "tool": "Edit", "input": {"file_path": 7}, "shape": "tool:Edit"}
+  ]
+}

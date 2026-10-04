@@ -415,13 +415,18 @@ decisions about the same command are two decisions, and counting them is the poi
   mode or the tool's own check; `hook` — a hook or another mod, which Claude Code does
   not name), `reason` (Claude Code's sentence, capped at 300 characters) and
   `toolUseId`, which is unique: a frontend writes one row per id, ever. Its `waited`
-  is `0`.
+  is `0`. A frontend that offers a switch to stop writing rows (AgentBar: *Remember
+  what I decided*) applies it to `claude` rows too, and marks their ids as taken
+  while it is off, so switching back on does not backfill. Readers cap `claude` rows
+  apart from the person's (AgentBar keeps up to 5 000 of each), so a busy day of
+  Claude Code's own decisions cannot push the person's record out.
 - `rule` is the id of that rule, and is empty for every other `via`. It is what
   makes a rule auditable: "what has this rule ever done" is answered by filtering
   the ledger on it, which is why the rules file itself holds no counters.
 - A reader that reports how many prompts a person answered, or how long agents
-  waited on them, MUST count only `via` `app` and `cli` as the person's, and count
-  `rule` and `claude` rows **separately**. Nobody waited and nobody was asked; folding
+  waited on them, MUST NOT count `via` `rule` or `claude` as the person's (rows written
+  before `via` existed, with it empty, are the person's), and counts those two
+  **separately**. Nobody waited and nobody was asked; folding
   them in overstates one number and understates the other. For the same reason a
   `claude` row never pairs with a `watch` row as agreement, and never counts towards
   "allowed N× here".
@@ -477,11 +482,14 @@ result through unchanged — and writes one file per session:
   as in `decisions.jsonl`: `rule` with `rule` naming the settings rule, `mode`, or
   `hook`. A `deny` with `by: "hook"` is how a mod holding a command (and the person
   cancelling it there) shows up.
+- `subagents` is the number of subagents running in the session (`0` when none).
 - `ended` is set when Claude Code ends the session. The mod cannot delete a file, so
   a frontend removes `mods.d/<id>.json` once the `state.d` row is gone and either
   `ended` is true or `ts` is more than 24 hours old.
 - A frontend turns each decision into one `decisions.jsonl` row (`via: "claude"`),
-  keyed by `id`, and never again for the same id.
+  keyed by `id`, and never again for the same id. It MAY keep its own record of the
+  ids it has ledgered (AgentBar: `mods.d/.ingested.json`); a dot-file in `mods.d/` is
+  never a sidecar.
 
 The mod reads `mods/config.json` (`{"band": true}` turns on the line it draws above
 Claude Code's prompt when *another* session waits on the person — off unless set).
