@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "strict": false,
+  "target": "/fixture/plugins/blast-radius/.claude-plugin/plugin.json",
+  "manifest": {
+    "file": "/fixture/plugins/blast-radius/.claude-plugin/plugin.json",
+    "type": "plugin",
+    "errors": [],
+    "warnings": [],
+    "notes": []
+  },
+  "contents": [
+    {
+      "file": "/fixture/plugins/blast-radius/hooks/hooks.json",
+      "type": "hooks",
+      "errors": [],
+      "warnings": [],
+      "notes": [
+        "./blast-radius.mjs hooks: tool.call{tool=Bash}, ui.render{component=Pane}, ui.render{component=AbovePrompt}",
+        "./blast-radius.mjs calls: $.clock.now, $.process.run, $.session.cwd, $.ui.close, $.ui.invalidate, $.ui.open, $.ui.resolve, $.ui.toast"
+      ]
+    }
+  ]
+}

@@ -163,6 +163,23 @@ struct SharedFixtureTests {
         }
     }
 
+    @Test func wireEnabledAgreesWithTheFixture() throws {
+        for c in Self.cases(try Self.load("wire-enabled")) {
+            let name = c["name"] as? String ?? "?"
+            let home = try Self.temporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: home) }
+            try FileManager.default.createDirectory(at: home.appendingPathComponent(".agentbar"),
+                                                    withIntermediateDirectories: true)
+            if let text = c["disabled"] as? String {
+                try Data(Self.raw(text).utf8).write(to: WiringPrefs.url(home: home))
+            }
+            if let text = c["enabled"] as? String {
+                try Data(Self.raw(text).utf8).write(to: WiringPrefs.enabledURL(home: home))
+            }
+            #expect(WiringPrefs.effectiveDisabled(home: home).sorted() == c["off"] as? [String], "\(name)")
+        }
+    }
+
     // MARK: - Unwiring one agent
 
     /// One shape for comparing JSON: what the file holds, not how it is spaced.

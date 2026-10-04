@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "strict": false,
+  "target": "/fixture/plugins/token-weather/.claude-plugin/plugin.json",
+  "manifest": {
+    "file": "/fixture/plugins/token-weather/.claude-plugin/plugin.json",
+    "type": "plugin",
+    "errors": [],
+    "warnings": [],
+    "notes": []
+  },
+  "contents": [
+    {
+      "file": "/fixture/plugins/token-weather/hooks/hooks.json",
+      "type": "hooks",
+      "errors": [],
+      "warnings": [],
+      "notes": [
+        "./token-weather.mjs hooks: session.start, turn.complete, ui.render{component=AbovePrompt}",
+        "./token-weather.mjs calls: $.session.usage (via takeReading), $.ui.invalidate (via takeReading), $.ui.resolve"
+      ]
+    }
+  ]
+}

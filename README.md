@@ -92,6 +92,8 @@ The install touches exactly these, all reversible (see [Uninstall](#uninstall)):
   **only if those exist**. Writes its own `~/.copilot/hooks/agentbar.json`
   **only if you use Copilot** — a separate file, so your own hooks stay untouched.
 - Copies a plugin to `~/.config/opencode/plugins/agentbar.js` **only if you use OpenCode**.
+- Copies the [Claude Code mod](#claude-code-mods) to `~/.agentbar/mods/` — and that is
+  all, until you switch it on: it is the one integration that starts **off**.
 - The SessionStart hook launches AgentBar in the background when an agent session begins.
 - **Before it writes into any of those settings files it keeps the file as it was, beside
   it** — `settings.json.agentbar-bak-20261001-142233` (local time) — and keeps only the
@@ -477,6 +479,9 @@ rm -rf ~/.agentbar
 #   ~/.gemini/antigravity/hooks.json and ~/.gemini/antigravity-cli/hooks.json
 #                              — delete the top-level "agentbar" key
 #   ~/.qwen/settings.json      — delete hook groups whose command references "/.agentbar/hooks/claude/"
+#   only if you switched the Claude Code mod on: in each Claude settings.json, drop the
+#   entry containing "/.agentbar/mods/" from env.CLAUDE_CODE_PLUGIN_DIRS
+#   (or run `agentbar unwire claude-mod` before the rm above)
 # Copilot and OpenCode are whole files AgentBar owns, so they just go:
 rm -f ~/.copilot/hooks/agentbar.json
 rm -f ~/.config/opencode/plugins/agentbar.js
@@ -496,7 +501,7 @@ launchd agent has to be booted out separately, which is what the `cloud/install.
 
 | Agent | Live status | Open | Mascot | Notes |
 |---|---|---|---|---|
-| Claude Code (CLI + desktop) | full | yes | Clawd the crab | hooks: prompt, tool, permission, stop, lifecycle |
+| Claude Code (CLI + desktop) | full | yes | Clawd the crab | hooks: prompt, tool, permission, stop, lifecycle. Optional [mod](#claude-code-mods) (2.1.287+, **off by default**): what Claude Code ran without asking you, and its live context and quota |
 | Claude Cowork (desktop) | working / approval / question / done — **older local mode only** | yes | Clawd the crab | watched, not hooked: Cowork gives each session a throwaway config dir, so there is nothing to install into. `CoworkWatcher` reads the audit log the app writes per session. **Newer desktop builds run Cowork inside a VM that writes no session files on the host — those sessions can't be shown until the app exposes something host-side** |
 | Codex CLI | full hooks | yes | knot + braille dot-matrix | hooks auto-installed; **Codex asks once before it runs them** |
 | Cursor CLI | working / done | yes | pointer | hooks in `~/.cursor/hooks.json` (auto-wired if Cursor is installed). No remote approval: its hooks can **refuse** a tool call but not approve one — see [what each agent will let somebody else decide](docs/permission-surfaces.md) |
@@ -519,6 +524,44 @@ Which of them you can actually answer *for* is a shorter list than which of them
 report, and the difference is the vendor's, not AgentBar's:
 [what each agent will let somebody else decide](docs/permission-surfaces.md)
 records it per agent, measured, with the version each answer was measured against.
+
+## Claude Code mods
+
+Claude Code 2.1.287 and later loads **mods**: plugins whose code runs inside Claude
+Code itself and sees every tool call — including the ones it settles without ever
+showing you a prompt, because a rule in your settings or your permission mode already
+said yes. AgentBar's hooks only hear about the prompts; the AgentBar mod hears about
+the rest.
+
+**What it does.** For each Claude Code session it writes one small file to
+`~/.agentbar/mods.d/` ([format](docs/protocol.md#modsd--what-claude-code-decided-without-asking-and-what-it-measures)):
+the calls Claude Code allowed or refused on its own — by which rule, by your mode, or
+by a hook — and Claude Code's own figures for the context window and the five-hour and
+weekly limits. AgentBar turns each of those decisions into a line of your record
+(**Settings ▸ Approvals**) and shows the quota without asking Anthropic's servers.
+Read-only tools (Read, Grep, Glob and the like) are left out: they change nothing.
+
+**What it never does.** It answers nothing, holds nothing and changes nothing: every
+hook passes Claude Code's own result through untouched. It writes only into
+`~/.agentbar`, and sends nothing anywhere. The one thing it can draw — a line above
+your prompt when *another* session is waiting on you — stays off unless
+`~/.agentbar/mods/config.json` says `{"band": true}`.
+
+**Turning it on.** **Settings ▸ Agents ▸ Claude Code mod**, or `agentbar wire claude-mod`
+on Linux. Like every other switch it shows the change first: one entry in
+`env.CLAUDE_CODE_PLUGIN_DIRS` of each Claude `settings.json`, beside any plugin
+directories of your own, with the file kept as it was beside it. Start a new Claude
+Code session afterwards — a mod loads at session start. Off again takes exactly that
+entry back out (`agentbar unwire claude-mod`). On a Claude Code older than 2.1.287 the
+switch stays disabled and says so.
+
+**Plugins that can answer for you.** A mod is not the only thing that can settle a
+prompt before AgentBar sees it: any plugin with a `PreToolUse` or `PermissionRequest`
+hook can, and so can a mod hooked on `tool.call` or `tool.check`. **Settings ▸ Agents ▸
+Claude Code plugins that can answer for you** lists every enabled plugin that could,
+with a sentence on what it can do ("can hold or refuse Bash commands before they run"),
+and names the rest that are loaded. Nothing there is a problem — it is so that a prompt
+which never came is never a mystery. `agentbar doctor` prints the same list.
 
 ## Cloud agents
 

@@ -46,9 +46,89 @@ import Testing
     /// for an integration it never looked at.
     @Test func everyIntegrationIsARealAgent() {
         let known = Set(Agent.all.map(\.id))
-        for i in Diagnostics.integrations {
+        for i in Diagnostics.integrations where !Diagnostics.nonAgentIntegrations.contains(i.id) {
             #expect(known.contains(i.id), "\(i.id) is not in Agent.all")
         }
+        // …and the ones that are not agents stay out of Agent.all: a `claude-mod`
+        // row in the island would be a session that never existed.
+        for id in Diagnostics.nonAgentIntegrations {
+            #expect(!known.contains(id), "\(id) must not become an agent")
+            #expect(Diagnostics.integrations.contains { $0.id == id }, "\(id) has no integration row")
+        }
+    }
+
+    // MARK: - The Claude Code mod
+
+    /// Off is where it starts, and off is never a failure or something to repair.
+    @Test func theModIsOffAndSkippedUntilSwitchedOn() throws {
+        try write(".claude/settings.json", "{}")
+        let row = check("agent.claude-mod")
+        #expect(row?.status == .skipped)
+        #expect(row?.detail?.contains("switch it on") == true)
+        #expect(check("agent.claude-mod.wired") == nil)
+        try write(".agentbar/wire-enabled", "claude-mod\n")
+        try write(".agentbar/wire-disabled", "claude-mod\n")
+        #expect(check("agent.claude-mod")?.detail?.hasPrefix(Diagnostics.turnedOff) == true)
+    }
+
+    @Test func switchedOnTheModIsCheckedEndToEnd() throws {
+        try write(".agentbar/wire-enabled", "claude-mod\n")
+        try write(".claude/settings.json", "{}")
+        #expect(check("agent.claude-mod.copied")?.status == .fail)
+        #expect(check("agent.claude-mod.copied")?.repair == .reinstallHooks)
+        #expect(check("agent.claude-mod.wired")?.status == .fail)
+        #expect(check("agent.claude-mod.reported") == nil)
+
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".agentbar/mods/claude"),
+                                                withIntermediateDirectories: true)
+        try write(".claude/settings.json",
+                  #"{"env":{"CLAUDE_CODE_PLUGIN_DIRS":"\/opt\/mine:\/Users\/x\/.agentbar\/mods\/claude"}}"#)
+        #expect(check("agent.claude-mod.copied")?.status == .ok)
+        #expect(check("agent.claude-mod.wired")?.status == .ok)
+        #expect(check("agent.claude-mod.reported")?.status == .ok)
+    }
+
+    @Test func aClaudeCodeTooOldForModsIsTheHeadline() throws {
+        try write(".agentbar/wire-enabled", "claude-mod\n")
+        try write(".claude/settings.json", "{}")
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".local/share/claude/versions/2.1.200"),
+                                                withIntermediateDirectories: true)
+        let row = check("agent.claude-mod.version")
+        #expect(row?.status == .fail)
+        #expect(row?.fix != nil)
+        #expect(check("agent.claude-mod.wired") == nil)
+    }
+
+    /// Claude Code sessions since the switch, and nothing in mods.d: the shape of a
+    /// mod Claude Code never loaded, which every other row passes.
+    @Test func sessionsWithNoSidecarAreWorthSaying() throws {
+        try write(".agentbar/wire-enabled", "claude-mod\n")
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: Self.now - 5 * 86_400)],
+                                              ofItemAtPath: home.appendingPathComponent(".agentbar/wire-enabled").path)
+        try FileManager.default.createDirectory(at: home.appendingPathComponent(".agentbar/mods/claude"),
+                                                withIntermediateDirectories: true)
+        try write(".claude/settings.json", #"{"env":{"CLAUDE_CODE_PLUGIN_DIRS":"/u/.agentbar/mods/claude"}}"#)
+        let ended = Int(Self.now) - 86_400
+        try write(".agentbar/history.jsonl",
+                  #"{"agent":"claude","sessionId":"s1","startedAt":\#(ended - 60),"endedAt":\#(ended),"state":"done"}"# + "\n")
+        #expect(check("agent.claude-mod.reported")?.status == .warn)
+
+        try write(".agentbar/mods.d/s1.json", "{}")
+        try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: Self.now - 3_600)],
+                                              ofItemAtPath: home.appendingPathComponent(".agentbar/mods.d/s1.json").path)
+        #expect(check("agent.claude-mod.reported")?.status == .ok)
+    }
+
+    /// Information, never a failure, whatever is installed.
+    @Test func pluginsThatCanAnswerAreInformationOnly() throws {
+        try write(".claude/settings.json", #"{"enabledPlugins":{"holder@m":true}}"#)
+        let plugin = home.appendingPathComponent("p/holder")
+        try write("p/holder/hooks/hooks.json", #"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[]}]}}"#)
+        try write(".claude/plugins/installed_plugins.json",
+                  #"{"version":2,"plugins":{"holder@m":[{"scope":"user","installPath":"\#(plugin.path)","version":"1"}]}}"#)
+        let row = check("claude.plugins")
+        #expect(row?.status == .ok)
+        #expect(row?.detail?.contains("holder") == true)
     }
 
     /// Ids must be unique, or the view renders two rows that look like one bug.

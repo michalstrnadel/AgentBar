@@ -1,0 +1,20 @@
+{
+  "about": [
+    "What a pass leaves unwired once the integrations that start off are counted. `disabled`",
+    "and `enabled` are the exact texts of ~/.agentbar/wire-disabled and ~/.agentbar/wire-enabled",
+    "(null: no file); `off` is every id the installers unwire, sorted. Read by",
+    "Tests/AgentBarTests/SharedFixtureTests.swift (WiringPrefs.effectiveDisabled) and by",
+    "Scripts/test/shared-fixtures.test.js (the CLI's effectiveDisabled). docs/protocol.md,",
+    "wire-disabled: claude-mod is off unless wire-enabled lists it, and a wire-disabled line wins."
+  ],
+  "cases": [
+    {"name": "a fresh machine: the mod is off, every agent on", "disabled": null, "enabled": null, "off": ["claude-mod"]},
+    {"name": "switched on", "disabled": null, "enabled": "# header\nclaude-mod\n", "off": []},
+    {"name": "wire-disabled saved empty does not switch it on", "disabled": "", "enabled": null, "off": ["claude-mod"]},
+    {"name": "agents switched off keep the mod off", "disabled": "cursor\n", "enabled": null, "off": ["claude-mod", "cursor"]},
+    {"name": "a wire-disabled line wins over wire-enabled", "disabled": "claude-mod\n", "enabled": "claude-mod\n", "off": ["claude-mod"]},
+    {"name": "wire-enabled read by the same rules: case, comments, blanks", "disabled": null, "enabled": "  Claude-Mod   # yes\r\n", "off": []},
+    {"name": "listing an agent in wire-enabled changes nothing for it", "disabled": "cursor\n", "enabled": "cursor\n", "off": ["claude-mod", "cursor"]},
+    {"name": "junk in wire-enabled switches nothing on", "disabled": null, "enabled": "claude mod\nclaude-mod.x\n", "off": ["claude-mod"]}
+  ]
+}

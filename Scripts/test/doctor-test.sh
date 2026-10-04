@@ -218,6 +218,46 @@ check "disabled agent is no failure"    '"$CLI" doctor --json | "$NODE" -e "let 
 check "shebang skipped when all are off" '[ "$(status_of hooks.shebang)" = skipped ]'
 check "the others are still checked"    '[ "$(status_of agent.codex.wired)" = ok ]'
 
+# --- the Claude Code mod: off until switched on (Diagnostics.claudeModChecks) -------
+# The installed-versions directory is the first place the version is read from, so
+# each home says which Claude Code it has and no real `claude` is ever consulted.
+fresh_home
+mkdir -p "$HOME/.claude" "$HOME/.local/share/claude/versions/2.1.289"
+echo '{}' > "$HOME/.claude/settings.json"
+check "mod off is skipped"               '[ "$(status_of agent.claude-mod)" = skipped ]'
+check "mod off has no wired row"         '[ "$(status_of agent.claude-mod.wired)" = absent ]'
+check "mod off says how to switch it on" '"$CLI" doctor | grep -q "agentbar wire claude-mod"'
+mkdir -p "$HOME/.agentbar/mods/claude"
+"$CLI" wire claude-mod >/dev/null 2>&1
+check "mod on: version ok"               '[ "$(status_of agent.claude-mod.version)" = ok ]'
+check "mod on: copied"                   '[ "$(status_of agent.claude-mod.copied)" = ok ]'
+check "mod on: wired"                    '[ "$(status_of agent.claude-mod.wired)" = ok ]'
+check "mod on: nothing to judge yet"     '[ "$(status_of agent.claude-mod.reported)" = ok ]'
+# A Claude Code session after the switch, and nothing in mods.d.
+END=$(( $(date +%s) - 60 ))
+printf '{"agent":"claude","sessionId":"s1","startedAt":%s,"endedAt":%s,"state":"done"}\n' $((END - 60)) "$END" > "$HOME/.agentbar/history.jsonl"
+touch -t 202001010000 "$HOME/.agentbar/wire-enabled"
+check "sessions with no sidecar: warn"   '[ "$(status_of agent.claude-mod.reported)" = warn ]'
+mkdir -p "$HOME/.agentbar/mods.d" && echo '{}' > "$HOME/.agentbar/mods.d/s1.json"
+check "a fresh sidecar: ok"              '[ "$(status_of agent.claude-mod.reported)" = ok ]'
+"$NODE" -e 'const f=process.argv[1],j=JSON.parse(require("fs").readFileSync(f,"utf8"));delete j.env;require("fs").writeFileSync(f,JSON.stringify(j))' "$HOME/.claude/settings.json"
+check "mod on but unwired: fail"         '[ "$(status_of agent.claude-mod.wired)" = fail ]'
+rm -rf "$HOME/.local/share/claude/versions/2.1.289"; mkdir -p "$HOME/.local/share/claude/versions/2.1.200"
+check "a Claude Code too old: fail"      '[ "$(status_of agent.claude-mod.version)" = fail ] && [ "$(status_of agent.claude-mod.wired)" = absent ]'
+"$CLI" unwire claude-mod >/dev/null 2>&1
+check "mod off again is skipped"         '[ "$(status_of agent.claude-mod)" = skipped ]'
+
+# --- plugins that can answer for you: information, never a failure ----------------
+fresh_home
+mkdir -p "$HOME/.claude/plugins" "$HOME/p/holder/hooks"
+echo '{"modules":["./h.mjs"]}' > "$HOME/p/holder/hooks/hooks.json"
+echo 'on("tool.call", { tool: "Bash" }, async ($, e, next) => next())' > "$HOME/p/holder/hooks/h.mjs"
+printf '{"version":2,"plugins":{"holder@m":[{"scope":"user","installPath":"%s","version":"1"}]}}' "$HOME/p/holder" > "$HOME/.claude/plugins/installed_plugins.json"
+echo '{"enabledPlugins":{"holder@m":true}}' > "$HOME/.claude/settings.json"
+check "a plugin that can answer is named" '[ "$(status_of claude.plugins)" = ok ] && "$CLI" doctor | grep -q "holder: can hold or refuse Bash commands"'
+echo '{"enabledPlugins":{"holder@m":false}}' > "$HOME/.claude/settings.json"
+check "a disabled one is not"            '"$CLI" doctor | grep -q "None — no enabled plugin"'
+
 # --- a frontend, judged the way the hook judges it --------------------------------
 # permission.js asks only whether the heartbeat is fresh. `agentbar waybar` stamps
 # its own pid and exits, so a pid test said "nothing is listening" after every poll.

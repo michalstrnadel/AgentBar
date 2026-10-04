@@ -76,6 +76,17 @@ test("wire-disabled: the same agents switched off", () => {
   }
 });
 
+test("wire-enabled: the same integrations left off", () => {
+  const dir = path.join(process.env.HOME, ".agentbar");
+  for (const c of fixture("wire-enabled").cases) {
+    for (const f of ["wire-disabled", "wire-enabled"]) fs.rmSync(path.join(dir, f), { force: true });
+    if (c.disabled !== null) fs.writeFileSync(path.join(dir, "wire-disabled"), raw(c.disabled));
+    if (c.enabled !== null) fs.writeFileSync(path.join(dir, "wire-enabled"), raw(c.enabled));
+    assert.deepEqual([...cli.effectiveDisabled()].sort(), c.off, c.name);
+  }
+  for (const f of ["wire-disabled", "wire-enabled"]) fs.rmSync(path.join(dir, f), { force: true });
+});
+
 const canonical = (v) => JSON.stringify(v, (k, x) => (x && typeof x === "object" && !Array.isArray(x)
   ? Object.keys(x).sort().reduce((o, kk) => ((o[kk] = x[kk]), o), {}) : x));
 const backups = (file) => {

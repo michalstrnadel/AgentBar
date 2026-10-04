@@ -128,6 +128,27 @@
      "files": {".config/opencode/plugins/agentbar.js": "export const AgentBar = async () => ({});\n",
                ".config/opencode/plugins/mine.js": "export const Mine = async () => ({});\n"},
      "expect": {".config/opencode/plugins/agentbar.js": {"removed": true},
-                ".config/opencode/plugins/mine.js": {"unchanged": true}}}
+                ".config/opencode/plugins/mine.js": {"unchanged": true}}},
+    {"name": "claude-mod: our plugin dir out, the person's own stay in order", "agent": "claude-mod",
+     "files": {".claude/settings.json": "{\"model\":\"opus\",\"env\":{\"FOO\":\"1\",\"CLAUDE_CODE_PLUGIN_DIRS\":\"/opt/b:/home/u/.agentbar/mods/claude:/opt/a\"}}"},
+     "expect": {".claude/settings.json": {"json": {"model": "opus", "env": {"FOO": "1", "CLAUDE_CODE_PLUGIN_DIRS": "/opt/b:/opt/a"}}}}},
+    {"name": "claude-mod: an emptied key goes, and an env left empty goes with it", "agent": "claude-mod",
+     "files": {".claude/settings.json": "{\"theme\":\"dark\",\"env\":{\"CLAUDE_CODE_PLUGIN_DIRS\":\"/home/u/.agentbar/mods/claude\"}}"},
+     "expect": {".claude/settings.json": {"json": {"theme": "dark"}}}},
+    {"name": "claude-mod: every AgentBar mod dir goes, an older home's too", "agent": "claude-mod",
+     "files": {".claude/settings.json": "{\"env\":{\"CLAUDE_CODE_PLUGIN_DIRS\":\"/old/.agentbar/mods/claude::/home/u/.agentbar/mods/claude\",\"X\":\"y\"}}"},
+     "expect": {".claude/settings.json": {"json": {"env": {"X": "y"}}}}},
+    {"name": "claude-mod: AgentBar's hooks stay — they are the claude switch's, not this one's", "agent": "claude-mod",
+     "files": {".claude/settings.json": "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"node /home/u/.agentbar/hooks/claude/update.js stop\"}]}]},\"env\":{\"CLAUDE_CODE_PLUGIN_DIRS\":\"/home/u/.agentbar/mods/claude\"}}"},
+     "expect": {".claude/settings.json": {"json": {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "node /home/u/.agentbar/hooks/claude/update.js stop"}]}]}}}}},
+    {"name": "claude-mod: a list where Claude Code reads a string is left as it is", "agent": "claude-mod",
+     "files": {".claude/settings.json": "{\"env\":{\"CLAUDE_CODE_PLUGIN_DIRS\":[\"/home/u/.agentbar/mods/claude\"]}}"},
+     "expect": {".claude/settings.json": {"unchanged": true}}},
+    {"name": "claude-mod: an env that is not an object is left as it is", "agent": "claude-mod",
+     "files": {".claude/settings.json": "{\"env\":\"CLAUDE_CODE_PLUGIN_DIRS=/home/u/.agentbar/mods/claude\"}"},
+     "expect": {".claude/settings.json": {"unchanged": true}}},
+    {"name": "claude-mod: someone else's plugin dirs alone are never rewritten", "agent": "claude-mod",
+     "files": {".claude/settings.json": "{ \"env\": { \"CLAUDE_CODE_PLUGIN_DIRS\": \"/opt/mine\" } }"},
+     "expect": {".claude/settings.json": {"unchanged": true}}}
   ]
 }

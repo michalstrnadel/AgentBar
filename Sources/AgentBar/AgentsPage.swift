@@ -62,6 +62,73 @@ enum AgentsPage {
         return "Seen this month: " + names.joined(separator: ", ") + "."
     }
 
+    // MARK: - The Claude Code mod
+
+    /// The line under the mod's switch. It starts off, so the off line is the one
+    /// most people read, and it says what switching on buys rather than only that
+    /// it is off.
+    static func modState(present: Bool, supported: Bool, off: Bool,
+                         lastReport: TimeInterval?, now: TimeInterval) -> String {
+        guard present else { return "Not on this Mac" }
+        guard supported else { return "Needs Claude Code \(ClaudeModWiring.minimumVersion) or later" }
+        if off { return "Off — turn on to see what Claude Code runs without asking you, and its live quota" }
+        guard let last = lastReport, last > 0 else { return "On · no report yet — it starts with the next Claude Code session" }
+        return "On · " + ago(last, now: now).replacingOccurrences(of: "last session", with: "reported")
+    }
+
+    // MARK: - Plugins that can answer for you
+
+    static let pluginsTitle = "Claude Code plugins that can answer for you"
+    static let pluginsLoading = "Reading your Claude Code plugins…"
+    static let pluginsEmpty = "No plugin can answer Claude Code's prompts for you."
+    /// Under the card: why the card exists at all.
+    static let pluginsFootnote = "A plugin that answers settles the prompt inside Claude Code: it never "
+        + "reaches AgentBar, and no rule of yours was asked. With the Claude Code mod on, "
+        + "each such answer still lands in your record, marked as a hook's."
+
+    /// The line under a plugin's name: what it can do, and where it is enabled when
+    /// more than one Claude config dir is in play.
+    static func pluginDetail(_ p: PluginInventory.Plugin, showDirs: Bool,
+                             home: String = FileManager.default.homeDirectoryForCurrentUser.path) -> String {
+        var s = p.sentence.prefix(1).uppercased() + p.sentence.dropFirst()
+        if showDirs, !p.configDirs.isEmpty {
+            s += " · in " + p.configDirs.map { tilde($0.path, home: home) }.joined(separator: ", ")
+        }
+        return s + "."
+    }
+
+    /// The small tag beside a plugin: what kind of thing it is, and whether its
+    /// hooks were read by Claude Code or guessed from the source.
+    static func pluginBadge(_ p: PluginInventory.Plugin) -> String {
+        switch p.kind {
+        case .mod: return p.estimated ? "Mod · from source" : "Mod"
+        case .hooks: return "Hook"
+        case .other: return "Plugin"
+        }
+    }
+
+    /// Whether to name config dirs: only when the answering plugins span more than one.
+    static func showsDirs(_ plugins: [PluginInventory.Plugin]) -> Bool {
+        Set(plugins.flatMap { $0.configDirs.map(\.path) }).count > 1
+    }
+
+    /// The dim line after the answering ones: everything else that is loaded, each
+    /// with a word on what it does when there is one. nil when there is nothing.
+    static func alsoLoaded(_ plugins: [PluginInventory.Plugin], limit: Int = 8) -> String? {
+        let rest = plugins.filter { !$0.canAnswer }
+        guard !rest.isEmpty else { return nil }
+        let named = rest.prefix(limit).map { p -> String in
+            let note = p.ours ? "observes only" : PluginInventory.note(kind: p.kind, events: p.events)
+            return note.map { "\(p.name) (\($0))" } ?? p.name
+        }
+        let more = rest.count > limit ? ", and \(rest.count - limit) more" : ""
+        return "Also loaded: " + named.joined(separator: ", ") + more + "."
+    }
+
+    static func tilde(_ path: String, home: String) -> String {
+        path == home ? "~" : path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
+    }
+
     /// What **Copy example** puts on the clipboard: a wrapper that shows any command
     /// as a session for as long as it runs. Short enough to read before pasting.
     static let example = """

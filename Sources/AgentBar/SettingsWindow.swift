@@ -93,6 +93,12 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     /// The Agents card, rebuilt by `syncAgents` — its subtitles say each agent's
     /// state, and a row's subtitle is fixed once the row is made.
     private var agentsHost: NSStackView!
+    /// The plugins card's last reading (`PluginInventory`), nil until the first one
+    /// lands; the page shows a loading line meanwhile. Read again when it is older
+    /// than a minute, so a plugin installed while Settings was closed shows up.
+    private var plugins: [PluginInventory.Plugin]?
+    private var pluginsReadAt: Date?
+    private var pluginsReading = false
     private var copyExampleButton: NSButton!
     private var claudeQuotaBox: NSSwitch!
     private var quotaStatus: NSTextField!
@@ -836,7 +842,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     /// The Agents card from scratch: one row per `Diagnostics.integrations`, a switch
     /// on each (disabled where the agent is not installed), and the changes row last.
     private func syncAgents() {
-        let off = WiringPrefs.load()
+        let off = WiringPrefs.effectiveDisabled()
         let history = HistoryStore.read()
         let last = AgentsPage.lastSessions(history)
         let now = Date().timeIntervalSince1970
@@ -847,6 +853,20 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             toggle.state = present && !off.contains(i.id) ? .on : .off
             toggle.isEnabled = present
             toggle.setAccessibilityLabel("Wire AgentBar into \(i.name)")
+            // The mod's line is a sentence, not a status: it is the one switch that
+            // starts off, so the line says what turning it on buys. It goes under
+            // the name, where a sentence fits, rather than beside the switch.
+            if i.id == ClaudeModWiring.id {
+                // The cheap reading only: `claude --version` is not run on the main
+                // queue, and an unknown version does not block (an older Claude
+                // Code ignores the setting).
+                let supported = ClaudeModWiring.supports(ClaudeQuota.installedCLIVersion())
+                toggle.isEnabled = present && supported
+                if !supported { toggle.state = .off }
+                return SettingsChrome.row(i.name, AgentsPage.modState(
+                    present: present, supported: supported, off: off.contains(i.id),
+                    lastReport: ClaudeModWiring.newestReport(), now: now), control: toggle)
+            }
             // The state beside the switch rather than under the name: one line a
             // row keeps eight agents a card, not a page.
             let state = NSTextField(labelWithString: AgentsPage.state(
@@ -871,9 +891,62 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                control: copyExampleButton),
             SettingsChrome.noteRow(note),
         ])
-        for card in [SettingsChrome.card(rows), own] {
-            agentsHost.addArrangedSubview(card)
-            card.widthAnchor.constraint(equalTo: agentsHost.widthAnchor).isActive = true
+        let pluginsCard = SettingsChrome.card(pluginRows())
+        for view in [SettingsChrome.card(rows), SettingsChrome.header(AgentsPage.pluginsTitle),
+                     pluginsCard, SettingsChrome.caption(AgentsPage.pluginsFootnote), own] {
+            agentsHost.addArrangedSubview(view)
+            if view is NSTextField { continue }
+            view.widthAnchor.constraint(equalTo: agentsHost.widthAnchor).isActive = true
+        }
+        refreshPluginsIfStale()
+    }
+
+    /// One row per plugin that can answer Claude Code's prompts, then a dim line
+    /// naming everything else that is loaded — or the loading line, or the empty one.
+    private func pluginRows() -> [NSView] {
+        guard let plugins else {
+            return [SettingsChrome.noteRow(SettingsChrome.caption(AgentsPage.pluginsLoading))]
+        }
+        let answering = plugins.filter(\.canAnswer)
+        let showDirs = AgentsPage.showsDirs(plugins)
+        var rows: [NSView] = answering.map { p in
+            SettingsChrome.row(p.name, AgentsPage.pluginDetail(p, showDirs: showDirs),
+                               control: pluginBadge(AgentsPage.pluginBadge(p)))
+        }
+        if answering.isEmpty {
+            rows.append(SettingsChrome.noteRow(NSTextField(wrappingLabelWithString: AgentsPage.pluginsEmpty)))
+        }
+        if let rest = AgentsPage.alsoLoaded(plugins) {
+            rows.append(SettingsChrome.noteRow(SettingsChrome.caption(rest)))
+        }
+        return rows
+    }
+
+    /// A small rounded tag, quiet enough to sit where a switch would.
+    private func pluginBadge(_ text: String) -> NSView {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 10.5, weight: .medium)
+        label.textColor = .secondaryLabelColor
+        let box = NSStackView(views: [label])
+        box.edgeInsets = NSEdgeInsets(top: 2, left: 7, bottom: 2, right: 7)
+        box.wantsLayer = true
+        box.layer?.cornerRadius = 5
+        box.layer?.borderWidth = 1
+        box.layer?.borderColor = NSColor.separatorColor.cgColor
+        return box
+    }
+
+    /// Reads the plugins off the main queue — `claude plugin validate` may take a
+    /// few seconds per mod the first time — and redraws the page when it lands.
+    private func refreshPluginsIfStale() {
+        guard !pluginsReading, (pluginsReadAt.map { Date().timeIntervalSince($0) > 60 } ?? true) else { return }
+        pluginsReading = true
+        PluginInventory.load { [weak self] found in
+            guard let self else { return }
+            self.plugins = found
+            self.pluginsReadAt = Date()
+            self.pluginsReading = false
+            self.syncAgents()
         }
     }
 

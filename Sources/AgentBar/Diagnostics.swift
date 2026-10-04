@@ -138,7 +138,17 @@ enum Diagnostics {
               marker: "agentbar"),
         .init(id: "opencode", name: "OpenCode", presence: [".config/opencode"],
               configs: [".config/opencode/plugins/agentbar.js"], marker: "agentbar"),
+        // An integration, not an agent: AgentBar's own Claude Code mod, loaded through
+        // `env.CLAUDE_CODE_PLUGIN_DIRS` in every Claude config dir. Off until switched
+        // on (`WiringPrefs.defaultOff`); its rows are `claudeModChecks`, not the
+        // generic ones below.
+        .init(id: ClaudeModWiring.id, name: "Claude Code mod", presence: [".claude"],
+              configs: [".claude/settings.json"], marker: "/.agentbar/mods/claude"),
     ]
+
+    /// Ids in `integrations` that are not agents — nothing in `Agent.all`, no row in
+    /// history, no hook directory of their own.
+    static let nonAgentIntegrations: Set<String> = [ClaudeModWiring.id]
 
     /// Wired and silent for this long is worth saying out loud. Two weeks rather than
     /// a few days: people go on holiday, and an agent you simply did not use must not
@@ -185,12 +195,18 @@ enum Diagnostics {
         let base = AgentBarHome.root(home: home)
         // The agents the user switched off (`WiringPrefs`): unwired on purpose, so
         // nothing about them is a failure or something to repair.
-        let off = WiringPrefs.load(home: home)
+        let explicitlyOff = WiringPrefs.load(home: home)
+        let off = WiringPrefs.effectiveDisabled(disabled: explicitlyOff, enabled: WiringPrefs.loadEnabled(home: home))
         var out: [Check] = []
         out += nodeChecks(home: home)
         out += directoryChecks(base: base)
         out += hookScriptChecks(base: base, home: home, off: off)
-        out += integrations.flatMap { integrationChecks($0, home: home, base: base, now: now, off: off) }
+        out += integrations.flatMap { i -> [Check] in
+            i.id == ClaudeModWiring.id
+                ? claudeModChecks(i, home: home, base: base, now: now, off: off, explicitlyOff: explicitlyOff)
+                : integrationChecks(i, home: home, base: base, now: now, off: off)
+        }
+        out += pluginChecks(home: home)
         out += claudeConfigDirCheck(home: home)
         out += ruleChecks(base: base)
         out += orphanChecks(base: base, now: now)
@@ -438,6 +454,118 @@ enum Diagnostics {
                         : "Written, but not yet accepted. Codex asks once before it runs a hook, and until it is answered these do nothing — Codex sessions still appear, from the older notify bridge, but they cannot be approved from here.",
                       fix: trusted ? nil
                         : "Start a Codex session and accept the hooks it asks about.")]
+    }
+
+    // MARK: - The Claude Code mod
+
+    /// The environment that may name a Claude config dir — the app's own, but only
+    /// for the real home: a test's fabricated home must not pick up the runner's
+    /// `CLAUDE_CONFIG_DIR` and go reading the person's real settings.
+    private static func environment(for home: URL) -> [String: String] {
+        home.standardizedFileURL.path == FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+            ? ProcessInfo.processInfo.environment : [:]
+    }
+
+    /// How long a switched-on mod may stay silent through Claude Code sessions.
+    static let modQuietDays = 7
+
+    /// Off is not a failure here either, and off is where it starts. On, the rows go
+    /// in the order things break: a Claude Code too old to load it, the copy that
+    /// never landed, a config dir that does not name it, and — the one every other
+    /// row passes — Claude Code sessions that ran with nothing in `mods.d`.
+    static func claudeModChecks(_ i: Integration, home: URL, base: URL, now: TimeInterval,
+                                off: Set<String>, explicitlyOff: Set<String>) -> [Check] {
+        let fm = FileManager.default
+        guard i.isPresent(home: home) else {
+            return [Check(id: "agent.\(i.id)", title: i.name, status: .skipped,
+                          detail: "Claude Code is not installed on this Mac.")]
+        }
+        guard !off.contains(i.id) else {
+            return [Check(id: "agent.\(i.id)", title: i.name, status: .skipped,
+                          detail: explicitlyOff.contains(i.id)
+                            ? "\(turnedOff) — AgentBar leaves its settings alone."
+                            : "Off until you switch it on in Settings ▸ Agents — the one integration that starts off.")]
+        }
+        var out: [Check] = []
+        let isRealHome = !environment(for: home).isEmpty
+        let version = ClaudeQuota.installedCLIVersion(home: home)
+            ?? (isRealHome ? HookInstaller.claudeCodeVersion() : nil)
+        if !ClaudeModWiring.supports(version) {
+            return [Check(id: "agent.\(i.id).version", title: "Claude Code loads mods", status: .fail,
+                          detail: "Claude Code \(version ?? "") ignores the mod; \(ClaudeModWiring.minimumVersion) or later loads it.",
+                          fix: "Update Claude Code (`claude update`), then start a new session.")]
+        }
+        out.append(Check(id: "agent.\(i.id).version", title: "Claude Code loads mods", status: .ok,
+                         detail: version.map { "Claude Code \($0)." }
+                            ?? "Could not tell which Claude Code is installed; one older than \(ClaudeModWiring.minimumVersion) ignores the mod."))
+
+        let copy = base.appendingPathComponent("mods/claude", isDirectory: true)
+        let copied = fm.fileExists(atPath: copy.path)
+        out.append(Check(id: "agent.\(i.id).copied", title: "The mod is installed", status: copied ? .ok : .fail,
+                         detail: copied ? nil : "\(copy.path) is missing, so there is nothing for Claude Code to load.",
+                         fix: copied ? nil : "Relaunch AgentBar — it copies the mod from the app bundle on every launch.",
+                         repair: copied ? nil : .reinstallHooks))
+
+        let dirs = HookInstaller.claudeConfigDirs(HookInstaller.Context(home: home, environment: environment(for: home)))
+            .filter { fm.fileExists(atPath: $0.path) }
+        let unwired = dirs.filter { dir in
+            let root = (try? Data(contentsOf: dir.appendingPathComponent("settings.json")))
+                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            return !(root.map(ClaudeModWiring.isWired) ?? false)
+        }
+        let wired = !dirs.isEmpty && unwired.isEmpty
+        out.append(Check(id: "agent.\(i.id).wired", title: "Claude Code is told where the mod is",
+                         status: wired ? .ok : .fail,
+                         detail: wired ? nil : "No `\(ClaudeModWiring.envKey)` entry for it in "
+                            + (unwired.isEmpty ? "any Claude settings" : unwired.map { $0.path + "/settings.json" }.joined(separator: ", ")) + ".",
+                         fix: wired ? nil : "Relaunch AgentBar to run the installer again; if it stays unwired, that settings.json may not parse.",
+                         repair: wired ? nil : .reinstallHooks))
+        if wired { out.append(modReportedCheck(i, home: home, base: base, now: now)) }
+        return out
+    }
+
+    /// Fresh `mods.d` within the week, or no Claude Code session since the mod was
+    /// switched on to judge by — both fine. Sessions with no sidecar at all is the
+    /// shape of a mod Claude Code never loaded.
+    private static func modReportedCheck(_ i: Integration, home: URL, base: URL, now: TimeInterval) -> Check {
+        let fm = FileManager.default
+        let window = TimeInterval(modQuietDays) * 86_400
+        let dir = base.appendingPathComponent("mods.d", isDirectory: true)
+        if let newest = ClaudeModWiring.newestReport(in: dir), now - newest < window {
+            let days = Int((now - newest) / 86_400)
+            return Check(id: "agent.\(i.id).reported", title: "\(i.name) has reported", status: .ok,
+                         detail: days < 1 ? "Reported today." : "Last report \(days) day\(days == 1 ? "" : "s") ago.")
+        }
+        // Only sessions after the switch was turned on can be held against it.
+        let since = (try? fm.attributesOfItem(atPath: WiringPrefs.enabledURL(home: home).path))?[.modificationDate]
+            .flatMap { ($0 as? Date)?.timeIntervalSince1970 } ?? 0
+        let lastClaude = HistoryStore.read(url: base.appendingPathComponent("history.jsonl"))
+            .filter { $0.agent == "claude" }.map(\.endedAt).max() ?? 0
+        guard lastClaude > since, now - lastClaude < window else {
+            return Check(id: "agent.\(i.id).reported", title: "\(i.name) has reported", status: .ok,
+                         detail: "No Claude Code session since it was switched on to judge by.")
+        }
+        return Check(id: "agent.\(i.id).reported", title: "\(i.name) has reported", status: .warn,
+                     detail: "Claude Code ran this week, and the mod wrote nothing to \(dir.path).",
+                     fix: "Start a NEW Claude Code session — a mod loads at session start. If it stays silent, `claude plugin validate ~/.agentbar/mods/claude` says why.")
+    }
+
+    /// Information, never a failure: which enabled plugins could settle a prompt
+    /// before it reaches AgentBar. Read from the files and the sources only — a
+    /// diagnosis must not start `claude` on every launch — so a mod's hooks may be
+    /// an estimate here where Settings ▸ Agents has Claude Code's own reading.
+    static func pluginChecks(home: URL) -> [Check] {
+        let dirs = PluginInventory.liveConfigDirs(home: home, environment: environment(for: home))
+        guard !dirs.isEmpty else {
+            return [Check(id: "claude.plugins", title: "Claude Code plugins that can answer for you",
+                          status: .skipped, detail: "Claude Code is not installed on this Mac.")]
+        }
+        let answering = PluginInventory.inventory(configDirs: dirs, validate: nil).filter(\.canAnswer)
+        return [Check(id: "claude.plugins", title: "Claude Code plugins that can answer for you", status: .ok,
+                      detail: answering.isEmpty
+                        ? "None — no enabled plugin can answer Claude Code's prompts for you."
+                        : answering.map { "\($0.name): \($0.sentence)" }.joined(separator: "; ")
+                          + ". What they settle never reaches AgentBar.")]
     }
 
     private static func lastSeenCheck(_ i: Integration, base: URL, now: TimeInterval) -> Check {

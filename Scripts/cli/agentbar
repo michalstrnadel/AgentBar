@@ -28,7 +28,9 @@
 //                                   Gemini/Qwen/Copilot/OpenCode) —
 //                                   the Linux equivalent of the macOS app's installer.
 //                                   Agents listed in ~/.agentbar/wire-disabled are
-//                                   unwired instead; --skip/--only update that list
+//                                   unwired instead; --skip/--only update that list.
+//                                   claude-mod (the Claude Code mod) starts off and
+//                                   is wired only once listed in ~/.agentbar/wire-enabled
 //   agentbar unwire <id> / wire <id> take one agent out / put it back
 
 "use strict";
@@ -1505,6 +1507,11 @@ const INTEGRATIONS = [
     configs: [".gemini/antigravity/hooks.json", ".gemini/antigravity-cli/hooks.json"], marker: "agentbar" },
   { id: "opencode", name: "OpenCode", presence: [".config/opencode"],
     configs: [".config/opencode/plugins/agentbar.js"], marker: "agentbar" },
+  // An integration, not an agent: AgentBar's own Claude Code mod, loaded through
+  // env.CLAUDE_CODE_PLUGIN_DIRS in every Claude config dir. Off until switched on
+  // (DEFAULT_OFF); doctor gives it rows of its own (claudeModChecks).
+  { id: "claude-mod", name: "Claude Code mod", presence: [".claude"],
+    configs: [".claude/settings.json"], marker: "/.agentbar/mods/claude" },
 ];
 const HOOK_DIRS = ["claude", "codex", "cursor", "gemini", "antigravity", "opencode"];
 // Two weeks, not a few days: people go on holiday, and an agent you simply did not
@@ -1540,6 +1547,70 @@ function claudeConfigDirs(skip = () => {}) {
     if (raw) dirs.add(raw.replace(/^~/, os.homedir()));
   } catch {}
   return [...dirs];
+}
+
+// Diagnostics.claudeModChecks, row for row: off is skipped (and off is where it
+// starts); on, a Claude Code too old to load it, the copy that never landed, a
+// config dir that does not name it, and Claude Code sessions with no mods.d at all.
+function claudeModChecks(i, { add, there, read, shown, hist, H, turnedOff, explicitlyOff }) {
+  if (!i.presence.some((d) => there(path.join(H, d)))) {
+    add(`agent.${i.id}`, i.name, "skipped", "Claude Code is not installed here.");
+    return;
+  }
+  if (turnedOff.has(i.id)) {
+    add(`agent.${i.id}`, i.name, "skipped", explicitlyOff.has(i.id)
+      ? "Turned off by you — AgentBar leaves its settings alone."
+      : "Off until you switch it on (`agentbar wire claude-mod`) — the one integration that starts off.");
+    return;
+  }
+  const v = claudeVersion();
+  if (!modSupports(v)) {
+    add(`agent.${i.id}.version`, "Claude Code loads mods", "fail",
+        `Claude Code ${v} ignores the mod; ${MOD_MIN} or later loads it.`,
+        "Update Claude Code (`claude update`), then start a new session.");
+    return;
+  }
+  add(`agent.${i.id}.version`, "Claude Code loads mods", "ok",
+      v ? `Claude Code ${v}.` : `Could not tell which Claude Code is installed; one older than ${MOD_MIN} ignores the mod.`);
+  const copied = there(modDir);
+  add(`agent.${i.id}.copied`, "The mod is installed", copied ? "ok" : "fail",
+      copied ? null : `${modDir} is missing, so there is nothing for Claude Code to load.`,
+      copied ? null : "Run `agentbar install-hooks` from a repo checkout.");
+  const dirs = claudeConfigDirs().filter(there);
+  const unwired = dirs.filter((d) => {
+    let root = null;
+    try { root = JSON.parse(read(path.join(d, "settings.json")) || "null"); } catch {}
+    return !modIsWired(root);
+  });
+  const wired = dirs.length > 0 && !unwired.length;
+  add(`agent.${i.id}.wired`, "Claude Code is told where the mod is", wired ? "ok" : "fail",
+      wired ? null : `No \`${MOD_ENV}\` entry for it in ${unwired.length ? unwired.map((d) => shown(path.join(d, "settings.json"))).join(", ") : "any Claude settings"}.`,
+      wired ? null : "Run `agentbar install-hooks`; if it stays unwired, that settings.json may not parse.");
+  if (!wired) return;
+  const DAY = 86400, windowS = 7 * DAY;
+  let newest = 0;
+  try {
+    for (const f of fs.readdirSync(path.join(base, "mods.d"))) {
+      if (!f.endsWith(".json")) continue;
+      try { newest = Math.max(newest, Math.floor(fs.statSync(path.join(base, "mods.d", f)).mtimeMs / 1000)); } catch {}
+    }
+  } catch {}
+  if (newest && now() - newest < windowS) {
+    const days = Math.floor((now() - newest) / DAY);
+    add(`agent.${i.id}.reported`, `${i.name} has reported`, "ok",
+        days < 1 ? "Reported today." : `Last report ${days} day${days === 1 ? "" : "s"} ago.`);
+    return;
+  }
+  let since = 0;
+  try { since = Math.floor(fs.statSync(wireEnabledFile).mtimeMs / 1000); } catch {}
+  const lastClaude = hist.filter((r) => r.agent === "claude").map((r) => r.endedAt || 0).reduce((a, b) => Math.max(a, b), 0);
+  if (!(lastClaude > since && now() - lastClaude < windowS)) {
+    add(`agent.${i.id}.reported`, `${i.name} has reported`, "ok", "No Claude Code session since it was switched on to judge by.");
+    return;
+  }
+  add(`agent.${i.id}.reported`, `${i.name} has reported`, "warn",
+      `Claude Code ran this week, and the mod wrote nothing to ${shownBase}/mods.d.`,
+      "Start a NEW Claude Code session — a mod loads at session start. If it stays silent, `claude plugin validate ~/.agentbar/mods/claude` says why.");
 }
 
 function doctor(json) {
@@ -1581,7 +1652,8 @@ function doctor(json) {
       missing.length ? "Run `agentbar install-hooks` from a repo checkout." : null);
   // The agents the person switched off (~/.agentbar/wire-disabled): unwired on
   // purpose, so nothing about them is a failure or something to repair.
-  const turnedOff = loadWireDisabled();
+  const explicitlyOff = loadWireDisabled();
+  const turnedOff = effectiveDisabled(explicitlyOff);
   const installed = Object.entries(SHEBANG_SCRIPTS).filter(([agent]) =>
     (INTEGRATIONS.find((i) => i.id === agent) || { presence: [] }).presence
       .some((d) => there(path.join(H, d))));
@@ -1603,6 +1675,10 @@ function doctor(json) {
   // may live outside HOME when AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME says so.
   const shown = (p) => (p.startsWith(H + path.sep) ? "~/" + p.slice(H.length + 1) : p);
   for (const i of INTEGRATIONS) {
+    if (i.id === "claude-mod") {
+      claudeModChecks(i, { add, there, read, shown, hist, H, turnedOff, explicitlyOff });
+      continue;
+    }
     // Claude's settings are read from every directory install-hooks writes, and
     // each of them has to carry the hooks: a session started under a config dir
     // that was missed reports nothing, however healthy ~/.claude looks. Every other
@@ -1695,6 +1771,25 @@ function doctor(json) {
             trusted ? null : "Written, but not yet accepted. Codex asks once before it runs a hook, and until it is answered these do nothing — Codex sessions still appear, from the older notify bridge, but they cannot be approved from here.",
             trusted ? null : "Start a Codex session and accept the hooks it asks about.");
       }
+    }
+  }
+
+  // Information, never a failure: the enabled plugins that could settle a prompt
+  // before it reaches AgentBar (Diagnostics.pluginChecks). Sources only.
+  {
+    const seen = new Set();
+    const dirs = claudeConfigDirs().concat(claudeDirsOnDisk()).filter((d) => {
+      const r = real(d);
+      if (!r || seen.has(r)) return false;
+      seen.add(r); return true;
+    });
+    const title = "Claude Code plugins that can answer for you";
+    if (!dirs.length) add("claude.plugins", title, "skipped", "Claude Code is not installed here.");
+    else {
+      const answering = pluginInventory(dirs).filter((p) => p.canAnswer);
+      add("claude.plugins", title, "ok", answering.length
+        ? answering.map((p) => `${p.name}: ${pluginSentence(p)}`).join("; ") + ". What they settle never reaches AgentBar."
+        : "None — no enabled plugin can answer Claude Code's prompts for you.");
     }
   }
 
@@ -1976,6 +2071,258 @@ function wireIds(list, flag) {
   return ids;
 }
 
+// MARK: - Integrations that start off (~/.agentbar/wire-enabled)
+
+// WiringPrefs.defaultOff: wired only because somebody asked. Opting in is a file of
+// its own rather than a line seeded into wire-disabled — a seed has to remember it
+// was planted, and wire-disabled saved empty is deleted — so a missing line means
+// off in every reader, with nothing to remember. wire-disabled still wins: a line
+// there turns anything off. An older CLI or app never knew these ids and never
+// reads wire-enabled.
+const DEFAULT_OFF = new Set(["claude-mod"]);
+const wireEnabledFile = path.join(base, "wire-enabled");
+const ENABLED_HEADER = ["# Integrations AgentBar wires only because you asked, one id per line.",
+                        "# Written by AgentBar (Settings > Agents) and the agentbar CLI."];
+function loadWireEnabled() {
+  try { return parseWireDisabled(fs.readFileSync(wireEnabledFile, "utf8").replace(/^﻿/, "")); }
+  catch { return new Set(); }
+}
+function saveWireEnabled(ids) {
+  if (!ids.size) { fs.rmSync(wireEnabledFile, { force: true }); return; }
+  fs.mkdirSync(base, { recursive: true });
+  const t = wireEnabledFile + "." + process.pid + ".tmp";
+  fs.writeFileSync(t, ENABLED_HEADER.concat([...ids].sort()).join("\n") + "\n");
+  fs.chmodSync(t, 0o644);
+  fs.renameSync(t, wireEnabledFile);
+}
+// What every run acts on: switched off, plus each default-off id nobody switched on.
+function effectiveDisabled(disabled = loadWireDisabled(), enabled = loadWireEnabled()) {
+  const out = new Set(disabled);
+  for (const id of DEFAULT_OFF) if (!enabled.has(id)) out.add(id);
+  return out;
+}
+
+// MARK: - The Claude Code mod (env.CLAUDE_CODE_PLUGIN_DIRS) — ClaudeModWiring
+
+const MOD_ENV = "CLAUDE_CODE_PLUGIN_DIRS";
+const MOD_MARK = "/.agentbar/mods/";
+const MOD_MIN = "2.1.287";
+const modDir = path.join(base, "mods", "claude");
+const modEntries = (v) => String(v || "").split(":").map((s) => s.trim()).filter(Boolean);
+// Our directory last in the list, the person's own entries first and untouched,
+// any AgentBar mod entry dropped. A value of the wrong type is refused, never fixed.
+function modWired(root, dir) {
+  if (root.env !== undefined && !isPlainObject(root.env)) return { plan: "refused", why: "`env` is not an object" };
+  const env = Object.assign({}, root.env || {});
+  if (env[MOD_ENV] !== undefined && typeof env[MOD_ENV] !== "string")
+    return { plan: "refused", why: `\`env.${MOD_ENV}\` is not a string` };
+  const next = modEntries(env[MOD_ENV]).filter((e) => !e.includes(MOD_MARK)).concat([dir]).join(":");
+  if (next === env[MOD_ENV]) return { plan: "unchanged" };
+  env[MOD_ENV] = next;
+  return { plan: "write", root: Object.assign({}, root, { env }) };
+}
+// Without any AgentBar mod entry; an emptied key goes, and an emptied env with it.
+function modUnwired(root) {
+  if (!isPlainObject(root.env) || typeof root.env[MOD_ENV] !== "string") return { plan: "unchanged" };
+  const all = modEntries(root.env[MOD_ENV]);
+  const theirs = all.filter((e) => !e.includes(MOD_MARK));
+  if (theirs.length === all.length) return { plan: "unchanged" };
+  const env = Object.assign({}, root.env);
+  if (theirs.length) env[MOD_ENV] = theirs.join(":"); else delete env[MOD_ENV];
+  const out = Object.assign({}, root);
+  if (Object.keys(env).length) out.env = env; else delete out.env;
+  return { plan: "write", root: out };
+}
+const modIsWired = (root) => isPlainObject(root) && isPlainObject(root.env)
+  && typeof root.env[MOD_ENV] === "string" && modEntries(root.env[MOD_ENV]).some((e) => e.includes(MOD_MARK));
+function compareVersions(a, b) {
+  const parts = (s) => (String(s).match(/^[0-9.]+/) || [""])[0].split(".").map((n) => Number(n) || 0);
+  const x = parts(a), y = parts(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const l = x[i] || 0, r = y[i] || 0;
+    if (l !== r) return l < r ? -1 : 1;
+  }
+  return 0;
+}
+// False only for a Claude Code known to be too old; an older one ignores the setting.
+const modSupports = (v) => !v || compareVersions(v, MOD_MIN) >= 0;
+// The cheap places first (ClaudeQuota.installedCLIVersion), then `claude --version`.
+function claudeVersion() {
+  const H = os.homedir();
+  try {
+    const names = fs.readdirSync(path.join(H, ".local/share/claude/versions")).filter((n) => /^[0-9]/.test(n))
+      .sort((a, b) => compareVersions(a, b));
+    if (names.length) return names[names.length - 1];
+  } catch {}
+  for (const d of claudeDirsOnDisk()) {
+    const o = readJSON(path.join(d, ".last-update-result.json"));
+    if (o && typeof o.version_to === "string") return o.version_to;
+    if (o && typeof o.version_from === "string") return o.version_from;
+  }
+  try {
+    const out = require("child_process").execFileSync("claude", ["--version"],
+      { encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+    const m = out.match(/\b\d+\.\d+[0-9.]*/);
+    return m ? m[0] : null;
+  } catch { return null; }
+}
+// ~/.claude and every ~/.claude-* — WeightReader.claudeConfigDirs.
+function claudeDirsOnDisk() {
+  const H = os.homedir();
+  let names = [];
+  try { names = fs.readdirSync(H).filter((n) => n === ".claude" || n.startsWith(".claude-")).sort(); } catch {}
+  return names.map((n) => path.join(H, n));
+}
+// Each bundled mod into ~/.agentbar/mods/<name>, replaced whole when it differs;
+// config.json — the person's — is never touched.
+function copyMods(src, dest) {
+  if (!fs.existsSync(src)) return;
+  fs.mkdirSync(dest, { recursive: true });
+  const tree = (root) => {
+    const out = {};
+    const walk = (d, rel) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name), r = rel ? rel + "/" + e.name : e.name;
+        if (e.isDirectory()) walk(p, r); else if (e.isFile()) out[r] = fs.readFileSync(p);
+      }
+    };
+    try { walk(root, ""); } catch { return null; }
+    return out;
+  };
+  const same = (a, b) => a && b && Object.keys(a).length === Object.keys(b).length
+    && Object.keys(a).every((k) => b[k] && b[k].equals(a[k]));
+  for (const name of fs.readdirSync(src)) {
+    if (name === "config.json" || name.startsWith(".")) continue;
+    const target = path.join(dest, name);
+    if (same(tree(path.join(src, name)), fs.existsSync(target) ? tree(target) : null)) continue;
+    fs.rmSync(target, { recursive: true, force: true });
+    fs.cpSync(path.join(src, name), target, { recursive: true });
+  }
+}
+// Our mod into every Claude config dir that exists — through writeConfig, so the
+// diff is printed and the original kept, like every other setting.
+function wireClaudeMod(claudeDirs) {
+  const v = claudeVersion();
+  if (!modSupports(v)) {
+    console.error(`skip   claude-mod  Claude Code ${v} predates mods (${MOD_MIN} or later loads them)`);
+    return;
+  }
+  if (!fs.existsSync(modDir)) { console.error(`skip   claude-mod  ${modDir} is missing — run from a repo checkout`); return; }
+  for (const d of claudeDirs) {
+    if (!fs.existsSync(d)) continue;
+    const file = path.join(d, "settings.json");
+    const root = readConfigFile(file);
+    if (root === null) continue;
+    const r = modWired(root, modDir);
+    if (r.plan === "refused") { console.error(`skip: ${file}: ${r.why} — the Claude Code mod is not wired there`); continue; }
+    console.log(`${r.plan === "write" && writeConfig(file, sortedStringify(r.root) + "\n") ? "wired" : "ok   "}  claude-mod ${file}`);
+  }
+}
+// Quiet when there was nothing of ours: it is off for nearly everybody, and every
+// install-hooks run would otherwise list each Claude config dir as "off".
+function unwireClaudeMod(claudeDirs) {
+  for (const d of claudeDirs) {
+    const file = path.join(d, "settings.json");
+    if (!fs.existsSync(file)) continue;
+    const root = readConfigFile(file);
+    if (!isPlainObject(root)) continue;
+    const r = modUnwired(root);
+    if (r.plan === "write" && writeConfig(file, sortedStringify(r.root) + "\n")) console.log(`unwired  claude-mod ${file}`);
+  }
+}
+
+// MARK: - Claude Code plugins that can answer for you — PluginInventory, sources only
+
+// Which enabled plugins could settle a prompt before AgentBar sees it: a classic
+// PreToolUse/PermissionRequest hook, or a mod on tool.call/tool.check. Read from the
+// files and the module sources — doctor never starts `claude`.
+const ANSWERING_MOD = new Set(["tool.check", "tool.call", "classic.PreToolUse", "classic.PermissionRequest"]);
+const ANSWERING_HOOK = new Set(["PreToolUse", "PermissionRequest"]);
+function scanModSource(text) {
+  const out = [];
+  const re = /\bon\(\s*["']([A-Za-z][A-Za-z0-9_.]*)["']\s*(?:,\s*\{([^{}]*)\})?/g;
+  for (let m; (m = re.exec(text));) {
+    const filter = {};
+    for (const pair of (m[2] || "").split(",")) {
+      const [k, v] = pair.split(/:(.*)/s).map((s) => (s || "").trim().replace(/^["']|["']$/g, ""));
+      if (k && v) filter[k] = v;
+    }
+    out.push({ name: m[1], filter });
+  }
+  return out;
+}
+function pluginHooks(installPath) {
+  let manifest = null;
+  try { manifest = JSON.parse(fs.readFileSync(path.join(installPath, ".claude-plugin/plugin.json"), "utf8")); } catch {}
+  const files = [path.join(installPath, "hooks/hooks.json")];
+  if (manifest && typeof manifest.hooks === "string") files.unshift(path.join(installPath, manifest.hooks));
+  const parse = (o, dir) => {
+    const modules = (Array.isArray(o.modules) ? o.modules : []).filter((m) => typeof m === "string" && m)
+      .map((m) => path.resolve(dir, m));
+    const classic = [];
+    for (const [ev, rules] of Object.entries(isPlainObject(o.hooks) ? o.hooks : {})) {
+      const list = Array.isArray(rules) ? rules : [];
+      if (!list.length) classic.push({ name: ev, filter: {} });
+      for (const r of list) classic.push({ name: ev, filter: r && typeof r.matcher === "string" ? { matcher: r.matcher } : {} });
+    }
+    return { modules, classic };
+  };
+  for (const f of files) {
+    const o = readJSON(f);
+    if (isPlainObject(o)) return parse(o, path.dirname(f));
+  }
+  if (manifest && isPlainObject(manifest.hooks)) return parse(manifest.hooks, installPath);
+  return { modules: [], classic: [] };
+}
+function pluginInventory(dirs) {
+  const byKey = new Map();
+  for (const d of dirs) {
+    const settings = readJSON(path.join(d, "settings.json")) || {};
+    const reg = (readJSON(path.join(d, "plugins/installed_plugins.json")) || {}).plugins || {};
+    const found = [];
+    for (const [key, on] of Object.entries(isPlainObject(settings.enabledPlugins) ? settings.enabledPlugins : {})) {
+      if (on !== true || !Array.isArray(reg[key])) continue;
+      const pick = reg[key].find((e) => e && e.scope === "user") || reg[key][0];
+      if (pick && typeof pick.installPath === "string" && pick.installPath) found.push([key, key.split("@")[0], pick.installPath]);
+    }
+    const env = isPlainObject(settings.env) ? settings.env : {};
+    for (const p of modEntries(typeof env[MOD_ENV] === "string" ? env[MOD_ENV] : "")) {
+      const m = readJSON(path.join(p, ".claude-plugin/plugin.json"));
+      found.push([p, (m && typeof m.name === "string" && m.name) || path.basename(p), p]);
+    }
+    for (const [key, name, p] of found) {
+      if (byKey.has(key)) continue;
+      const h = pluginHooks(p);
+      const kind = h.modules.length ? "mod" : h.classic.length ? "hooks" : "other";
+      let events = h.classic;
+      if (kind === "mod") {
+        events = [];
+        for (const m of h.modules) { try { events.push(...scanModSource(fs.readFileSync(m, "utf8"))); } catch {} }
+      }
+      const ours = p.includes(MOD_MARK);
+      const canAnswer = !ours && (kind === "mod" ? events.some((e) => ANSWERING_MOD.has(e.name))
+        : kind === "hooks" ? events.some((e) => ANSWERING_HOOK.has(e.name)) : false);
+      byKey.set(key, { key, name, kind, events, ours, canAnswer });
+    }
+  }
+  return [...byKey.values()];
+}
+// The answering part of PluginInventory.sentence, short.
+function pluginSentence(p) {
+  const tool = (t) => (!t || t === "*" ? "any tool call" : t === "Bash" ? "Bash commands" : `${t} calls`);
+  const out = [];
+  const add = (s) => { if (!out.includes(s)) out.push(s); };
+  for (const e of p.events) {
+    if (p.kind === "mod" && e.name === "tool.check") add(`can approve or refuse ${tool(e.filter.tool)} without asking you`);
+    if (p.kind === "mod" && e.name === "classic.PermissionRequest") add("can answer Claude Code's permission prompts");
+    if (p.kind === "mod" && e.name === "tool.call") add(`can hold or refuse ${tool(e.filter.tool)} before ${e.filter.tool ? "they run" : "it runs"}`);
+    if (p.kind === "mod" && e.name === "classic.PreToolUse") add(`can allow or block ${tool(e.filter.matcher)} before it runs`);
+    if (p.kind === "hooks" && e.name === "PermissionRequest") add("runs a hook on every permission prompt, and that hook can answer it");
+    if (p.kind === "hooks" && e.name === "PreToolUse") add(`runs a hook before ${!e.filter.matcher || e.filter.matcher === "*" ? "every tool call" : e.filter.matcher + " calls"} that can allow or block it`);
+  }
+  return out.join("; ");
+}
+
 // MARK: - Shared by wiring and unwiring
 
 // Present-but-unparseable (JSONC comments, trailing comma, torn write) is skipped,
@@ -2083,6 +2430,9 @@ function unwireAgent(id, claudeDirs) {
   const H = os.homedir();
   const said = (name, changed) => console.log(`${changed ? "unwired" : "off    "}  ${name}`);
   switch (id) {
+    case "claude-mod":
+      unwireClaudeMod(claudeDirs);
+      break;
     case "claude":
       for (const d of claudeDirs) {
         const file = path.join(d, "settings.json");
@@ -2161,14 +2511,23 @@ function refuseUnderCustomBase(cmd) {
 // run fails part way — and then that one agent is wired or unwired, nobody else.
 function setWired(argv, wired) {
   const ids = wireIds(argv.filter((a) => !a.startsWith("--")), wired ? "wire" : "unwire");
-  const off = loadWireDisabled();
-  for (const id of ids) { if (wired) off.delete(id); else off.add(id); }
+  const off = loadWireDisabled(), on = loadWireEnabled();
+  for (const id of ids) {
+    // A default-off integration is switched by wire-enabled (WiringPrefs.set):
+    // on lists it there and lifts any wire-disabled line, off simply unlists it.
+    if (DEFAULT_OFF.has(id)) { if (wired) { on.add(id); off.delete(id); } else on.delete(id); }
+    else if (wired) off.delete(id); else off.add(id);
+  }
   saveWireDisabled(off);
+  saveWireEnabled(on);
   if (wired) { for (const id of ids) installHooks({ only: id, args: [] }); return; }
-  const claudeDirs = ids.includes("claude") ? claudeConfigDirs((msg) => console.error(msg)) : [];
+  const claudeDirs = ids.some((id) => id === "claude" || id === "claude-mod")
+    ? claudeConfigDirs((msg) => console.error(msg)) : [];
   for (const id of ids) unwireAgent(id, claudeDirs);
-  console.log(`Left alone from now on: ${ids.join(", ")} (listed in ${wireDisabledFile}). `
-    + "Sessions already running keep the hooks they started with.");
+  const listed = ids.filter((id) => !DEFAULT_OFF.has(id)), unlisted = ids.filter((id) => DEFAULT_OFF.has(id));
+  if (listed.length) console.log(`Left alone from now on: ${listed.join(", ")} (listed in ${wireDisabledFile}).`);
+  if (unlisted.length) console.log(`Off again: ${unlisted.join(", ")} (no longer in ${wireEnabledFile}).`);
+  console.log("Sessions already running keep the hooks they started with.");
   if (backupsKept) console.log(`Each settings file changed above was kept as it was, beside itself (*${BACKUP_MARK}<time>; the last ${BACKUP_KEEP} stay).`);
 }
 
@@ -2192,17 +2551,22 @@ function installHooks({ only = null, args = [] } = {}) {
   const skipList = flag("--skip"), onlyList = flag("--only");
   if (skipList.length || onlyList.length) {
     let next = loadWireDisabled();
+    const enabled = loadWireEnabled();
     if (onlyList.length) {
       const keep = wireIds(onlyList, "install-hooks --only");
+      // A default-off integration is never listed in wire-disabled for being left
+      // out — it is off already; --only naming it is what switches it on.
       next = new Set([...next].filter((id) => !WIRABLE.includes(id))
-        .concat(WIRABLE.filter((id) => !keep.includes(id))));
+        .concat(WIRABLE.filter((id) => !keep.includes(id) && !DEFAULT_OFF.has(id))));
+      for (const id of DEFAULT_OFF) { if (keep.includes(id)) enabled.add(id); else enabled.delete(id); }
     }
-    for (const id of skipList.length ? wireIds(skipList, "install-hooks --skip") : []) next.add(id);
+    for (const id of skipList.length ? wireIds(skipList, "install-hooks --skip") : []) { next.add(id); enabled.delete(id); }
     saveWireDisabled(next);
+    saveWireEnabled(enabled);
     console.log(next.size ? `Left alone: ${[...next].sort().join(", ")} (${wireDisabledFile})`
                           : `Nothing left alone (${wireDisabledFile} removed)`);
   }
-  const disabled = loadWireDisabled();
+  const disabled = effectiveDisabled();
   const want = (id) => !only || only === id;
   const off = (id) => want(id) && disabled.has(id);
   const on = (id) => want(id) && !disabled.has(id);
@@ -2565,6 +2929,12 @@ function installHooks({ only = null, args = [] } = {}) {
     }
     report("opencode " + file, changed);
   }
+
+  // The Claude Code mod — copied every run (it is inert until Claude Code is told
+  // where it is), wired only when switched on: ~/.agentbar/wire-enabled, which
+  // `agentbar wire claude-mod`, `--only …,claude-mod` and the app's switch write.
+  copyMods(path.join(__dirname, "..", "mods"), path.join(base, "mods"));
+  if (on("claude-mod")) wireClaudeMod(claudeDirs);
   console.log("Done. Start a NEW agent session to see it (hooks snapshot at session start).");
   if (backupsKept) console.log(`Each settings file changed above was kept as it was, beside itself (*${BACKUP_MARK}<time>; the last ${BACKUP_KEEP} stay).`);
 }
@@ -2685,6 +3055,7 @@ const json = argv.includes("--json");
 // runs; the functions the fixtures pin are handed over instead.
 if (require.main !== module) {
   module.exports = { readRules, decisionShape, decisionShapeOfCall, decisionVerb, parseWireDisabled, loadWireDisabled,
+                     loadWireEnabled, effectiveDisabled, modWired, modUnwired,
                      displayName, sessions, plausibleTime };
 } else switch (cmd) {
   case "status": case undefined: printStatus(json); break;
@@ -2731,7 +3102,9 @@ if (require.main !== module) {
   agentbar install-hooks [--skip a,b] [--only a,b]
                                   wire Claude/Codex/Cursor/Antigravity/Gemini/Qwen/Copilot/OpenCode hooks
                                   (Linux installer); agents in ~/.agentbar/wire-disabled are unwired instead.
-                                  --skip adds to that list, --only turns off every agent not named
+                                  --skip adds to that list, --only turns off every agent not named.
+                                  The Claude Code mod (claude-mod) is off unless switched on
+                                  (~/.agentbar/wire-enabled): \`agentbar wire claude-mod\`
   agentbar unwire <id>            take one agent out (its settings restored, the choice remembered)
   agentbar wire <id>              put it back`);
     break;

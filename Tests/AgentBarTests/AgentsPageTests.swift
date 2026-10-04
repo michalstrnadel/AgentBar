@@ -19,6 +19,49 @@ import Testing
         return HistoryStore.Record(jsonLine: line)!
     }
 
+    /// The mod starts off, so its off line is the one most people read: it says
+    /// what switching on buys, not merely that it is off.
+    @Test func theModsLineSaysWhatTurningItOnBuys() {
+        let now: TimeInterval = 1_790_000_000
+        func s(present: Bool = true, supported: Bool = true, off: Bool = false, last: TimeInterval? = nil) -> String {
+            AgentsPage.modState(present: present, supported: supported, off: off, lastReport: last, now: now)
+        }
+        #expect(s(present: false) == "Not on this Mac")
+        #expect(s(supported: false, off: true) == "Needs Claude Code 2.1.287 or later")
+        #expect(s(off: true) == "Off — turn on to see what Claude Code runs without asking you, and its live quota")
+        #expect(s(last: now - 30).hasPrefix("On · reported today"))
+        #expect(s().hasPrefix("On · no report yet"))
+    }
+
+    @Test func thePluginsCardSpeaksForEveryState() {
+        #expect(AgentsPage.pluginsEmpty == "No plugin can answer Claude Code's prompts for you.")
+        #expect(AgentsPage.alsoLoaded([]) == nil)
+        let weather = PluginInventory.Plugin(key: "token-weather@m", name: "token-weather",
+                                             configDirs: [URL(fileURLWithPath: "/h/.claude-work")],
+                                             installPath: "/p/tw", kind: .mod,
+                                             events: [.init(name: "ui.render", filter: ["component": "AbovePrompt"])],
+                                             estimated: false, ours: false)
+        let figma = PluginInventory.Plugin(key: "figma@m", name: "figma", configDirs: [], installPath: "/p/f",
+                                           kind: .other, events: [], estimated: false, ours: false)
+        #expect(AgentsPage.alsoLoaded([weather, figma]) == "Also loaded: token-weather (draws in the terminal), figma.")
+        let blast = PluginInventory.Plugin(key: "blast-radius@m", name: "blast-radius",
+                                           configDirs: [URL(fileURLWithPath: "/h/.claude-work"),
+                                                        URL(fileURLWithPath: "/h/.claude")],
+                                           installPath: "/p/br", kind: .mod,
+                                           events: [.init(name: "tool.call", filter: ["tool": "Bash"])],
+                                           estimated: false, ours: false)
+        #expect(AgentsPage.pluginDetail(blast, showDirs: true, home: "/h")
+                == "Can hold or refuse Bash commands before they run · in ~/.claude-work, ~/.claude.")
+        #expect(AgentsPage.pluginDetail(blast, showDirs: false, home: "/h")
+                == "Can hold or refuse Bash commands before they run.")
+        #expect(AgentsPage.pluginBadge(blast) == "Mod")
+        let many = (0..<10).map { i in
+            PluginInventory.Plugin(key: "p\(i)", name: "p\(i)", configDirs: [], installPath: "/p\(i)",
+                                   kind: .other, events: [], estimated: false, ours: false)
+        }
+        #expect(AgentsPage.alsoLoaded(many)?.hasSuffix(", and 2 more.") == true)
+    }
+
     @Test func theLineSaysWhatTheSwitchCannot() {
         let now: TimeInterval = 1_790_000_000
         #expect(AgentsPage.state(present: false, off: false, lastSession: nil, now: now) == "Not on this Mac")

@@ -1,0 +1,24 @@
+{
+  "success": true,
+  "strict": false,
+  "target": "/fixture/plugins/replay-theater/.claude-plugin/plugin.json",
+  "manifest": {
+    "file": "/fixture/plugins/replay-theater/.claude-plugin/plugin.json",
+    "type": "plugin",
+    "errors": [],
+    "warnings": [],
+    "notes": []
+  },
+  "contents": [
+    {
+      "file": "/fixture/plugins/replay-theater/hooks/hooks.json",
+      "type": "hooks",
+      "errors": [],
+      "warnings": [],
+      "notes": [
+        "./replay-theater.mjs hooks: session.start, command.run{command=replay}, tool.call, turn.start, turn.complete, ui.render{component=AbovePrompt}, ui.render{component=Pane}, ui.close",
+        "./replay-theater.mjs calls: $.clock.sleep (via openReplay), $.command.register, $.fs.exists (via stepsFor), $.fs.read (via stepsFor), $.session.cwd (via stepsFor), $.ui.close (via replayView), $.ui.invalidate, $.ui.open (via openReplay), $.ui.resolve"
+      ]
+    }
+  ]
+}

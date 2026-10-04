@@ -74,11 +74,80 @@ enum WiringPrefs {
         try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: target.path)
     }
 
-    /// One agent on or off, everything else in the file — unknown ids included — kept.
+    /// One integration on or off, everything else in both files — unknown ids
+    /// included — kept. A default-off integration is switched by `wire-enabled`:
+    /// on adds it there (and takes it out of `wire-disabled`, which would otherwise
+    /// still win), off takes it out again — so "off" is, once more, the file not
+    /// mentioning it.
     static func set(_ id: String, disabled: Bool,
                     home: URL = FileManager.default.homeDirectoryForCurrentUser) throws {
         var ids = load(home: home)
+        if defaultOff.contains(id) {
+            var on = loadEnabled(home: home)
+            if disabled { on.remove(id) } else { on.insert(id); ids.remove(id) }
+            try saveEnabled(on, home: home)
+            if ids != load(home: home) { try save(ids, home: home) }
+            return
+        }
         if disabled { ids.insert(id) } else { ids.remove(id) }
         try save(ids, home: home)
+    }
+
+    // MARK: - Integrations that start off
+
+    /// Integrations nobody gets without asking. Every agent is wired the moment it is
+    /// found; these are not, because what they put in place is more than a status
+    /// bridge — the Claude Code mod runs inside Claude Code's own process.
+    ///
+    /// Opting in is a second file rather than a line seeded into `wire-disabled`, and
+    /// that is deliberate. A seed has to remember it was planted: `wire-disabled`
+    /// saved empty is *deleted*, so somebody who switched every agent back on would
+    /// silently get the mod as well, and a fresh machine where the CLI runs first
+    /// would need the CLI to plant it too. Here a missing line means off, in every
+    /// reader, with nothing to remember. An older AgentBar never knew these ids,
+    /// never wires them, and never reads `wire-enabled`.
+    static let defaultOff: Set<String> = ["claude-mod"]
+    static let enabledFileName = "wire-enabled"
+
+    static func enabledURL(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        AgentBarHome.url(enabledFileName, home: home)
+    }
+
+    /// `wire-enabled`, read by exactly the rules of `wire-disabled`. Unreadable is
+    /// empty: failing to read an opt-in must leave the integration off.
+    static func loadEnabled(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Set<String> {
+        guard let text = try? String(contentsOf: enabledURL(home: home), encoding: .utf8) else { return [] }
+        return parse(text)
+    }
+
+    static func renderEnabled(_ ids: Set<String>) -> String {
+        (["# Integrations AgentBar wires only because you asked, one id per line.",
+          "# Written by AgentBar (Settings > Agents) and the agentbar CLI."]
+            + ids.sorted()).joined(separator: "\n") + "\n"
+    }
+
+    /// Empty removes the file, as `save` does.
+    static func saveEnabled(_ ids: Set<String>,
+                            home: URL = FileManager.default.homeDirectoryForCurrentUser) throws {
+        let fm = FileManager.default
+        let target = enabledURL(home: home)
+        guard !ids.isEmpty else {
+            if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
+            return
+        }
+        try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(renderEnabled(ids).utf8).write(to: target, options: .atomic)
+        try fm.setAttributes([.posixPermissions: 0o644], ofItemAtPath: target.path)
+    }
+
+    /// What every installer pass and every reader acts on: the ids switched off,
+    /// plus each default-off integration nobody switched on. `wire-disabled` wins
+    /// over `wire-enabled` — a line written there by hand turns anything off.
+    static func effectiveDisabled(disabled: Set<String>, enabled: Set<String>) -> Set<String> {
+        disabled.union(defaultOff.subtracting(enabled))
+    }
+
+    static func effectiveDisabled(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Set<String> {
+        effectiveDisabled(disabled: load(home: home), enabled: loadEnabled(home: home))
     }
 }

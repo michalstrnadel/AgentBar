@@ -87,6 +87,10 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 cp -R Scripts/hooks "$APP/Contents/Resources/hooks"
+# The Claude Code mod (Scripts/mods/claude). Copied to ~/.agentbar/mods/ on every
+# launch like the hooks, and loaded by Claude Code only once the person switches it
+# on (Settings ▸ Agents ▸ Claude Code mod) — bundling it wires nothing.
+[ -d Scripts/mods ] && cp -R Scripts/mods "$APP/Contents/Resources/mods"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 # TCC keys permission grants to the signing identity, and an ad-hoc signature is

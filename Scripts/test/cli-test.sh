@@ -915,6 +915,51 @@ check "wire-disabled parse honours case + comments" '! grep -q agentbar "$HOME/.
 "$CLI" wire cursor >/dev/null 2>&1
 check "wire-disabled rewrite keeps unknown ids, drops junk" '[ "$(WD | grep -v "^#" | tr "\n" " ")" = "future-agent gemini qwen " ]'
 
+# --- the Claude Code mod: off unless switched on (~/.agentbar/wire-enabled) ---------
+# One entry in env.CLAUDE_CODE_PLUGIN_DIRS, beside the person's own. install-hooks
+# never puts it there by itself; `wire claude-mod` (or --only naming it) does, and
+# unwiring gives the file back byte for byte.
+fresh_home
+mkdir -p "$HOME/.claude" "$HOME/.agentbar/mods/claude" "$HOME/.local/share/claude/versions/2.1.289"
+pretty '{"theme":"dark","env":{"CLAUDE_CODE_PLUGIN_DIRS":"/opt/mine","FOO":"1"}}' > "$HOME/.claude/settings.json"
+"$CLI" install-hooks >/dev/null 2>&1
+cp "$HOME/.claude/settings.json" "$HOME/claude.hooked"
+MODENV() { "$NODE" -e 'const e=(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).env||{});process.stdout.write(String(e.CLAUDE_CODE_PLUGIN_DIRS))' "$HOME/.claude/settings.json"; }
+check "install-hooks leaves the mod off"     '[ "$(MODENV)" = /opt/mine ] && [ ! -e "$HOME/.agentbar/wire-enabled" ]'
+"$CLI" wire claude-mod >/dev/null 2>&1
+check "wire claude-mod adds our dir last"    '[ "$(MODENV)" = "/opt/mine:$HOME/.agentbar/mods/claude" ]'
+check "wire claude-mod writes wire-enabled"  '[ "$(grep -v "^#" "$HOME/.agentbar/wire-enabled")" = claude-mod ] && [ ! -e "$HOME/.agentbar/wire-disabled" ]'
+check "wire claude-mod keeps a backup"       'ls "$HOME/.claude" | grep -q "^settings\.json\.agentbar-bak-"'
+BAKS="$(ls "$HOME/.claude" | grep -c agentbar-bak)"
+"$CLI" install-hooks >/dev/null 2>&1
+check "install-hooks keeps it once on"       '[ "$(MODENV)" = "/opt/mine:$HOME/.agentbar/mods/claude" ] && [ "$(ls "$HOME/.claude" | grep -c agentbar-bak)" = "$BAKS" ]'
+"$CLI" unwire claude-mod >/dev/null 2>&1
+check "unwire claude-mod gives the bytes back" 'cmp -s "$HOME/.claude/settings.json" "$HOME/claude.hooked"'
+check "unwire claude-mod clears wire-enabled"  '[ ! -e "$HOME/.agentbar/wire-enabled" ] && [ ! -e "$HOME/.agentbar/wire-disabled" ]'
+"$CLI" install-hooks --only claude,claude-mod >/dev/null 2>&1
+check "--only naming it switches it on"      '[ "$(MODENV)" = "/opt/mine:$HOME/.agentbar/mods/claude" ]'
+"$CLI" install-hooks --only claude >/dev/null 2>&1
+check "--only leaving it out switches it off" '[ "$(MODENV)" = /opt/mine ] && ! grep -qx claude-mod "$HOME/.agentbar/wire-disabled" 2>/dev/null'
+"$CLI" wire claude-mod >/dev/null 2>&1
+"$CLI" install-hooks --skip claude-mod >/dev/null 2>&1
+check "--skip claude-mod unwires it"         '[ "$(MODENV)" = /opt/mine ] && grep -qx claude-mod "$HOME/.agentbar/wire-disabled"'
+# A Claude Code too old to load mods: switched on, still not written.
+fresh_home
+mkdir -p "$HOME/.claude" "$HOME/.agentbar/mods/claude" "$HOME/.local/share/claude/versions/2.1.200"
+printf '{"theme":"dark"}' > "$HOME/.claude/settings.json"
+ERR="$("$CLI" wire claude-mod 2>&1 >/dev/null)"
+check "an old Claude Code is not wired"      '! grep -q CLAUDE_CODE_PLUGIN_DIRS "$HOME/.claude/settings.json" && echo "$ERR" | grep -q "predates mods"'
+# Someone else's value of the wrong type is refused, never repaired.
+fresh_home
+mkdir -p "$HOME/.claude" "$HOME/.agentbar/mods/claude" "$HOME/.local/share/claude/versions/2.1.289"
+printf '{"env":{"CLAUDE_CODE_PLUGIN_DIRS":["/opt/mine"]}}' > "$HOME/.claude/settings.json"
+"$CLI" wire claude-mod >/dev/null 2>&1
+check "a list where a string belongs is left" '[ "$(cat "$HOME/.claude/settings.json")" = "{\"env\":{\"CLAUDE_CODE_PLUGIN_DIRS\":[\"/opt/mine\"]}}" ]'
+# The person's config.json beside the mod survives the copy.
+printf '{"band":true}' > "$HOME/.agentbar/mods/config.json"
+"$CLI" install-hooks --only claude >/dev/null 2>&1
+check "the mod copy keeps mods/config.json"   '[ "$(cat "$HOME/.agentbar/mods/config.json")" = "{\"band\":true}" ]'
+
 # --- AGENTBAR_HOME moves the state root, and only the state root (docs/protocol.md
 # "Where state lives"). A HOME with no ~/.agentbar at all, so a single stray write
 # into the default shows up as the directory existing.

@@ -77,6 +77,21 @@ Repeated for each entry in the integration table, `<id>` being the agent id.
 | `codex.hooks` | Codex has accepted its hooks. Codex runs none until a human says yes, and an unaccepted hook is skipped in silence — so the wired row, which the older `notify` key alone satisfies, cannot tell you. `warn` until the answer lands in `[hooks.state]` |
 | `copilot.exec` | Copilot's hook runs node directly. A `bash` wrapper makes the hook's parent a shell that exits at once — and that pid is what prunes dead rows, so every Copilot row would vanish on the next refresh |
 
+### The Claude Code mod
+
+`claude-mod` is in the integration table but is not an agent: no `Agent.all` entry, no
+history rows, and it **starts off** (`~/.agentbar/wire-enabled`, see
+`docs/protocol.md`). Its rows replace the per-agent ones above.
+
+| id | asserts |
+|---|---|
+| `agent.claude-mod` | emitted **only** as `skipped`: Claude Code absent, or the mod off — "Off until you switch it on" when it was never switched on, the usual "Turned off by you" when `wire-disabled` lists it |
+| `agent.claude-mod.version` | the installed Claude Code loads mods (2.1.287 or later). `fail` when it is known to be older — then no further row, the installer skipped it on purpose. Unknown is `ok`: an older build ignores the setting |
+| `agent.claude-mod.copied` | `~/.agentbar/mods/claude` exists. **Fix it**: re-install |
+| `agent.claude-mod.wired` | every existing Claude config dir's `settings.json` names an AgentBar mod dir in `env.CLAUDE_CODE_PLUGIN_DIRS` |
+| `agent.claude-mod.reported` | something in `mods.d` written within 7 days — or no Claude Code session since the switch was turned on (the `wire-enabled` mtime) to judge by. `warn` when sessions ran and nothing was written: the shape of a mod Claude Code never loaded |
+| `claude.plugins` | **information, never a failure** (`ok`, or `skipped` without Claude Code): the enabled plugins that could answer a prompt before AgentBar sees it — a classic `PreToolUse` / `PermissionRequest` hook, or a mod on `tool.call`, `tool.check`, `classic.PreToolUse` or `classic.PermissionRequest`. Read from `installed_plugins.json`, `enabledPlugins`, the inline `CLAUDE_CODE_PLUGIN_DIRS` and the module sources only — a diagnosis never starts `claude`. AgentBar's own mod is never counted |
+
 Some rows carry a **Fix it** button as well as a sentence — only where the repair is
 AgentBar's own to make: re-installing the hooks (wiring, a node path that moved, the
 script copies), creating the `~/.agentbar` directories, and clearing files past their
@@ -100,6 +115,7 @@ Where each agent lives, and what says it is ours:
 | qwen | `~/.qwen/settings.json` | `/.agentbar/hooks/claude/` |
 | antigravity | `~/.gemini/antigravity{,-cli}/hooks.json` | the top-level `agentbar` key |
 | opencode | `~/.config/opencode/plugins/agentbar.js` | the file is ours |
+| claude-mod | `settings.json` of every Claude config dir claude uses, `env.CLAUDE_CODE_PLUGIN_DIRS` | `/.agentbar/mods/` |
 
 ### Leftovers and presence
 

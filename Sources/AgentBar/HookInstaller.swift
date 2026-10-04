@@ -35,16 +35,34 @@ enum HookInstaller {
         var node: String?
         /// `ConfigBackup`'s record; nil keeps none.
         var log: URL?
+        /// `wire-disabled` as read.
         var disabled: Set<String> = []
+        /// `wire-enabled` as read: the default-off integrations switched on. A test
+        /// that leaves it empty gets them off, exactly like a fresh machine.
+        var enabled: Set<String> = []
         /// Only a pass over the real machine tells the welcome window what it wired.
         var publishes = false
+        /// The Claude Code installed here, for the mod's version gate. nil is "could
+        /// not tell", which does not block: an older Claude Code ignores the setting.
+        var claudeVersion: String?
 
         var hooksDir: URL { home.appendingPathComponent(".agentbar/hooks", isDirectory: true) }
+        /// Where the Claude Code mod is loaded from — the real home's copy, never a
+        /// sandbox's: a sandbox wires nothing at all.
+        var claudeModDir: URL { home.appendingPathComponent(".agentbar/mods/claude", isDirectory: true) }
+
+        /// Whether a pass unwires `id`: switched off, or off by default and never
+        /// switched on (`WiringPrefs.effectiveDisabled`).
+        func isOff(_ id: String) -> Bool {
+            WiringPrefs.effectiveDisabled(disabled: disabled, enabled: enabled).contains(id)
+        }
 
         static func live() -> Context {
             Context(home: realHome, environment: ProcessInfo.processInfo.environment,
                     node: liveNode, log: ConfigBackup.defaultLog,
-                    disabled: WiringPrefs.load(home: realHome), publishes: true)
+                    disabled: WiringPrefs.load(home: realHome),
+                    enabled: WiringPrefs.loadEnabled(home: realHome), publishes: true,
+                    claudeVersion: claudeCodeVersion())
         }
     }
 
@@ -153,6 +171,12 @@ enum HookInstaller {
                 finish()
                 return
             }
+            // The mod is copied whether or not anybody switched it on — it is
+            // inert until Claude Code is told where it is — and a failure here
+            // costs only the mod, never the hooks.
+            if let mods = Bundle.main.resourceURL?.appendingPathComponent("mods") {
+                step("copy mods") { try copyMods(from: mods, to: realModsDir) }
+            }
             // A sandbox wires nothing. Its scripts are copied (the self-test runs
             // them), but every agent config it would write is the person's real one,
             // and pointing those at a throwaway folder is the leak `AgentBarHome`
@@ -183,7 +207,11 @@ enum HookInstaller {
                         _ done: @escaping ([ConfigBackup.Record]) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             var ctx = Context.live()
-            if wired { ctx.disabled.remove(agent) } else { ctx.disabled.insert(agent) }
+            if wired {
+                ctx.disabled.remove(agent); ctx.enabled.insert(agent)
+            } else {
+                ctx.disabled.insert(agent); ctx.enabled.remove(agent)
+            }
             let planned = runPass(ctx, preview: true, only: agent).planned
             DispatchQueue.main.async { done(planned) }
         }
@@ -232,11 +260,19 @@ enum HookInstaller {
     /// takes effect on the next launch too. Unwiring something already unwired
     /// writes nothing.
     private static func run(_ pass: Pass) {
-        let on = { (id: String) in !pass.ctx.disabled.contains(id) }
+        let on = { (id: String) in !pass.ctx.isOff(id) }
         for dir in claudeConfigDirs(pass.ctx) {
             step("claude (\(dir.path))", agent: "claude", pass) {
                 on("claude") ? try installClaude(configDir: dir, pass)
                              : try unwireClaude(configDir: dir, pass)
+            }
+        }
+        // Off unless switched on (`WiringPrefs.defaultOff`), so on a machine where
+        // nobody asked this is an unwire that finds nothing and writes nothing.
+        for dir in claudeConfigDirs(pass.ctx) {
+            step("claude-mod (\(dir.path))", agent: ClaudeModWiring.id, pass) {
+                on(ClaudeModWiring.id) ? try wireClaudeMod(configDir: dir, pass)
+                                 : try unwireClaudeMod(configDir: dir, pass)
             }
         }
         step("codex", agent: "codex", pass) { on("codex") ? try installCodex(pass) : try unwireCodex(pass) }
@@ -286,7 +322,7 @@ enum HookInstaller {
     /// usually doesn't inherit the shell's env; install.sh rewrites or clears the hint
     /// on every run, so it can't go stale). The default `~/.claude` is always
     /// included so a user who runs Claude both ways stays covered. Deduped.
-    private static func claudeConfigDirs(_ ctx: Context) -> [URL] {
+    static func claudeConfigDirs(_ ctx: Context) -> [URL] {
         let home = ctx.home
         var dirs = [home.appendingPathComponent(".claude")]
         if let env = ctx.environment["CLAUDE_CONFIG_DIR"], !env.isEmpty {
@@ -309,6 +345,50 @@ enum HookInstaller {
             let dest = realHooksDir.appendingPathComponent(agent.lastPathComponent)
             if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
             try fm.copyItem(at: agent, to: dest)
+        }
+    }
+
+    /// Where the bundled mods are copied — under `AGENTBAR_HOME` like the hooks.
+    private static var realModsDir: URL { AgentBarHome.url("mods", isDirectory: true) }
+
+    /// Each bundled mod (`Resources/mods/<name>`) into `dest/<name>`, replaced whole
+    /// when it differs and left alone when it does not: Claude Code reloads a mod
+    /// whose files change, and every launch rewriting identical bytes would reload
+    /// it in every session that has it. Nothing else in `dest` is touched — least of
+    /// all `config.json`, which is the person's.
+    static func copyMods(from bundled: URL, to dest: URL) throws {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: bundled.path) else { return }
+        try fm.createDirectory(at: dest, withIntermediateDirectories: true)
+        for mod in (try? fm.contentsOfDirectory(at: bundled, includingPropertiesForKeys: nil)) ?? [] {
+            let name = mod.lastPathComponent
+            guard name != "config.json", !name.hasPrefix(".") else { continue }
+            let target = dest.appendingPathComponent(name)
+            if sameTree(mod, target) { continue }
+            if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
+            try fm.copyItem(at: mod, to: target)
+        }
+    }
+
+    /// Two directories (or files) holding the same relative paths with the same bytes.
+    static func sameTree(_ a: URL, _ b: URL) -> Bool {
+        let fm = FileManager.default
+        func files(_ root: URL) -> [String: URL]? {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: root.path, isDirectory: &isDir) else { return nil }
+            guard isDir.boolValue else { return ["": root] }
+            var out: [String: URL] = [:]
+            let prefix = root.resolvingSymlinksInPath().path + "/"
+            for case let url as URL in fm.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey]) ?? .init() {
+                guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
+                let path = url.resolvingSymlinksInPath().path
+                out[path.hasPrefix(prefix) ? String(path.dropFirst(prefix.count)) : path] = url
+            }
+            return out
+        }
+        guard let left = files(a), let right = files(b), Set(left.keys) == Set(right.keys) else { return false }
+        return left.allSatisfy { rel, url in
+            (try? Data(contentsOf: url)) == right[rel].flatMap { try? Data(contentsOf: $0) }
         }
     }
 
@@ -1001,6 +1081,58 @@ enum HookInstaller {
         try unwireHooksJSON(at: configDir.appendingPathComponent("settings.json"),
                             marker: claudeMarker, pass)
         pass.unnote("claude")
+    }
+
+    // MARK: - The Claude Code mod (<configDir>/settings.json → env.CLAUDE_CODE_PLUGIN_DIRS)
+
+    /// Our mod's directory into one Claude config's plugin list, through the same
+    /// backed-up, previewable write as every other setting. Skipped — with a line,
+    /// never a half-measure — when that Claude Code is known to be too old, when
+    /// the mod was never copied (there would be nothing at the path), when the
+    /// config dir does not exist, and when the file or its `env` is not ours to read.
+    /// Not noted for the welcome window: that list is agents, and this is not one.
+    private static func wireClaudeMod(configDir: URL, _ pass: Pass) throws {
+        guard ClaudeModWiring.supports(pass.ctx.claudeVersion) else {
+            NSLog("AgentBar: Claude Code \(pass.ctx.claudeVersion ?? "?") predates mods "
+                  + "(\(ClaudeModWiring.minimumVersion)) — the Claude Code mod is not wired")
+            return
+        }
+        let modDir = pass.ctx.claudeModDir
+        guard FileManager.default.fileExists(atPath: modDir.path) else {
+            NSLog("AgentBar: \(modDir.path) is missing — the Claude Code mod is not wired")
+            return
+        }
+        guard FileManager.default.fileExists(atPath: configDir.path) else { return }
+        let url = configDir.appendingPathComponent("settings.json")
+        guard let root = readConfig(at: url) else { return }
+        let (plan, next) = ClaudeModWiring.wired(root, modDir: modDir.path)
+        switch plan {
+        case .unchanged: return
+        case .refused(let why):
+            NSLog("AgentBar: \(url.path): \(why) — the Claude Code mod is not wired there")
+        case .write:
+            let data = try JSONSerialization.data(withJSONObject: next, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+            try pass.write(data, to: url)
+        }
+    }
+
+    private static func unwireClaudeMod(configDir: URL, _ pass: Pass) throws {
+        let url = configDir.appendingPathComponent("settings.json")
+        guard FileManager.default.fileExists(atPath: url.path), let root = readConfig(at: url) else { return }
+        let (plan, next) = ClaudeModWiring.unwired(root)
+        guard plan == .write else { return }
+        let data = try JSONSerialization.data(withJSONObject: next, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        try pass.write(data, to: url)
+    }
+
+    /// The Claude Code on this Mac: the cheap places first (`ClaudeQuota`), then
+    /// `claude --version`, which only an npm-installed Claude Code needs.
+    static func claudeCodeVersion() -> String? {
+        if let v = ClaudeQuota.installedCLIVersion() { return v }
+        guard let claude = Launcher.resolve("claude"),
+              let out = WorkDiff.run(claude, ["--version"], in: NSTemporaryDirectory(), timeout: 5)
+        else { return nil }
+        return ClaudeModWiring.parseVersion(out)
     }
 
     private static func unwireQwen(_ pass: Pass) throws {

@@ -22,6 +22,7 @@ locks. All timestamps (`ts`) are Unix seconds.
   hooks/       installed copies of the hook scripts (refreshed by the installer)
   claude-config-dir  optional hint: custom CLAUDE_CONFIG_DIR path (one line)
   wire-disabled  agents the installers leave unwired, one id per line (writer: frontends)
+  wire-enabled   integrations that start off and were switched on, one id per line (writer: frontends)
   mods.d/      one JSON per Claude Code session the AgentBar mod sees (writer: the mod; reader: frontends)
   mods/        installed copy of the AgentBar Claude Code mod, and its config.json (writer: frontends)
 ```
@@ -597,7 +598,7 @@ thing to keep byte-identical in the one place where drifting apart means approvi
 something nobody meant to. (`shape` is already normalised twice — in
 `DecisionLedger.swift` and in the CLI — and that is one copy too many already.)
 Every rule the two halves both implement — `shape`, reading `rules.json`,
-`wire-disabled`, unwiring, session rows — is pinned by one language-neutral fixture
+`wire-disabled`, `wire-enabled`, unwiring, session rows — is pinned by one language-neutral fixture
 per rule under `Tests/Fixtures/`, which the Swift suite and the CLI suite both read;
 a case is added there, never to one side alone.
 
@@ -613,7 +614,8 @@ cursor
 gemini   # a trailing comment too
 ```
 
-- One agent id per line (the ids above). Everything after `#` is a comment;
+- One agent id per line (the ids above, plus the integration id `claude-mod`, below).
+  Everything after `#` is a comment;
   surrounding blanks are trimmed; ids are lowercased; a line that is not
   `^[a-z0-9][a-z0-9_-]*$` is skipped, never trusted.
 - An id a reader does not know is **kept** when it rewrites the file, so a newer
@@ -634,6 +636,47 @@ gemini   # a trailing comment too
   `install-hooks --skip a,b` adds to the list and `--only a,b` disables every other
   agent it knows (unknown ids in the file stay). Diagnostics report a listed agent as
   `skipped`, never as a failure.
+
+### wire-enabled — integrations that start off
+
+Every agent is wired the moment it is found. One integration is not: `claude-mod`,
+the AgentBar Claude Code mod (`mods.d`, above), which runs inside Claude Code's own
+process and so waits until somebody asks for it. Asking is written to
+`~/.agentbar/wire-enabled`, read and written by exactly the rules of
+`wire-disabled` (same parsing, same atomic `0644` write, saved empty is deleted),
+with its own header:
+
+```
+# Integrations AgentBar wires only because you asked, one id per line.
+# Written by AgentBar (Settings > Agents) and the agentbar CLI.
+claude-mod
+```
+
+- What an installer unwires is `wire-disabled` plus every default-off id that
+  `wire-enabled` does not list. **`wire-disabled` wins**: a `claude-mod` line there
+  turns it off whatever `wire-enabled` says.
+- Switching it on adds the id here and removes it from `wire-disabled`; switching it
+  off removes it from here and writes nothing to `wire-disabled` — off is the file
+  not naming it. `agentbar wire claude-mod` / `unwire claude-mod` do the same;
+  `install-hooks --only …` switches it on when it names `claude-mod` and off when it
+  does not; `--skip claude-mod` lists it in `wire-disabled`.
+- Why a second file rather than a line planted in `wire-disabled` on first run: a
+  planted line has to remember it was planted (and `wire-disabled` saved empty is
+  deleted, which would forget it and switch the mod on), and a machine where the CLI
+  runs first would have to plant it too. A missing line meaning off needs no memory
+  in any reader. An older frontend knows no default-off id, never wires one, and
+  never reads this file.
+- Wiring `claude-mod` writes one entry into `env.CLAUDE_CODE_PLUGIN_DIRS` (a
+  `:`-separated list of absolute paths) of `settings.json` in every Claude config dir
+  the installer knows that exists: the person's own entries stay first and in order,
+  any entry containing `/.agentbar/mods/` is replaced, and the real
+  `~/.agentbar/mods/claude` goes last (never a sandbox's path — a sandbox wires
+  nothing). Unwiring removes every entry containing `/.agentbar/mods/`, drops the key
+  when it empties, and drops `env` when that empties. An `env` that is not an object,
+  or a value that is not a string, is left exactly as it is. Claude Code older than
+  2.1.287 does not read the setting, so the installers skip it there.
+- Both frontends copy the bundled mod to `~/.agentbar/mods/<name>` on every run,
+  replacing a copy that differs and leaving `mods/config.json` alone.
 
 ## Adding a frontend or an agent
 
