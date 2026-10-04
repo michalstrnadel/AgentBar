@@ -1,0 +1,4 @@
+{
+  "description": "AgentBar: observe-only hooks that write mods.d/<session_id>.json, and an optional AbovePrompt line when another session waits on you.",
+  "modules": ["./register.js"]
+}

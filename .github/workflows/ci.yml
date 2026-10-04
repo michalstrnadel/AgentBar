@@ -52,6 +52,22 @@ jobs:
       - name: Run cloud poller test suite
         run: node --test Scripts/cloud/test/*.test.js
 
+  # The Claude Code mod (Scripts/mods/claude): validate --strict, its capabilities
+  # held to an allow-list, and its own tests, run by Claude Code itself. Neither
+  # needs an account; mod-test.sh says SKIP rather than fail if that ever changes.
+  mod-tests:
+    name: Claude Code mod
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+      - name: Install Claude Code
+        run: npm i -g @anthropic-ai/claude-code
+      - name: Run mod test suite
+        run: bash Scripts/test/mod-test.sh
+
   build:
     name: Build app (universal)
     runs-on: macos-14

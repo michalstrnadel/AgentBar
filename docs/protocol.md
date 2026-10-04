@@ -412,8 +412,8 @@ decisions about the same command are two decisions, and counting them is the poi
   below). `claude` means Claude Code decided the call itself, before any prompt existed,
   and the AgentBar mod saw it (see `mods.d` below); such a row also carries `by`
   (`rule` — a Claude Code settings rule, named in `claudeRule`; `mode` — the permission
-  mode or the tool's own check; `hook` — a hook or another mod, which Claude Code does
-  not name), `reason` (Claude Code's sentence, capped at 300 characters) and
+  mode or the tool's own check; `hook` — a hook or another mod: Claude Code says a
+  `PreToolUse` hook decided but not why, and names no mod, so `reason` is often empty), `reason` (Claude Code's sentence, capped at 300 characters) and
   `toolUseId`, which is unique: a frontend writes one row per id, ever. Its `waited`
   is `0`. A frontend that offers a switch to stop writing rows (AgentBar: *Remember
   what I decided*) applies it to `claude` rows too, and marks their ids as taken
@@ -458,8 +458,8 @@ result through unchanged — and writes one file per session:
 {"v":1,"agent":"claude","session_id":"0fbdbf48-…","ts":1791146583,"mod":"1.36.0",
  "cwd":"/Users/me/AgentBar","ended":false,
  "context":{"percent":16,"tokens":31310,"window":200000},
- "rate_limits":[{"kind":"five_hour","percent_used":62,"resets_at":"2026-10-04T23:00:00Z"},
-                {"kind":"seven_day","percent_used":28,"resets_at":"2026-10-10T05:00:00Z"}],
+ "rate_limits":[{"kind":"five_hour","percent_used":62,"resets_at":"2026-10-04T23:00:00.000Z"},
+                {"kind":"seven_day","percent_used":28,"resets_at":"2026-10-10T05:00:00.000Z"}],
  "subagents":0,
  "decisions":[{"id":"toolu_013T…","ts":1791146581,"tool":"Bash",
                "input":{"command":"git status --short"},
@@ -472,17 +472,24 @@ result through unchanged — and writes one file per session:
   last; the next write, at most a few seconds later, is whole again.
 - `context` and `rate_limits` are Claude Code's own figures (`$.session.usage()`): a
   figure it does not have is left out, never zeroed. `rate_limits` is empty off a
-  subscription. `percent_used` is 0–100 and may pass 100 on an exceeded spend limit.
-- `decisions` is a ring of the newest 200 verdicts Claude Code reached **without a
-  prompt**: `allow` or `deny`, never `ask` (an `ask` reaches the person, and from
-  there `requests.d`). Read-only tools (`Read`, `Glob`, `Grep`, `LS`, `TodoWrite`,
+  subscription and until the session's first turn has been measured; `resets_at` is
+  ISO 8601 as Claude Code gives it. `percent_used` is 0–100 and may pass 100 on an exceeded spend limit.
+- `decisions` is a ring of the newest 200 verdicts Claude Code reached **before a
+  prompt was due**: `allow` or `deny`, never `ask` (an `ask` reaches the person, and
+  from there `requests.d`). A verdict the permission mode reaches *on* an `ask` —
+  don't-ask mode, the auto-mode classifier, a headless host — happens after the mod
+  has looked and is not among them; a reader must not present the ring as everything
+  that ran unasked. Read-only tools (`Read`, `Glob`, `Grep`, `LS`, `TodoWrite`,
   `NotebookRead`, `WebSearch`, `ToolSearch`, `BashOutput`) are left out: they change
   nothing, and listing every file read would bury the calls that did. `input` keeps
   only `command`, `file_path`, `url` and `description`, each capped at 2 KB. `by` is
   as in `decisions.jsonl`: `rule` with `rule` naming the settings rule, `mode`, or
   `hook`. A `deny` with `by: "hook"` is how a mod holding a command (and the person
-  cancelling it there) shows up.
-- `subagents` is the number of subagents running in the session (`0` when none).
+  cancelling it there) shows up. Such a mod acts before Claude Code's own permission
+  check, so a call it holds is `by: "hook"` even where a settings rule would also have
+  refused it.
+- `subagents` counts subagents launched and not yet finished, background ones
+  included (`0` when none); foreground ones are dropped when the main turn ends.
 - `ended` is set when Claude Code ends the session. The mod cannot delete a file, so
   a frontend removes `mods.d/<id>.json` once the `state.d` row is gone and either
   `ended` is true or `ts` is more than 24 hours old.
