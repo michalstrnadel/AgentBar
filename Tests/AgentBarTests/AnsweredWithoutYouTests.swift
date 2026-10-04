@@ -89,17 +89,24 @@ struct AnsweredWithoutYouTests {
         #expect(AnsweredWithoutYou.modOffText.contains("Settings ▸ Agents"))
     }
 
-    @Test func theModCountsAsInstalledByItsFolders() throws {
-        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+    @Test func theModCountsAsOnBySwitchOrByWhatItWrote() throws {
+        let home = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("agentbar-awy-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
-        #expect(!AnsweredWithoutYou.modInstalled(root: root))
-        let mods = root.appendingPathComponent("mods.d", isDirectory: true)
-        try FileManager.default.createDirectory(at: mods, withIntermediateDirectories: true)
-        try Data("{}".utf8).write(to: mods.appendingPathComponent(".ingested.json"))
-        #expect(!AnsweredWithoutYou.modInstalled(root: root))   // our own file is not the mod
-        try Data("{}".utf8).write(to: mods.appendingPathComponent("s1.json"))
-        #expect(AnsweredWithoutYou.modInstalled(root: root))
+        defer { try? FileManager.default.removeItem(at: home) }
+        let root = home.appendingPathComponent(".agentbar", isDirectory: true)
+        // The bundled copy every launch puts in mods/ is not the mod being on.
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("mods/claude"),
+                                                withIntermediateDirectories: true)
+        #expect(!AnsweredWithoutYou.modInstalled(home: home))
+        let modsD = root.appendingPathComponent("mods.d", isDirectory: true)
+        try FileManager.default.createDirectory(at: modsD, withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: modsD.appendingPathComponent(".ingested.json"))
+        #expect(!AnsweredWithoutYou.modInstalled(home: home))   // our own file is not the mod
+        try Data("{}".utf8).write(to: modsD.appendingPathComponent("s1.json"))
+        #expect(AnsweredWithoutYou.modInstalled(home: home))
+        try FileManager.default.removeItem(at: modsD.appendingPathComponent("s1.json"))
+        try Data("claude-mod\n".utf8).write(to: root.appendingPathComponent(WiringPrefs.enabledFileName))
+        #expect(AnsweredWithoutYou.modInstalled(home: home))
     }
 
     // MARK: - The rules list's note

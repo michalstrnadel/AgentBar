@@ -25,7 +25,7 @@ final class DiagnosticsView: NSView {
     /// bullet gutter, so a fix wraps once rather than becoming a paragraph.
     private static let textWidth = SettingsWindow.minWidth - 58
 
-    private let rows = NSStackView()
+    private(set) var rows = NSStackView()
     private let summary = NSTextField(labelWithString: "")
     private let copyButton = NSButton(title: "Copy report", target: nil, action: nil)
     private var checks: [Diagnostics.Check] = []
@@ -112,7 +112,8 @@ final class DiagnosticsView: NSView {
         }
     }
 
-    private func apply(_ found: [Diagnostics.Check]) {
+    /// Internal rather than private so a test can draw a report without running the checks.
+    func apply(_ found: [Diagnostics.Check]) {
         checks = found
         rows.arrangedSubviews.forEach { $0.removeFromSuperview() }
 
@@ -132,7 +133,14 @@ final class DiagnosticsView: NSView {
         }
 
         repairs.removeAll()
-        for check in attention.prefix(Self.maxRows) { rows.addArrangedSubview(row(check)) }
+        for check in attention.prefix(Self.maxRows) {
+            let view = row(check)
+            rows.addArrangedSubview(view)
+            // Only once it is in `rows`: a constraint between two views with no common
+            // ancestor raises, and every row with a repair button used to do exactly
+            // that, taking the rest of the report down with it.
+            if check.repair != nil { view.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true }
+        }
         if attention.count > Self.maxRows {
             let more = NSTextField(labelWithString:
                 "…and \(attention.count - Self.maxRows) more — they are all in the copied report.")
@@ -189,7 +197,6 @@ final class DiagnosticsView: NSView {
         row.orientation = .horizontal
         row.alignment = .firstBaseline
         row.spacing = 6
-        if parts.count > 2 { row.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true }
         return row
     }
 

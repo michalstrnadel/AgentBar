@@ -124,15 +124,15 @@ enum AnsweredWithoutYou {
         return out
     }
 
-    /// Whether the mod has been installed here: its folder, or anything it wrote.
-    static func modInstalled(root: URL = AgentBarHome.root()) -> Bool {
-        let fm = FileManager.default
-        for dir in ["mods", "mods.d"] {
-            let names = (try? fm.contentsOfDirectory(
-                atPath: root.appendingPathComponent(dir, isDirectory: true).path)) ?? []
-            if names.contains(where: { !$0.hasPrefix(".") }) { return true }
-        }
-        return false
+    /// Whether the mod is in play here: switched on (`wire-enabled`, and not turned
+    /// off by hand in `wire-disabled`), or something it wrote — a session started with
+    /// `--plugin-dir` reports without any switch. Not its folder: every launch copies
+    /// the bundled mod into `mods/`, switched on or not.
+    static func modInstalled(home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Bool {
+        if !WiringPrefs.effectiveDisabled(home: home).contains(ClaudeModWiring.id) { return true }
+        let dir = AgentBarHome.url("mods.d", isDirectory: true, home: home)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        return names.contains { !$0.hasPrefix(".") }
     }
 
     // MARK: - What Claude Code already allows

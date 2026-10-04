@@ -90,7 +90,13 @@ cp -R Scripts/hooks "$APP/Contents/Resources/hooks"
 # The Claude Code mod (Scripts/mods/claude). Copied to ~/.agentbar/mods/ on every
 # launch like the hooks, and loaded by Claude Code only once the person switches it
 # on (Settings ▸ Agents ▸ Claude Code mod) — bundling it wires nothing.
-[ -d Scripts/mods ] && cp -R Scripts/mods "$APP/Contents/Resources/mods"
+# Only what Claude Code loads: no tests, no tsconfig, and none of the type files
+# `claude plugin test` generates into .claude-plugin/types on a dev machine — a
+# release must not carry whatever happened to be on the disk that built it.
+if [ -d Scripts/mods ]; then
+  rsync -a --exclude tests --exclude tsconfig.json --exclude .claude-plugin/types \
+    --exclude .DS_Store Scripts/mods/ "$APP/Contents/Resources/mods/"
+fi
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 # TCC keys permission grants to the signing identity, and an ad-hoc signature is
