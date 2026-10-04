@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 import { SESSION, START, sidecarOf, worldOf } from './world'
+import { VERSION } from '../hooks/register.js'
 
 const S0 = Math.floor(START / 1000)
 
@@ -72,7 +73,7 @@ describe('what a decision row says', () => {
     await world.clock.advance(1000)
     const file = sidecarOf(world)
     expect(file).toMatchObject({
-      v: 1, agent: 'claude', session_id: 'sess-1', mod: '1.37.0', cwd: '/work/api', ended: false,
+      v: 1, agent: 'claude', session_id: 'sess-1', mod: VERSION, cwd: '/work/api', ended: false,
       context: { window: 200000 }, rate_limits: [], subagents: 0,
     })
     expect(file.decisions).toEqual([{

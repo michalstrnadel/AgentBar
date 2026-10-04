@@ -95,6 +95,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var hideIslandBox: NSSwitch!
     private var hideAwayBox: NSSwitch!
     private var personalityBox: NSSwitch!
+    private var modBandBox: NSSwitch!
     private var diagnostics: DiagnosticsView!
     private var configChangesButton: NSButton!
     /// The Agents card, rebuilt by `syncAgents` — its subtitles say each agent's
@@ -311,6 +312,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         hideIslandBox = SettingsChrome.toggle(target: self, action: #selector(toggleHideIsland))
         hideAwayBox = SettingsChrome.toggle(target: self, action: #selector(toggleHideAway))
         personalityBox = SettingsChrome.toggle(target: self, action: #selector(togglePersonality))
+        modBandBox = SettingsChrome.toggle(target: self, action: #selector(toggleModBand))
         autoUpdateBox = SettingsChrome.toggle(target: self, action: #selector(toggleAutoUpdate))
 
         enableBox = SettingsChrome.toggle(target: self, action: #selector(toggleEnabled))
@@ -560,6 +562,13 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                 // One vendor's page, because these are one vendor's mechanisms — the
                 // Agents page stays a list of every tool, not a tour of one.
                 SettingsChrome.card([SettingsChrome.customRow(AnsweredWithoutYouView())]),
+                SettingsChrome.card([
+                    SettingsChrome.row("Show other agents waiting, above Claude Code's prompt",
+                                       "One line inside Claude Code while another session "
+                                       + "needs you, with a key to jump to it. Never answers "
+                                       + "it. Needs the Claude Code mod.",
+                                       control: modBandBox),
+                ]),
                 pluginsHost,
             ])
         case .rules:
@@ -688,6 +697,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         hideIslandBox.state = IslandVisibility.Prefs.hideWhenEmpty ? .on : .off
         hideAwayBox.state = IslandVisibility.Prefs.hideWhenAway ? .on : .off
         personalityBox.state = MascotPersonality.Prefs.enabled ? .on : .off
+        modBandBox.state = ModBandPrefs.isOn() ? .on : .off
         autoUpdateBox.state = UpdateChecker.shared.autoUpdate ? .on : .off
         claudeQuotaBox.state = ClaudeQuota.enabled ? .on : .off
         syncQuota()
@@ -1187,6 +1197,13 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     @objc private func toggleAutoUpdate() {
         UpdateChecker.shared.autoUpdate = autoUpdateBox.state == .on
         onChange?()
+    }
+
+    /// Written to the file the mod reads; a running Claude Code session picks it up
+    /// within half a minute, a new one at once.
+    @objc private func toggleModBand() {
+        do { try ModBandPrefs.set(modBandBox.state == .on) }
+        catch { modBandBox.state = ModBandPrefs.isOn() ? .on : .off }
     }
 
     @objc private func togglePersonality() {

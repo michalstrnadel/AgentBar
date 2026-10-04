@@ -48,6 +48,13 @@ open "build/AgentBar.app"
    deny, answer, defer, write a rule or change a setting: any web page can open one.
    A surface that can appear without being asked for, or that stays once you look
    away, does not belong here.
+   The Claude Code mod's band (`Scripts/mods/claude`) is drawn by Claude Code inside
+   its own terminal, not by AgentBar, and only earns its line the same way: off unless
+   the person turns it on (`mods/config.json`), one line, only while **another**
+   session waits on them, gone the moment none does — and its one button focuses that
+   session, never answers it. The mod itself observes and answers nothing (see
+   SECURITY.md); a hook in it that returned anything but `next`'s result would be a
+   rule 3 violation, not a feature.
    `RuleSheet` is a sheet on Settings, not a fourth surface: it is modal to a window
    the user already opened and it closes when it is answered.
 3. **AgentBar answers nothing by itself — only what the user wrote down.** For six

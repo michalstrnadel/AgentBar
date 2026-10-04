@@ -545,8 +545,9 @@ Read-only tools (Read, Grep, Glob and the like) are left out: they change nothin
 **What it never does.** It answers nothing, holds nothing and changes nothing: every
 hook passes Claude Code's own result through untouched. It writes only into
 `~/.agentbar`, and sends nothing anywhere. The one thing it can draw — a line above
-your prompt when *another* session is waiting on you — stays off unless
-`~/.agentbar/mods/config.json` says `{"band": true}`.
+your prompt when *another* session is waiting on you — stays off until you switch
+on **Settings ▸ Claude Code ▸ Show other agents waiting** (it writes
+`~/.agentbar/mods/config.json`, which the mod reads).
 
 **Turning it on.** **Settings ▸ Agents ▸ Claude Code mod**, or `agentbar wire claude-mod`
 on Linux. Like every other switch it shows the change first: one entry in

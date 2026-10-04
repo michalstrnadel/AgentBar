@@ -129,6 +129,29 @@ towards asking, never towards allowing.
 - Keystroke approval for non-Claude agents requires the user to grant the
   Accessibility permission and a per-prompt click on an explicitly labeled item.
 
+### The Claude Code mod
+
+`Scripts/mods/claude` runs **inside** Claude Code's process when the person turns it
+on (off by default; Settings ▸ Agents ▸ Claude Code mod, or `agentbar wire
+claude-mod`), with the person's permissions — as every mod does. What keeps it a
+witness and nothing more:
+
+- Every hook calls `next` and returns exactly what it returned. It never answers a
+  `tool.check`, never refuses a `tool.call`, never rewrites a prompt, and writes no
+  file in `answers.d`. A failure in its own bookkeeping is caught and the result is
+  passed through regardless.
+- What it may call is pinned. `Scripts/test/mod-test.sh` runs `claude plugin validate
+  --json --strict` in CI and fails if its hooks or calls leave this list:
+  hooks `session.start`, `session.end`, `session.measure`, `turn.complete`,
+  `agent.spawn`, `tool.check`, `tool.call`, `ui.render` (the `AbovePrompt` band);
+  calls `env.get` (`AGENTBAR_HOME`, `HOME`), `fs.read/write/list/exists/stat`,
+  `session.id/cwd/usage`, `clock.now/after/every`, `ui.resolve/invalidate`, and
+  `process.run` — only `/usr/bin/open agentbar://focus?…`, from the band's Jump
+  button, which can focus a terminal and nothing else (CLAUDE.md rule 2). No network.
+- It writes only into `~/.agentbar/mods.d/` (or `$AGENTBAR_HOME`). Turning it off
+  removes AgentBar's entry from `env.CLAUDE_CODE_PLUGIN_DIRS` and nothing else,
+  backed up and shown as a diff first, like every other settings write.
+
 Reports that break any of these guarantees are exactly what we want to hear about.
 
 ## Verifying a download
