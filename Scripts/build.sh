@@ -97,6 +97,9 @@ if [ -d Scripts/mods ]; then
   rsync -a --exclude tests --exclude tsconfig.json --exclude .claude-plugin/types \
     --exclude .DS_Store Scripts/mods/ "$APP/Contents/Resources/mods/"
 fi
+# The release notes of exactly this build, for Settings ▸ What's New
+# (ReleaseNotes.swift): signed with the code they describe, and readable offline.
+cp CHANGELOG.md "$APP/Contents/Resources/CHANGELOG.md"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 # TCC keys permission grants to the signing identity, and an ad-hoc signature is

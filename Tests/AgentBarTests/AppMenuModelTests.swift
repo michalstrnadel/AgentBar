@@ -89,9 +89,35 @@ import Testing
         #expect(update.command == expected.1)
         #expect(update.enabled == (expected.1 != nil))
         #expect(update.clickable == (expected.1 != nil))
-        // The rows around it do not move with the update state.
-        #expect(rows.count == 9)
+        // The rows around it do not move with the update state; an update on offer
+        // adds its notes right under it, and nothing else.
+        let offered: Bool = {
+            switch status {
+            case .available, .downloading, .ready: return true
+            default: return false
+            }
+        }()
+        #expect(rows.count == (offered ? 10 : 9))
+        if offered {
+            #expect(rows[7].title == "What's in 9.9.9…")
+            #expect(rows[7].command == .openWhatsNew)
+        }
         #expect(rows.last?.title == "Quit AgentBar")
+    }
+
+    /// Release notes nobody has read get one row, under the update row, on both
+    /// surfaces — and an update on offer takes its place rather than adding a second.
+    @Test func unreadNotesGetOneRow() {
+        var i = Self.inputs(.idle)
+        i.whatsNew = "1.39.0"
+        let rows = Self.snapshot(Self.menuBar(i))
+        #expect(rows == Self.snapshot(Self.island(i)))
+        #expect(rows[7].title == "What's New in 1.39.0…")
+        #expect(rows[7].command == .openWhatsNew)
+        #expect(rows.count == 10)
+        i.update = .ready("1.40.0")
+        let both = Self.snapshot(Self.menuBar(i))
+        #expect(both.filter { $0.command == .openWhatsNew }.map(\.title) == ["What's in 1.40.0…"])
     }
 
     @Test func checkmarksFollowTheInputs() {

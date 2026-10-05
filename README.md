@@ -273,6 +273,10 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   downloaded, checked against the running app's own signing certificate, and
   installed automatically once nothing is waiting on you and you have stepped away.
   Switch it off in Settings ▸ General to install from **Check for Updates…** instead.
+- **Release notes where you'll look for them** — **Settings ▸ What's New** has the
+  notes of the update on offer before it installs, and of every release that arrived
+  since you last looked, marked **New**. After an update the menu offers
+  **What's New in …** for two weeks; nothing opens by itself.
 - **Linux too** — the [`agentbar` CLI](#linux-cli) is a full peer of the menu bar app:
   live status, pending approvals, `a`/`d` remote Allow/Deny, digit keys to answer
   questions, waybar module.
@@ -366,7 +370,8 @@ certificate, and relaunches as it the next time nothing is waiting on you and yo
 been away for five minutes (or at the next launch). **Settings ▸ General ▸ Install
 updates automatically** turns that off; the menu then offers the update instead, and
 **Check for Updates…** works any time. Homebrew users can keep using
-`brew upgrade --cask agentbar` — both paths install the same bundle.
+`brew upgrade --cask agentbar` — both paths install the same bundle. Either way, what
+changed is in **Settings ▸ What's New**, from the changelog the new version carries.
 
 > **What install touches:** hook scripts are copied to `~/.agentbar/hooks/`, hook
 > entries are merged into your Claude `settings.json` (`~/.claude` **and** a custom

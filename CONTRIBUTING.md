@@ -223,7 +223,12 @@ universal bundle, and it is signed locally.
    The last line proves the asset is the CI build with a new signature and
    nothing else — the same check `release-provenance.yml` runs on the published
    asset before attesting it.
-5. `gh release create vX.Y.Z AgentBar.app.zip --title "…" --notes-file …`. The
+5. `Scripts/dev/release-notes.sh X.Y.Z > /tmp/notes.md`, then
+   `gh release create vX.Y.Z AgentBar.app.zip --title "…" --notes-file /tmp/notes.md`.
+   The notes are the CHANGELOG section and nothing else: the app shows the same
+   section from the CHANGELOG it bundles (Settings ▸ What's New, and before an
+   update installs), so GitHub and the app say the same thing. Edit the CHANGELOG,
+   not the release page — a test fails when the top section is not this version. The
    asset **must** be named `AgentBar.app.zip` and the tag `vX.Y.Z`: `UpdateChecker`
    looks up exactly that name under `releases/latest` and strips the leading `v`
    to compare versions. A different name ships an update nobody can install.

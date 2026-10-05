@@ -25,6 +25,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // First, before any surface exists: an update staged before the last quit
         // installs now, while a relaunch is invisible. True means we are leaving.
         if UpdateChecker.shared.resumeAtLaunch() { return }
+        // Which release notes are unread, worked out before anything is drawn so
+        // the menu and Settings agree from the first frame. Announces nothing.
+        ReleaseNotes.noteLaunch(current: AppMenuModel.appVersion,
+                                existingInstall: ReleaseNotes.looksLikeExistingInstall(),
+                                releases: ReleaseNotes.bundled)
         // What a quiet moment is measured against, from the live stores.
         UpdateChecker.shared.pendingRequests = { [weak self] in self?.requestStore.requests.count ?? 1 }
         UpdateChecker.shared.waitingSessions = { [weak self] in

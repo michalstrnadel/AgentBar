@@ -1,9 +1,8 @@
 import Carbon.HIToolbox
 import Cocoa
 
-/// AgentBar's Settings: a sidebar of seven pages — General, Notifications,
-/// Shortcuts, Usage, Approvals, Rules and Diagnostics — each a short column of
-/// grouped rows.
+/// AgentBar's Settings: a sidebar of pages (`Page`), each a short column of
+/// grouped rows — and What's New, the one page that is a document and scrolls.
 ///
 /// It used to be one scroll with every section stacked down it, which has two
 /// faults that compound: everything is visible at once, so nothing is findable,
@@ -28,6 +27,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         // Spelled the way `agentbar://settings/claude-code` reads: links are lowercase.
         case claudeCode = "claude-code"
         case diagnostics
+        case whatsNew = "whats-new"
 
         var title: String {
             switch self {
@@ -40,6 +40,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             case .rules:       return "Rules"
             case .claudeCode:  return "Claude Code"
             case .diagnostics: return "Diagnostics"
+            case .whatsNew:    return "What's New"
             }
         }
 
@@ -62,6 +63,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             // Claude's own colour: the one page about one vendor says whose it is.
             case .claudeCode:    return Agent.byID("claude").brand
             case .diagnostics:   return .systemOrange
+            case .whatsNew:      return .systemPink
             }
         }
 
@@ -76,6 +78,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             case .rules:       return "list.bullet.rectangle"
             case .claudeCode:  return "sparkle"
             case .diagnostics: return "stethoscope"
+            case .whatsNew:    return "sparkles"
             }
         }
     }
@@ -103,6 +106,15 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var agentsHost: NSStackView!
     /// The Claude Code page's plugin card, rebuilt by `syncPlugins` when the reading lands.
     private var pluginsHost: NSStackView!
+    /// Settings ▸ What's New, rebuilt by `syncWhatsNew` — it follows the update's
+    /// status and what has been read.
+    var whatsNewHost: NSStackView!
+    /// Versions whose notes were unseen when this window last showed them. They
+    /// keep their "New" tag until the window closes: opening the page is what marks
+    /// them read, and a tag that vanished under the reader's eyes would say nothing.
+    var freshNotes: Set<String> = []
+    var updateObserver: NSObjectProtocol?
+    var notesObserver: NSObjectProtocol?
     /// The plugins card's last reading (`PluginInventory`), nil until the first one
     /// lands; the page shows a loading line meanwhile. Read again when it is older
     /// than a minute, so a plugin installed while Settings was closed shows up.
@@ -121,7 +133,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var notifyQuietBox: NSSwitch!
     private var autoUpdateBox: NSSwitch!
 
-    private var sidebarItems: [SidebarItem] = []
+    var sidebarItems: [SidebarItem] = []
     private var pageViews: [Page: NSView] = [:]
     private var pageHost: NSView!
     private(set) var page: Page = .general
@@ -147,9 +159,12 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         // looking at.
         ClaudeQuota.shared.onStatus = { [weak self] in self?.syncQuota() }
         ClaudeWebQuota.shared.onStatus = { [weak self] in self?.syncQuota() }
+        watchNotes()
         reload()
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
+        // Reopened on the notes: on screen now, so they have been seen.
+        if page == .whatsNew { syncWhatsNew(markingSeen: true) }
     }
 
     /// The window on one page — what `agentbar://settings/<page>` opens. `nil`
@@ -420,6 +435,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         agentsHost.orientation = .vertical
         agentsHost.alignment = .leading
         agentsHost.translatesAutoresizingMaskIntoConstraints = false
+        whatsNewHost = NSStackView()
+        whatsNewHost.orientation = .vertical
+        whatsNewHost.alignment = .leading
+        whatsNewHost.spacing = SettingsChrome.Space.gap
+        whatsNewHost.translatesAutoresizingMaskIntoConstraints = false
         pluginsHost = NSStackView()
         pluginsHost.orientation = .vertical
         pluginsHost.alignment = .leading
@@ -601,6 +621,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                       + "sessions already running keep their hooks until "
                                       + "they end."),
             ])
+        case .whatsNew:
+            add([whatsNewHost])
         case .diagnostics:
             add([
                 SettingsChrome.card([SettingsChrome.customRow(diagnostics)]),
@@ -629,6 +651,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         for item in sidebarItems { item.isSelected = item.page == page }
         for sub in pageHost.subviews { sub.removeFromSuperview() }
         guard let view = pageViews[page] else { return }
+        if page == .whatsNew { syncWhatsNew(markingSeen: window?.isVisible == true) }
         pageHost.addSubview(view)
         NSLayoutConstraint.activate([
             view.topAnchor.constraint(equalTo: pageHost.topAnchor),
@@ -658,7 +681,9 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     /// is what "it's huge" was about.
     private func sizeToTallestPage() {
         guard let window else { return }
-        let tallest = pageViews.values.map { view -> CGFloat in
+        // Not the release notes: they are a document, and the one page meant to
+        // scroll. Sized by them, every other page would sit above a field of nothing.
+        let tallest = pageViews.filter { $0.key != .whatsNew }.values.map { view -> CGFloat in
             view.layoutSubtreeIfNeeded()
             return view.fittingSize.height
         }.max() ?? 0
@@ -713,6 +738,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         // this window — installed an agent, upgraded node, granted Accessibility.
         diagnostics.refresh()
         syncAgents()
+        syncWhatsNew(markingSeen: page == .whatsNew && window?.isVisible == true)
         syncRecorderState()
         syncSoundControls()
         syncSoundPack()
@@ -1229,6 +1255,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         cancelCaptures()
         ClaudeQuota.shared.onStatus = nil
         ClaudeWebQuota.shared.onStatus = nil
+        stopWatchingNotes()
     }
 
     /// Clicking away mid-recording: a background window can't see key events, so a

@@ -5,7 +5,8 @@ import Cocoa
 /// automatically** on (the default), a newer release is downloaded, checked and staged
 /// in the background, and installed at the first quiet moment: nothing waiting on the
 /// human, and nobody at the keyboard for five minutes. Installing swaps the app bundle
-/// in place and relaunches. All state surfaces as that single menu row — nothing
+/// in place and relaunches. All state surfaces as that single menu row, and its
+/// notes as one more beside it (`ReleaseNotes`, Settings ▸ What's New) — nothing
 /// appears on screen to announce an update, before or after.
 final class UpdateChecker {
     enum Status: Equatable {
@@ -49,6 +50,9 @@ final class UpdateChecker {
 
     private static let repo = "michalstrnadel/AgentBar"
     private var zipURL: URL?
+    /// The newest release's notes as GitHub carries them, from the last check that
+    /// found one — what Settings ▸ What's New shows before anything is downloaded.
+    private var releaseBody: String?
     private var timer: Timer?
     private var quietTimer: Timer?
     /// The staged `.app` while `status` is `.ready`.
@@ -174,18 +178,19 @@ final class UpdateChecker {
                 // prefix 404'd for releases tagged without one.
                 self.found(latest: latest, zip: url ?? URL(string:
                     "https://github.com/\(Self.repo)/releases/download/\(tag)/AgentBar.app.zip"),
-                           manual: manual)
+                           manual: manual, notes: o["body"] as? String)
             }
         }.resume()
     }
 
     /// What a check learned. Split from the request so tests can drive it.
-    func found(latest: String, zip: URL?, manual: Bool) {
+    func found(latest: String, zip: URL?, manual: Bool, notes: String? = nil) {
         guard Self.isNewer(latest, than: currentVersion) else {
             setStatus(manual ? .upToDate : .idle)
             return
         }
         zipURL = zip
+        releaseBody = notes
         setStatus(.available(latest))
         // A click on "Check for Updates…" is the person asking, so it is not held
         // to the once-a-day retry; the timer is.
@@ -223,6 +228,34 @@ final class UpdateChecker {
             if l != r { return l > r }
         }
         return false
+    }
+
+    /// What the update on offer brings, newest first, for Settings ▸ What's New.
+    /// Once it is staged the notes come from inside the bundle — verified, the
+    /// ones it will actually install, and every release since this one rather than
+    /// only the newest. Before that, the release's own text from GitHub, which
+    /// covers the newest release alone. nil when there is no update.
+    var upcoming: (version: String, releases: [ReleaseNotes.Release])? {
+        switch status {
+        case .ready(let v):
+            if let app = staged {
+                let notes = ReleaseNotes.between(ReleaseNotes.inBundle(app), after: currentVersion, upTo: v)
+                if !notes.isEmpty { return (v, notes) }
+            }
+            return (v, Self.bodyRelease(releaseBody, version: v))
+        case .available(let v), .downloading(let v):
+            return (v, Self.bodyRelease(releaseBody, version: v))
+        default:
+            return nil
+        }
+    }
+
+    /// A GitHub release body read as one changelog section. Empty when there is
+    /// none, so the page can still say an update is there.
+    static func bodyRelease(_ body: String?, version: String) -> [ReleaseNotes.Release] {
+        guard let body, !body.isEmpty else { return [] }
+        let r = ReleaseNotes.parse("## \(version)\n\n" + body)
+        return r.first.map { $0.blocks.isEmpty ? [] : [$0] } ?? []
     }
 
     // MARK: - Installing

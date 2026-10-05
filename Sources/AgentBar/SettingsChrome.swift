@@ -341,6 +341,9 @@ final class SidebarItem: NSControl {
     private let tile = NSImageView()
     private let label = NSTextField(labelWithString: "")
     private var selected = false
+    /// A small dot at the row's end: something on that page has not been looked at.
+    /// Only What's New uses it, for release notes nobody has opened yet.
+    private let dot = NSView()
 
     static let height: CGFloat = 34
     private static let tileSide: CGFloat = 20
@@ -362,6 +365,11 @@ final class SidebarItem: NSControl {
         label.translatesAutoresizingMaskIntoConstraints = false
         addSubview(tile)
         addSubview(label)
+        dot.wantsLayer = true
+        dot.layer?.cornerRadius = 3.5
+        dot.isHidden = true
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(dot)
         translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: Self.height),
@@ -371,7 +379,11 @@ final class SidebarItem: NSControl {
             tile.heightAnchor.constraint(equalToConstant: Self.tileSide),
             label.leadingAnchor.constraint(equalTo: tile.trailingAnchor, constant: Self.gap),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -8),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: dot.leadingAnchor, constant: -6),
+            dot.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            dot.centerYAnchor.constraint(equalTo: centerYAnchor),
+            dot.widthAnchor.constraint(equalToConstant: 7),
+            dot.heightAnchor.constraint(equalToConstant: 7),
         ])
         apply()
     }
@@ -381,6 +393,14 @@ final class SidebarItem: NSControl {
     var isSelected: Bool {
         get { selected }
         set { selected = newValue; apply() }
+    }
+
+    var showsDot: Bool {
+        get { !dot.isHidden }
+        set {
+            dot.isHidden = !newValue
+            setAccessibilityValue(newValue ? "Not read yet" : nil)
+        }
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -397,6 +417,7 @@ final class SidebarItem: NSControl {
             ? NSColor.controlAccentColor.cgColor : NSColor.clear.cgColor
         label.textColor = selected ? .white : .labelColor
         label.font = .systemFont(ofSize: 13, weight: selected ? .medium : .regular)
+        dot.layer?.backgroundColor = (selected ? NSColor.white : NSColor.controlAccentColor).cgColor
     }
 
     /// A rounded tile with the glyph knocked out of it, the way the system's own

@@ -28,6 +28,8 @@ enum AppMenuModel {
         var soundsOn: Bool
         var diagnosticsFailures: Int
         var macOSVersion: String
+        /// The version whose notes the menu still offers (`ReleaseNotes.menuOffer`).
+        var whatsNew: String? = nil
 
         static var current: Inputs {
             Inputs(update: UpdateChecker.shared.status,
@@ -35,7 +37,9 @@ enum AppMenuModel {
                    systemColor: IconColor.system,
                    soundsOn: SoundCenter.enabled,
                    diagnosticsFailures: Diagnostics.failures,
-                   macOSVersion: AppMenuModel.macOSVersion)
+                   macOSVersion: AppMenuModel.macOSVersion,
+                   whatsNew: ReleaseNotes.menuOffer(current: AppMenuModel.appVersion,
+                                                    releases: ReleaseNotes.bundled))
         }
     }
 
@@ -73,6 +77,7 @@ enum AppMenuModel {
                          action: .openSettings),
             .separator("sep.app"),
             updateEntry(i.update, appVersion: i.appVersion),
+        ] + notesEntries(i) + [
             // A way to say something that is not a bug report. It opens the
             // project's Discussions in the browser and nothing else: the app makes
             // no request of its own, and the prefilled body is two version numbers.
@@ -146,6 +151,24 @@ enum AppMenuModel {
         return e
     }
 
+    /// Release notes, in the menu only while there is something to read: what the
+    /// update on offer brings, before it is installed, and — for two weeks after an
+    /// update arrived — what it brought, until the notes have been opened. Never
+    /// more than one row, and nothing on the menu bar's mark: an update is not news
+    /// that earns an interruption (CLAUDE.md rule 2).
+    static func notesEntries(_ i: Inputs) -> [AppMenuEntry] {
+        switch i.update {
+        case .available(let v), .downloading(let v), .ready(let v):
+            return [AppMenuEntry(id: "notes", title: "What's in \(v)…", symbol: "doc.text",
+                                 action: .openWhatsNew,
+                                 toolTip: "The release notes, before you install it")]
+        default:
+            guard let v = i.whatsNew else { return [] }
+            return [AppMenuEntry(id: "notes", title: "What's New in \(v)…", symbol: "sparkles",
+                                 action: .openWhatsNew, badge: "New")]
+        }
+    }
+
     /// Where Send Feedback goes: a new discussion in the General category
     /// (Discussions are enabled on the repo, and `general` is a real category slug —
     /// an unknown one drops the visitor on the category picker instead).
@@ -173,6 +196,7 @@ enum AppMenuAction: Equatable {
     case openSettings
     case checkForUpdates
     case installUpdate
+    case openWhatsNew
     case sendFeedback
     case quit
 
@@ -197,6 +221,8 @@ enum AppMenuAction: Equatable {
             UpdateChecker.shared.check(manual: true)
         case .installUpdate:
             UpdateChecker.shared.installAvailable()
+        case .openWhatsNew:
+            SettingsWindow.shared.show(page: .whatsNew)
         case .sendFeedback:
             NSWorkspace.shared.open(AppMenuModel.feedbackURL(appVersion: AppMenuModel.appVersion,
                                                              macOSVersion: AppMenuModel.macOSVersion))
