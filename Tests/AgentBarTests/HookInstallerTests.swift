@@ -451,4 +451,23 @@ import Testing
         #expect(home.read("elsewhere/claude/settings.json") == "{\n\n}")
         #expect(home.read(".claude/settings.json") == "{\n\n}")
     }
+
+    /// One alias per account: `~/.claude-work` was wired from a shell that had
+    /// CLAUDE_CONFIG_DIR, and the app — launched by `open` — has none. It must still
+    /// find that directory (switching the mod on once wrote only `~/.claude`), and
+    /// still leave alone a `~/.claude-*` nobody wired.
+    @Test func aConfigDirWiredFromAShellIsKeptWithoutTheVariable() throws {
+        let home = try Home()
+        defer { home.cleanUp() }
+        try home.put(".claude/settings.json", "{}")
+        try home.put(".claude-work/settings.json",
+                     #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"node /h/.agentbar/hooks/claude/update.js done"}]}]}}"#)
+        try home.put(".claude-mine/settings.json", "{}")
+        let ctx = home.ctx()
+        let dirs = HookInstaller.claudeConfigDirs(ctx).map(\.lastPathComponent)
+        #expect(dirs == [".claude", ".claude-work"])
+        _ = HookInstaller.runPass(ctx, preview: false, only: "claude")
+        #expect(home.read(".claude-work/settings.json")?.contains("lifecycle.js") == true)
+        #expect(home.read(".claude-mine/settings.json") == "{}")
+    }
 }

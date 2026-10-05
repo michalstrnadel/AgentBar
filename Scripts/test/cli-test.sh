@@ -346,6 +346,13 @@ CLAUDE_CONFIG_DIR="$OUTSIDE" "$CLI" install-hooks >/dev/null 2>&1
 check "CLAUDE_CONFIG_DIR outside HOME skipped" '[ ! -e "$OUTSIDE/settings.json" ]'
 CLAUDE_CONFIG_DIR="$OUTSIDE" AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1 "$CLI" install-hooks >/dev/null 2>&1
 check "outside HOME wired when allowed"  'grep -q PermissionRequest "$OUTSIDE/settings.json"'
+# HookInstaller.wiredClaudeDirs: a ~/.claude-* wired once from a shell with the
+# variable is kept current without it; one nobody wired is left alone.
+mkdir -p "$HOME/.claude-mine" && echo '{}' > "$HOME/.claude-mine/settings.json"
+node -e 'const f=process.argv[1],j=JSON.parse(require("fs").readFileSync(f));delete j.hooks.PermissionRequest;require("fs").writeFileSync(f,JSON.stringify(j))' "$HOME/.claude-custom/settings.json"
+"$CLI" install-hooks >/dev/null 2>&1
+check "wired ~/.claude-* kept without the variable" 'grep -q PermissionRequest "$HOME/.claude-custom/settings.json"'
+check "unwired ~/.claude-* left alone"  '[ "$(cat "$HOME/.claude-mine/settings.json")" = "{}" ]'
 
 
 # --- plan requests: the hook can't carry a plan approval, so the CLI must say so

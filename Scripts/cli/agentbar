@@ -1546,6 +1546,16 @@ function claudeConfigDirs(skip = () => {}) {
     const raw = fs.readFileSync(path.join(base, "claude-config-dir"), "utf8").trim();
     if (raw) dirs.add(raw.replace(/^~/, os.homedir()));
   } catch {}
+  // HookInstaller.wiredClaudeDirs: every ~/.claude-* that already names AgentBar's
+  // hooks or mod — one alias per account wires them from a shell that had
+  // CLAUDE_CONFIG_DIR, and a later run without it must still keep them current.
+  for (const d of claudeDirsOnDisk()) {
+    if (path.basename(d) === ".claude") continue;
+    try {
+      const text = fs.readFileSync(path.join(d, "settings.json"), "utf8");
+      if (text.includes("/.agentbar/hooks/claude/") || text.includes("/.agentbar/mods/")) dirs.add(d);
+    } catch {}
+  }
   return [...dirs];
 }
 

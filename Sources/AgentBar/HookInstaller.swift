@@ -322,6 +322,14 @@ enum HookInstaller {
     /// usually doesn't inherit the shell's env; install.sh rewrites or clears the hint
     /// on every run, so it can't go stale). The default `~/.claude` is always
     /// included so a user who runs Claude both ways stays covered. Deduped.
+    ///
+    /// And every `~/.claude-*` whose settings already carry AgentBar — its hooks or
+    /// its mod. Someone with one alias per account (`CLAUDE_CONFIG_DIR=~/.claude-work
+    /// claude`) has those directories wired by the CLI or the installer, from a shell
+    /// that had the variable, while the app — launched by `open` — never sees it.
+    /// Without this the app kept only `~/.claude` current: switching the mod on
+    /// wrote it there and nowhere the sessions actually read. Only directories that
+    /// already name AgentBar: one nobody wired stays nobody's business.
     static func claudeConfigDirs(_ ctx: Context) -> [URL] {
         let home = ctx.home
         var dirs = [home.appendingPathComponent(".claude")]
@@ -333,8 +341,24 @@ enum HookInstaller {
             let path = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             if !path.isEmpty { dirs.append(URL(fileURLWithPath: (path as NSString).expandingTildeInPath)) }
         }
+        dirs += wiredClaudeDirs(home: home)
         var seen = Set<String>()
         return dirs.filter { seen.insert($0.resolvingSymlinksInPath().path).inserted }
+    }
+
+    /// The `~/.claude-*` directories whose `settings.json` already names AgentBar's
+    /// hooks or its mod, sorted. Read as text: a marker is a path, and a file that
+    /// will not parse is the installer's to report, not this list's to hide.
+    static func wiredClaudeDirs(home: URL) -> [URL] {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: home.path) else { return [] }
+        return names.filter { $0.hasPrefix(".claude-") }.sorted().compactMap { name in
+            let dir = home.appendingPathComponent(name)
+            guard let data = try? Data(contentsOf: dir.appendingPathComponent("settings.json")),
+                  data.count < 4 << 20,
+                  let text = String(data: data, encoding: .utf8),
+                  text.contains(claudeMarker) || text.contains(ClaudeModWiring.marker) else { return nil }
+            return dir
+        }
     }
 
     /// Always refresh the script copies — they're versioned with the app.
