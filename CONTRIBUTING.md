@@ -106,9 +106,11 @@ welcome window:
 defaults write com.michalstrnadel.agentbar presentationMode -string island  # or menuBar / both
 defaults delete com.michalstrnadel.agentbar showWelcomeOnLaunch             # first-run window back
 defaults write com.michalstrnadel.agentbar islandExpandDebug -bool true     # hold the island open (layout work)
+defaults write com.michalstrnadel.agentbar islandGameDebug -bool true       # open Take a break on launch (island)
 defaults write com.michalstrnadel.agentbar settingsOnLaunchDebug -bool true # open Settings on launch (layout work)
 defaults write com.michalstrnadel.agentbar settingsPageDebug agents     # …on that page (general, agents, rules, diagnostics, …)
 ./build/AgentBar.app/Contents/MacOS/AgentBar --render-settings /tmp/settings.png   # every settings page as one picture
+./build/AgentBar.app/Contents/MacOS/AgentBar --render-break-game /tmp/break.png   # Take a break: title, play, paused, game over — offscreen
 /Applications/AgentBar.app/Contents/MacOS/AgentBar --quota-status                 # can Claude's quota be read here, and
                                                                            # if not, why — macOS decides Keychain access
                                                                            # on the signature, so run the *bundle's*

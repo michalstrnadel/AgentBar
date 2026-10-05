@@ -61,6 +61,14 @@ final class IslandController: NSObject {
     var composing: String?
     /// The app that had the keyboard when a note was opened.
     var keysCameFrom: NSRunningApplication?
+    /// Take a break (`IslandController+Game`): the game, while there is one — on
+    /// screen, or put aside because work came in — and whether it is on screen now.
+    /// On screen it is held like a note being typed: open, keyed, rows frozen.
+    var breakGame: BreakGameView?
+    var breakShown = false
+    var breakWaiting: Set<String> = []
+    var breakSuspendedAt: Date?
+    var breakKeyWatch: NSObjectProtocol?
     /// A fresh arrival at the notch asked for the pill while it was hidden. Set with
     /// the hover, cleared only by the grace timer on the way out — the same timer
     /// that closes an open panel — so a pointer crossing a gap doesn't make the pill
@@ -188,6 +196,11 @@ final class IslandController: NSObject {
         // The hello, once the pill has dropped out of the notch and settled. The
         // pill as it is at that moment decides, once for the whole launch.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.sayHello() }
+        // The game is a panel that pauses the instant it loses the keyboard, which is
+        // what happens when you go to look at it. CONTRIBUTING lists it.
+        if UserDefaults.standard.bool(forKey: "islandGameDebug") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.beginBreak() }
+        }
     }
 
     /// Clawd waves from the pill — opt-in personality only, never with Reduce
@@ -272,6 +285,8 @@ final class IslandController: NSObject {
             endComposing()
         }
         let celebrate = personality.observe(sessions)
+        // Before the rebuild: a game that has to step aside should not be drawn once more.
+        checkBreakYield()
         rebuild(animated: true)
         // Inside the pill or not at all: an open panel, a flash or a pill on its
         // way out lets the finish pass unmarked.

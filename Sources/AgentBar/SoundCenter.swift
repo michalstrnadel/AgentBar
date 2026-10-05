@@ -80,11 +80,37 @@ final class SoundCenter {
         ],
     ]
 
+    /// The break game's blips (`BreakGameView`). Quieter and shorter than the cues,
+    /// and kept out of `Cue`: they are not about agents, and a sound pack has no
+    /// business replacing them.
+    enum GameSound: CaseIterable { case hit, lost, over, token }
+
+    private static let gameSpecs: [GameSound: [Note]] = [
+        .hit: [Note(freq: 1318.51, square: true, detune: false, durMs: 40, gapMs: 0,
+                    attackMs: 1, decayTauMs: 14, peak: 0.16)],
+        .token: [Note(freq: 1567.98, square: false, detune: false, durMs: 50, gapMs: 0,
+                      attackMs: 2, decayTauMs: 25, peak: 0.20),
+                 Note(freq: 2093.00, square: false, detune: false, durMs: 80, gapMs: 0,
+                      attackMs: 2, decayTauMs: 40, peak: 0.20)],
+        .lost: [Note(freq: 392.00, square: true, detune: true, durMs: 110, gapMs: 0,
+                     attackMs: 2, decayTauMs: 70, peak: 0.22),
+                Note(freq: 261.63, square: true, detune: true, durMs: 220, gapMs: 0,
+                     attackMs: 2, decayTauMs: 140, peak: 0.22)],
+        .over: [Note(freq: 523.25, square: true, detune: true, durMs: 130, gapMs: 20,
+                     attackMs: 3, decayTauMs: 80, peak: 0.20),
+                Note(freq: 392.00, square: true, detune: true, durMs: 130, gapMs: 20,
+                     attackMs: 3, decayTauMs: 80, peak: 0.20),
+                Note(freq: 261.63, square: true, detune: true, durMs: 320, gapMs: 0,
+                     attackMs: 3, decayTauMs: 200, peak: 0.22)],
+    ]
+
     private static let sampleRate = 44_100.0
 
     // MARK: - State
 
     private var buffers: [Cue: AVAudioPCMBuffer] = [:]
+    /// Touched only on `audioQueue`.
+    private var gameBuffers: [GameSound: AVAudioPCMBuffer] = [:]
     /// A user's file per cue, with the listing entry it was loaded from — a file
     /// replaced, resized or removed no longer matches and is read again. A file
     /// that was refused is remembered too, so a too-long `done.mp3` is judged once
@@ -167,6 +193,24 @@ final class SoundCenter {
 
     /// The Settings "Test" button and volume slider audition.
     func preview() { play(.done, cooldown: 0, force: true) }
+
+    /// A break-game blip. Silent unless sounds are on, like everything here; no
+    /// cooldown, because a game's sounds are about the moment they happen in.
+    func playGame(_ sound: GameSound) {
+        guard Self.enabled, !screenLocked else { return }
+        playGeneration += 1
+        armIdleStop()
+        let volume = Float(Self.volume) * 0.6
+        audioQueue.async { [weak self] in
+            guard let self else { return }
+            let buffer = self.gameBuffers[sound] ?? Self.gameSpecs[sound].flatMap(Self.buildBuffer(notes:))
+            guard let buffer, let player = self.ensureEngine(format: buffer.format) else { return }
+            self.gameBuffers[sound] = buffer
+            player.volume = volume
+            player.scheduleBuffer(buffer, at: nil, options: .interrupts)
+            player.play()
+        }
+    }
 
     private func play(_ cue: Cue, cooldown: TimeInterval = 1.0, force: Bool = false) {
         guard force || Self.enabled else { return }
@@ -263,8 +307,11 @@ final class SoundCenter {
     /// Renders one cue to a mono Float32 buffer: 10ms lead-in silence (absorbs
     /// engine spin-up and Bluetooth route wake), then the notes back to back.
     static func buildBuffer(for cue: Cue) -> AVAudioPCMBuffer? {
-        guard let notes = specs[cue],
-              let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)
+        specs[cue].flatMap(buildBuffer(notes:))
+    }
+
+    private static func buildBuffer(notes: [Note]) -> AVAudioPCMBuffer? {
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1)
         else { return nil }
         let leadIn = Int(sampleRate * 0.010)
         let total = leadIn + notes.reduce(0) {

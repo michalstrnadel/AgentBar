@@ -191,6 +191,9 @@ final class IslandContentView: NSView {
     /// rebuild these rows about once a second while an agent works, and yanking
     /// the offset to the top each time made the overflow unreachable — the exact
     /// bug the scroll view exists to fix.
+    /// What `setRows` last put in, in order.
+    var rows: [NSView] { stack.arrangedSubviews }
+
     func setRows(_ views: [NSView], resetScroll: Bool = false) {
         let offset = scroll.contentView.bounds.origin
         for v in stack.arrangedSubviews { stack.removeArrangedSubview(v); v.removeFromSuperview() }

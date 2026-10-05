@@ -55,6 +55,12 @@ open "build/AgentBar.app"
    session, never answers it. The mod itself observes and answers nothing (see
    SECURITY.md); a hook in it that returned anything but `next`'s result would be a
    rule 3 violation, not a feature.
+   **Take a break** (`BreakGame`, `IslandController+Game`) is the island itself,
+   opened into a small game — not a new surface — and only from a click on the
+   island's ⋯ menu. It takes the keyboard the way a denial note does and gives it
+   back on Esc or Close; it pauses the moment the panel loses the keyboard, and it
+   steps aside the instant something new waits on the person, showing the rows with
+   that request in them. Closed, paused or yielded, its clock does not run.
    `RuleSheet` is a sheet on Settings, not a fourth surface: it is modal to a window
    the user already opened and it closes when it is answered.
 3. **AgentBar answers nothing by itself — only what the user wrote down.** For six

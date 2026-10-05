@@ -63,7 +63,7 @@ extension IslandController {
             presentation: .current,
             hasSessions: !sessions.isEmpty,
             hasRequests: !requests.isEmpty,
-            open: wantsExpanded || composing != nil
+            open: wantsExpanded || composing != nil || breakShown
                 || UserDefaults.standard.bool(forKey: "islandExpandDebug"),
             flashing: flash != nil,
             peeking: peeking,
@@ -109,7 +109,7 @@ extension IslandController {
         // the opposite of the point. The pill says what is waiting; hovering acts.
         // (`islandExpandDebug` holds it open, for screenshots and layout work.)
         let held = UserDefaults.standard.bool(forKey: "islandExpandDebug")
-        mode = (wantsExpanded || held || composing != nil) ? .expanded : .collapsed
+        mode = (wantsExpanded || held || composing != nil || breakShown) ? .expanded : .collapsed
         // The collapsed pill is click-through: it floats over whatever the frontmost
         // window keeps at its top edge (tab strips, toolbars), and a pill that eats
         // those clicks is worse than no pill. Only the open panel takes the mouse.
@@ -147,7 +147,7 @@ extension IslandController {
         // the panel shrinking out from under the pointer — doesn't snap it shut.
         let work = DispatchWorkItem { [weak self] in
             // A note half typed is not abandoned by the pointer drifting off.
-            guard let self, !self.hovered, self.composing == nil else { return }
+            guard let self, !self.hovered, self.composing == nil, !self.breakShown else { return }
             self.wantsExpanded = false
             self.peeking = false
             self.rebuild(animated: true)

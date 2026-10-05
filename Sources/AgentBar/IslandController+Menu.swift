@@ -22,6 +22,8 @@ extension IslandController {
         // has to be reachable from it — otherwise the feature exists for menu bar
         // users and nobody else.
         menu.addItem(MenuBuilder.todayRow(target: self, action: #selector(openPastProject(_:))))
+        // Island only: the menu bar has nowhere to play it.
+        menu.addItem(breakMenuItem())
         menu.addItem(.separator())
         for item in Self.appSection(.current, target: self) { menu.addItem(item) }
         // A check started from this menu answers while it is still open: redraw the

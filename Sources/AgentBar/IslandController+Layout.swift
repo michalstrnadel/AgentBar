@@ -55,7 +55,7 @@ extension IslandController {
         guard let screen = IslandGeometry.screen, !hidden else { return }
         // Held still under the caret. Store ticks keep arriving while a note is
         // typed; they are picked up the moment it is sent or dropped.
-        if composing != nil, mode == .expanded, lastLaidMode == .expanded, !force { return }
+        if composing != nil || breakShown, mode == .expanded, lastLaidMode == .expanded, !force { return }
         content.flushTop = IslandGeometry.notch(on: screen) != nil
         let modeChanged = mode != lastLaidMode
         let target: NSRect
@@ -81,8 +81,15 @@ extension IslandController {
             content.topInset = 10
             // The footer is pinned, not stacked: with the panel clamped at the
             // screen edge the way into Settings and Quit has to stay reachable.
-            content.setFooter(footer())
-            content.setRows(rows(), resetScroll: modeChanged)
+            if breakShown, let game = breakGame {
+                // The game is the whole panel: no rows, no footer — Esc and its own
+                // Close are the way out, and nothing else should take a click from it.
+                content.setFooter(nil)
+                if content.rows != [game] { content.setRows([game], resetScroll: true) }
+            } else {
+                content.setFooter(footer())
+                content.setRows(rows(), resetScroll: modeChanged)
+            }
             // The panel is sized to its content; when that outgrows the screen it
             // clamps here and the content view scrolls the overflow into reach.
             let maxHeight = screen.visibleFrame.height - 24
