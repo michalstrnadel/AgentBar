@@ -3,6 +3,35 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.40.0 - 2026-10-05
+
+### Added
+
+- **What auto mode runs instead of asking you is counted.** Settings ▸ Claude Code ▸
+  Answered without you gains **Auto mode, instead of asking you**: a call Claude Code
+  would have asked about, that ran with no prompt reaching you. The mod sees the ask
+  and what came of it, and AgentBar's permission hook now leaves a note the moment a
+  prompt is due (`mods.d/.prompted-<session>`), so an answer of yours — in AgentBar or
+  in the terminal, app running or not — is never mistaken for auto mode. What auto
+  mode refuses is still not counted, and the card says so: a refusal comes back
+  looking like a command that failed.
+- **A command another mod holds for you is a wait, not work.** blast-radius holds
+  `rm -r`, hard resets and force pushes in its own pane until you answer, and nothing
+  reported it: AgentBar showed the session as busy. A call that has not reached
+  Claude Code's permission check three seconds after it began is now reported by the
+  mod, and the session shows as **waiting on you — Held before it runs: rm -r build**,
+  on the island and in the menu, with only "Open in terminal" on offer (there is
+  nothing to approve from here). The band above another session's prompt says so too.
+
+### Fixed
+
+- **Switching the Claude Code mod on reached only `~/.claude`.** AgentBar, launched
+  from Finder, never sees `CLAUDE_CONFIG_DIR`, so a Mac with one Claude config per
+  account (`~/.claude-work`, `~/.claude-personal`) had the mod written where no
+  session read it — and its hooks there were never refreshed either. Every
+  `~/.claude-*` whose settings already name AgentBar now counts, in the app and the
+  CLI; one nobody wired is left alone.
+
 ## 1.39.0 - 2026-10-05
 
 ### Added
