@@ -273,7 +273,7 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   downloaded, checked against the running app's own signing certificate, and
   installed automatically once nothing is waiting on you and you have stepped away.
   Switch it off in Settings ▸ General to install from **Check for Updates…** instead.
-- **Take a break** — **⋯ ▸ Take a break…** on the island opens it into a small
+- **Take a break** — the joystick beside ⋯ on the island opens it into a small
   arcade game: Clawd against a formation of bugs, with a score, a best and a few
   tokens to catch. It steps aside the moment an agent needs you — the request shows
   in its place, and **Back to the break** picks up where you left off. Arrows and

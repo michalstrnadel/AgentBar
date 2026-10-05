@@ -7,7 +7,8 @@ All notable changes to AgentBar are documented here. This project follows
 
 ### Added
 
-- **Take a break.** The island's ⋯ menu has **Take a break…**: the island opens
+- **Take a break.** The joystick beside ⋯ in the island's corner (or **Take a
+  break…** in the ⋯ menu) opens
   into a small Galaxian-style game — Clawd as the ship, a formation of bugs in
   three colours swaying and diving at you, double points for a diver, a token now
   and then, three ships, faster waves, and a best score kept on this Mac. It is
@@ -17,6 +18,13 @@ All notable changes to AgentBar are documented here. This project follows
   picks up with the score intact (for fifteen minutes). Arrows or A/D to move, Space
   to fire, P to pause, Esc or Close to stop. Its blips play only with Sounds on;
   under Reduce Motion the stars hold still. Nothing of it runs when it is closed.
+  While a game is put aside the joystick wears the accent colour.
+
+### Fixed
+
+- **An update waiting to be installed was hard to see.** Its menu row was drawn in
+  accent blue on the translucent grey menu, which is nearly the same value; the row
+  is now in the menu's own colour and semibold, with only its arrow in the accent.
 
 ## 1.40.0 - 2026-10-05
 

@@ -51,10 +51,12 @@ enum AppMenuRenderer {
         item.attributedTitle = nil
         item.title = e.title
         if e.accent {
+            // Weight, not colour, on the words: accent-blue text on a translucent
+            // grey menu was the one row nobody could read — an update waiting to be
+            // installed went unseen. The colour goes on the glyph instead.
             item.attributedTitle = NSAttributedString(
                 string: e.title,
-                attributes: [.foregroundColor: NSColor.controlAccentColor,
-                             .font: NSFont.menuFont(ofSize: 0)])
+                attributes: [.font: NSFont.menuFont(ofSize: 0).withWeight(.semibold)])
         }
         if let a = e.action {
             item.action = action
@@ -68,6 +70,11 @@ enum AppMenuRenderer {
         item.isEnabled = e.action != nil || !e.children.isEmpty
         item.state = e.on.map { $0 ? .on : .off } ?? .off
         item.image = e.symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
+        if e.accent, let image = item.image?.withSymbolConfiguration(
+            .init(paletteColors: [NSColor.controlAccentColor])) {
+            image.isTemplate = false
+            item.image = image
+        }
         item.toolTip = e.toolTip
         if #available(macOS 14.0, *) {
             item.badge = e.badge.map { NSMenuItemBadge(string: $0) }
@@ -101,5 +108,11 @@ enum AppMenuRenderer {
 
     private static func flatten(_ entries: [AppMenuEntry]) -> [AppMenuEntry] {
         entries.flatMap { [$0] + flatten($0.children) }
+    }
+}
+
+private extension NSFont {
+    func withWeight(_ weight: NSFont.Weight) -> NSFont {
+        NSFont.systemFont(ofSize: pointSize, weight: weight)
     }
 }

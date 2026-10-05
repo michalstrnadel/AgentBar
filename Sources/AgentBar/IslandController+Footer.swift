@@ -40,6 +40,22 @@ extension IslandController {
         return view
     }
 
+    /// Take a break, one click from the corner — beside ⋯, as quiet as it is. In the
+    /// accent colour while a game is put aside, so the way back is visible.
+    private func breakButton() -> NSButton {
+        let b = NSButton(image: NSImage(systemSymbolName: "gamecontroller",
+                                        accessibilityDescription: "Take a break")!,
+                         target: self, action: #selector(breakClicked(_:)))
+        b.isBordered = false
+        b.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
+        let resumable = breakGame != nil
+        b.contentTintColor = resumable ? .controlAccentColor : NSColor.white.withAlphaComponent(0.55)
+        b.toolTip = resumable ? "Back to the break — \(Self.grouped(breakGame?.score ?? 0))"
+            : "Take a break — a small game that steps aside when an agent needs you"
+        b.setAccessibilityLabel(b.toolTip)
+        return b
+    }
+
     private func footerRow() -> NSView {
         let dots = NSButton(title: "⋯", target: self, action: #selector(showMenu(_:)))
         dots.isBordered = false
@@ -73,6 +89,7 @@ extension IslandController {
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         views.append(spacer)
+        views.append(breakButton())
         views.append(dots)
         let row = NSStackView(views: views)
         row.orientation = .horizontal
