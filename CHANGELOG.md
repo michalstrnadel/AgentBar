@@ -3,6 +3,21 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.41.0 - 2026-10-05
+
+### Added
+
+- **Take a break.** The island's ⋯ menu has **Take a break…**: the island opens
+  into a small Galaxian-style game — Clawd as the ship, a formation of bugs in
+  three colours swaying and diving at you, double points for a diver, a token now
+  and then, three ships, faster waves, and a best score kept on this Mac. It is
+  the island and nothing more: it opens only on that click, pauses the moment you
+  click elsewhere, and **steps aside the instant an agent needs you** — the game
+  pauses, the island shows the request, and **Back to the break** in the same menu
+  picks up with the score intact (for fifteen minutes). Arrows or A/D to move, Space
+  to fire, P to pause, Esc or Close to stop. Its blips play only with Sounds on;
+  under Reduce Motion the stars hold still. Nothing of it runs when it is closed.
+
 ## 1.40.0 - 2026-10-05
 
 ### Added
