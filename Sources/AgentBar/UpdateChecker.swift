@@ -250,12 +250,12 @@ final class UpdateChecker {
         }
     }
 
-    /// A GitHub release body read as one changelog section. Empty when there is
-    /// none, so the page can still say an update is there.
+    /// A GitHub release body read as changelog: its own section, plus any older
+    /// section it carries for a release that never went out on its own. Empty
+    /// when there is none, so the page can still say an update is there.
     static func bodyRelease(_ body: String?, version: String) -> [ReleaseNotes.Release] {
         guard let body, !body.isEmpty else { return [] }
-        let r = ReleaseNotes.parse("## \(version)\n\n" + body)
-        return r.first.map { $0.blocks.isEmpty ? [] : [$0] } ?? []
+        return ReleaseNotes.parse("## \(version)\n\n" + body).filter { !$0.blocks.isEmpty }
     }
 
     // MARK: - Installing

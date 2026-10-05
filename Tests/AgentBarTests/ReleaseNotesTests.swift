@@ -167,6 +167,8 @@ import Testing
         #expect(r[0].blocks == [.heading("Added"), .bullet("A thing.", level: 0)])
         #expect(UpdateChecker.bodyRelease(nil, version: "2.0.0").isEmpty)
         #expect(UpdateChecker.bodyRelease("<p>only a picture</p>", version: "2.0.0").isEmpty)
+        let two = UpdateChecker.bodyRelease("- New.\n\n## 1.9.0 - 2027-01-01\n\n- Unreleased before.", version: "2.0.0")
+        #expect(two.map(\.version) == ["2.0.0", "1.9.0"])
     }
 
     @Test func theUpcomingNotesFollowTheUpdate() {
