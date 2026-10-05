@@ -148,8 +148,27 @@ final class SessionStore {
             out.modSeen = true
             out.contextPercent = r.context?.percent
             out.subagents = r.subagents
+            if let held = r.held, Self.isHeld(s, since: held.since) {
+                out.state = .permission
+                out.label = heldLabel(held)
+                out.heldByMod = true
+            }
             return out
         }
+    }
+
+    /// A hold counts while the session is still where it was when the call began:
+    /// working, and its row not written since. Any later event means the call moved
+    /// on, and a `held` left behind by a session that died mid-hold is not a wait.
+    static func isHeld(_ s: Session, since: TimeInterval) -> Bool {
+        s.state.isWorking && s.ts <= since
+    }
+
+    /// "Held before it runs: rm -r build" — what the person will find in the terminal.
+    static func heldLabel(_ h: ModReport.Held) -> String {
+        let what = !h.command.isEmpty ? h.command : !h.filePath.isEmpty ? "\(h.tool) \(h.filePath)" : h.tool
+        let cut = what.count > 80 ? String(what.prefix(79)) + "…" : what
+        return "Held before it runs: \(cut)"
     }
 
     /// Prune rule: the owning agent process is gone, or the file is ancient (24h).

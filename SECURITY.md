@@ -148,6 +148,11 @@ witness and nothing more:
   `session.id/cwd/usage`, `clock.now/after/every`, `ui.resolve/invalidate`, and
   `process.run` — only `/usr/bin/open agentbar://focus?…`, from the band's Jump
   button, which can focus a terminal and nothing else (CLAUDE.md rule 2). No network.
+- What it reads is AgentBar's own folder: `state.d/` (its own session's row, to know
+  AgentBar's hooks are there, and the others' for the band), other sessions' sidecars
+  in `mods.d/` (a held call, for the band), `mods.d/.prompted-<session>` (the time of
+  the newest prompt, written by AgentBar's permission hook — how auto mode is told
+  apart from you) and `mods/config.json`.
 - It writes only into `~/.agentbar/mods.d/` (or `$AGENTBAR_HOME`). Turning it off
   removes AgentBar's entry from `env.CLAUDE_CODE_PLUGIN_DIRS` and nothing else,
   backed up and shown as a diff first, like every other settings write.

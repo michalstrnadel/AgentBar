@@ -141,6 +141,15 @@ fresh_home
 AGENTBAR_FORCE_APP=0 AGENTBAR_APPROVAL_TIMEOUT=600 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json"
 check "no app: no output"           '[ ! -s "$HOME/out.json" ]'
 check "no app: no request dir"      '[ ! -d "$HOME/.agentbar/requests.d" ]'
+check "no mod: no prompt marker"    '[ ! -d "$HOME/.agentbar/mods.d" ]'
+# The Claude Code mod's "did a prompt reach the person" marker: written first, app
+# running or not, and only where the mod already keeps its folder.
+fresh_home
+mkdir -p "$HOME/.agentbar/mods.d"
+before=$(($(date +%s) * 1000))
+AGENTBAR_FORCE_APP=0 AGENTBAR_APPROVAL_TIMEOUT=600 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json"
+check "no app: prompt still marked" '[ "$(cat "$HOME/.agentbar/mods.d/.prompted-testsess")" -ge "$before" ]'
+check "marker is all it writes"     '[ "$(ls -A "$HOME/.agentbar/mods.d")" = ".prompted-testsess" ]'
 
 # 7. stdin never closes -> the 1s setTimeout bails without blocking on an unknown request
 fresh_home

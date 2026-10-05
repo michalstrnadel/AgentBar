@@ -540,9 +540,11 @@ the rest.
 
 **What it does.** For each Claude Code session it writes one small file to
 `~/.agentbar/mods.d/` ([format](docs/protocol.md#modsd--what-claude-code-decided-without-asking-and-what-it-measures)):
-the calls Claude Code allowed or refused on its own — by which rule, by your mode, or
-by a hook — and Claude Code's own figures for the context window and the five-hour and
-weekly limits. AgentBar turns each of those decisions into a line of your record
+the calls Claude Code allowed or refused on its own — by which rule, by your mode, by a
+hook, or by **auto mode instead of asking you** — and Claude Code's own figures for the
+context window and the five-hour and weekly limits. A call another mod is holding for
+you in its own pane (blast-radius does that for `rm -r`) shows up in AgentBar as a
+session waiting on you, "Held before it runs: …", instead of looking busy. AgentBar turns each of those decisions into a line of your record
 (**Settings ▸ Claude Code ▸ Answered without you**) and shows the quota without asking
 Anthropic's servers.
 Read-only tools (Read, Grep, Glob and the like) are left out: they change nothing.

@@ -82,6 +82,15 @@ import Testing
         #expect(sidecars.refresh(sessionIDs: ["s1"]).reports["s1"]?.context?.percent == 60)
     }
 
+    /// The permission hook's prompt marker goes with its session's row.
+    @Test func aPromptMarkerGoesWithItsRow() throws {
+        try Data("1".utf8).write(to: mods.appendingPathComponent(".prompted-s1"))
+        try Data("1".utf8).write(to: mods.appendingPathComponent(".prompted-s2"))
+        _ = ModSidecars(directory: mods).refresh(sessionIDs: ["s1"])
+        #expect(FileManager.default.fileExists(atPath: mods.appendingPathComponent(".prompted-s1").path))
+        #expect(!FileManager.default.fileExists(atPath: mods.appendingPathComponent(".prompted-s2").path))
+    }
+
     @Test func ourOwnMemoryFileIsNotASidecar() throws {
         try Data(#"{"v":1,"sessions":{}}"#.utf8).write(to: mods.appendingPathComponent(".ingested.json"))
         let pass = ModSidecars(directory: mods).refresh(sessionIDs: [])
@@ -190,6 +199,26 @@ import Testing
         let rows = DecisionLedger.read(url: ledger)
         #expect(rows.map(\.toolUseId) == ["toolu_a", "toolu_b", "toolu_c"])
         #expect(rows.allSatisfy { $0.via == "claude" && $0.project == "proj" && $0.waited == 0 })
+    }
+
+    /// A call a mod holds before it runs is a wait on the person: the working row
+    /// becomes a waiting one that says what is held — and only while the row has
+    /// not moved since the hold began.
+    @Test func aHeldCallMakesTheRowWait() throws {
+        try writeRow("s1")
+        let row = try #require(Session(fileURL: state.appendingPathComponent("s1.json")))
+        func report(since: TimeInterval) -> ModReport {
+            var r = ModReport(sessionId: "s1", ts: now)
+            r.held = .init(tool: "Bash", command: "rm -r build", since: since)
+            return r
+        }
+        let held = try #require(SessionStore.merge(["s1": report(since: now + 2)], into: [row]).first)
+        #expect(held.state == .permission)
+        #expect(held.heldByMod)
+        #expect(held.label == "Held before it runs: rm -r build")
+        let moved = try #require(SessionStore.merge(["s1": report(since: now - 2)], into: [row]).first)
+        #expect(moved.state == .thinking)
+        #expect(!moved.heldByMod)
     }
 
     @Test func aRowWithoutTheModIsUntouched() throws {

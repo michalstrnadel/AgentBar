@@ -22,7 +22,9 @@ struct Session {
     /// True when `state` was synthesized by a frontend watchdog (Antigravity's
     /// 90s quiet decay), not reported by the agent — celebrations should skip it.
     var decayed = false
-    let label: String
+    // `var` for one reason: a call a Claude Code mod is holding (`mods.d` `held`)
+    // turns a working row into a waiting one, with a label that says so.
+    var label: String
     let project: String
     let cwd: String
     let entrypoint: String   // "cli", "claude-desktop", …
@@ -43,6 +45,12 @@ struct Session {
     var contextPercent: Int?
     var subagents = 0
     var modSeen = false
+    /// The row is waiting because a mod is holding a call, not because Claude Code
+    /// asked: there is no request to answer from here, only a pane in the terminal.
+    var heldByMod = false
+    /// What a waiting row says it wants. A held call has nothing to approve here —
+    /// the person answers the mod's own pane — so it does not say "approval".
+    var permissionWord: String { heldByMod ? "waiting on you" : "needs approval" }
 
     /// The label Claude Code's PreCompact hook writes while the session summarises
     /// its context (`Scripts/hooks/claude/update.js`). Not a state of its own: the

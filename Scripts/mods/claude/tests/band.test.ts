@@ -53,6 +53,26 @@ describe('the band above the prompt', () => {
     expect(world.runs).toEqual([['/usr/bin/open', 'agentbar://focus?session=codex-019a']])
   })
 
+  // Another Claude Code session whose mod reports a held call waits on you too,
+  // though its row says working — unless the row has moved on since the hold.
+  test('a session holding a command for you counts as waiting', async ($, on) => {
+    const t = Math.floor(START / 1000)
+    const held = (since: number) => JSON.stringify({ v: 1, held: { tool: 'Bash', input: { command: 'rm -r build' }, since } })
+    const world = worldOf(on, {
+      files: {
+        ...CONFIG_ON,
+        [`${ROOT}/state.d/other.json`]: rowOf({ agent: 'claude', state: 'tool', project: 'web', ts: t - 20 }),
+        [`${ROOT}/mods.d/other.json`]: held(t - 10),
+        [`${ROOT}/state.d/moved.json`]: rowOf({ agent: 'claude', state: 'tool', ts: t }),
+        [`${ROOT}/mods.d/moved.json`]: held(t - 10),
+      },
+    })
+    on('ui.render', { component: 'AbovePrompt' }, () => EMPTY as never)
+    await $.session.start(SESSION)
+    await world.clock.advance(2000)
+    expect(textOf(await $.ui.render(bandAt() as never))).toBe('◆ Claude is holding a command for you · webJump')
+  })
+
   test('several waiting: the longest-waiting first, and how many more', async ($, on) => {
     const t = Math.floor(START / 1000)
     const world = worldOf(on, {

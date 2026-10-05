@@ -20,7 +20,7 @@
 // spelled literally inside a top-level function whose parameter is `$`.
 // Scripts/test/mod-test.sh holds that list to an allow-list.
 
-export const VERSION = "1.39.0";
+export const VERSION = "1.40.0";
 
 // ---- Limits (docs/protocol.md, "mods.d") ------------------------------------
 
@@ -33,6 +33,10 @@ const READ_ONLY = new Set([
   "Read", "Glob", "Grep", "LS", "TodoWrite", "NotebookRead", "WebSearch", "ToolSearch", "BashOutput",
 ]);
 
+// A call that has not reached tool.check this long after tool.call began is held
+// by something beneath this mod in tool.call (see onCallStart).
+const HOLD_MS = 3000;
+
 // Band
 const CONFIG_EVERY_MS = 30000;
 const POLL_EVERY_MS = 2000;
@@ -40,6 +44,10 @@ const STALE_S = 600;              // a state.d row older than this is not "waiti
 const MAX_ROWS = 64;              // state.d files read per poll
 // The waiting-on-the-person states of state.d (docs/protocol.md, "state.d").
 const WAITING = { permission: "needs your approval", question: "has a question" };
+// A Claude Code session whose own mod reports a call held before it runs
+// (mods.d `held`) is waiting on the person too, though its row says working.
+const HELD = "is holding a command for you";
+const WORKING = new Set(["thinking", "tool"]);
 const AGENT_NAMES = {
   claude: "Claude", codex: "Codex", copilot: "Copilot", antigravity: "Antigravity",
   cursor: "Cursor", gemini: "Gemini", qwen: "Qwen", opencode: "OpenCode", devin: "Devin",
@@ -56,6 +64,9 @@ const S = {
   decisions: [],       // ring, oldest first
   seen: new Set(),     // tool_use_ids already in the ring (bounded with it)
   asked: new Set(),    // tool_use_ids that reached the person: never a "hook deny"
+  asking: new Map(),   // tool_use_id -> { at } while an ask is unsettled
+  pending: new Map(),  // tool_use_id -> { tool, input, at, timer } until tool.check or the end
+  held: null,          // { id, tool, input, since } while a call is held before it runs
   running: new Map(),  // subagent id -> { background }
   finished: new Set(), // subagent ids whose turn.complete came before their spawn resolved
   ended: new Set(),    // session ids already written with ended:true
@@ -186,6 +197,9 @@ export const snapshot = (now) => {
   if (S.context) body.context = S.context;
   body.rate_limits = S.rateLimits;
   body.subagents = S.running.size;
+  if (S.held) {
+    body.held = { tool: S.held.tool, input: S.held.input, since: Math.floor(S.held.since / 1000) };
+  }
   body.decisions = S.decisions;
   return JSON.stringify(body, paired);
 };
@@ -197,6 +211,10 @@ const resetSession = () => {
   S.decisions = [];
   S.seen = new Set();
   S.asked = new Set();
+  S.asking = new Map();
+  for (const p of S.pending.values()) if (p.timer) p.timer.cancel();
+  S.pending = new Map();
+  S.held = null;
   S.running = new Map();
   S.finished = new Set();
   S.dirty = false;
@@ -287,13 +305,21 @@ async function pollWaiting($) {
     let row;
     try { row = JSON.parse(await $.fs.read(`${dir}/${ent.name}`)); } catch { continue; }
     if (!row || typeof row !== "object" || row.started === false) continue;
-    if (!WAITING[row.state]) continue;
     const ts = finite(row.ts) ? row.ts : 0;
-    if (ts > 0 && now - ts > STALE_S) continue;
+    let state = row.state;
+    if (!WAITING[state]) {
+      if (row.agent !== "claude" || !WORKING.has(state)) continue;
+      // Same rule as the app (SessionStore.isHeld): held, and the row not moved since.
+      let side;
+      try { side = JSON.parse(await $.fs.read(`${S.root}/mods.d/${ent.name}`)); } catch { continue; }
+      const since = side && side.held && finite(side.held.since) ? side.held.since : 0;
+      if (!since || ts > since) continue;
+      state = "held";
+    } else if (ts > 0 && now - ts > STALE_S) continue;
     const agent = typeof row.agent === "string" ? row.agent : "";
     const named = typeof row.agent_name === "string" ? row.agent_name.replace(/[\u0000-\u001f]/g, "").trim().slice(0, 24) : "";
     found.push({
-      id, agent, state: row.state, ts,
+      id, agent, state, ts,
       name: AGENT_NAMES[agent] || named || agent || "An agent",
       project: typeof row.project === "string" ? row.project : "",
     });
@@ -332,7 +358,7 @@ async function refreshBand($) {
 
 export const bandLine = (waiting, columns) => {
   const first = waiting[0];
-  let text = `◆ ${first.name} ${WAITING[first.state]}`;
+  let text = `◆ ${first.name} ${WAITING[first.state] || HELD}`;
   if (first.project) text += ` · ${first.project}`;
   if (waiting.length > 1) text += ` · and ${waiting.length - 1} more`;
   const room = Math.max(8, (columns || 80) - 12); // leave room for the Jump button
@@ -399,7 +425,12 @@ function onMeasure($, e) {
 async function onCheck($, e, r) {
   const id = e && e.tool_use_id;
   if (!id || !r) return;                  // a query ($.tool.check), not a call
-  if (r.decision === "ask") { remember(S.asked, id, 512); return; }
+  settlePending($, id);
+  if (r.decision === "ask") {
+    remember(S.asked, id, 512);
+    if (!READ_ONLY.has(e.tool)) await watchAsk($, id);
+    return;
+  }
   if (r.decision !== "allow" && r.decision !== "deny") return;
   if (READ_ONLY.has(e.tool)) return;
   const who = attribute(r);
@@ -411,9 +442,102 @@ async function onCheck($, e, r) {
   if (added) schedule($);
 }
 
+// ---- Held before it runs ----------------------------------------------------
+//
+// tool.call's hooks run first, then PreToolUse, then tool.check, then the prompt
+// and the tool. A mod that holds a command until the person answers it in its own
+// pane (blast-radius does, for `rm -r` and a force push) sits in tool.call beneath
+// this one, so the call starts, tool.check does not come, and nothing anywhere
+// says the session is waiting on anybody — AgentBar showed it as working.
+// Measured on 2.1.289: call.start, then 35 s of nothing until the pane answered.
+// So a call with no tool.check HOLD_MS after it began is reported as `held`, and
+// cleared the moment tool.check arrives or the call ends. A PreToolUse hook that
+// takes longer than that reads as held too; the app words it as a wait before the
+// command runs, which it is.
+
+function onCallStart($, e) {
+  const id = e && e.tool_use_id;
+  if (!id || READ_ONLY.has(e.tool) || S.pending.has(id)) return;
+  const p = { tool: String(e.tool || ""), input: pruneInput(e), at: 0, timer: null };
+  S.pending.set(id, p);
+  $.clock.now().then((now) => { p.at = now; }).catch(() => {});
+  p.timer = $.clock.after(HOLD_MS, () => {
+    p.timer = null;
+    if (!S.pending.has(id)) return;
+    S.held = { id, tool: p.tool, input: p.input, since: p.at };
+    schedule($);
+  });
+}
+
+function settlePending($, id) {
+  const p = S.pending.get(id);
+  if (!p) return;
+  if (p.timer) p.timer.cancel();
+  S.pending.delete(id);
+  if (S.held && S.held.id === id) { S.held = null; schedule($); }
+}
+
+// ---- After an ask --------------------------------------------------------
+//
+// tool.check fires before the permission mode settles an ask, so on its own it
+// cannot see what auto mode's classifier decides. tool.call can: it wraps the
+// prompt and the tool, and resolves after both. What it cannot say is whether a
+// prompt reached the person — classic.PermissionRequest never fires for a mod on
+// 2.1.289, and no render component is the dialog. AgentBar's own permission hook
+// says so instead: the moment a prompt is due — app running or not, answered
+// anywhere — it writes the time to `mods.d/.prompted-<session>`. A call that ran,
+// after an ask, with no prompt marked since the ask, was settled by the mode:
+// measured, auto mode runs `mkdir` with check "ask", no prompt, and a result with
+// no isError. (Reading the session's state.d row for "permission" was tried
+// first and is not enough: the hook writes that only while an app is there to
+// answer, so a prompt answered in the terminal with the app closed read as auto.)
+// Without AgentBar's hooks there is no marker and no state.d row; the row is the
+// check that they are wired, and without it nothing is recorded — a prompt the
+// person answered must never read as auto mode. Only what ran is recorded: a
+// refusal comes back as an error result, the same shape as a command that ran
+// and failed, and a guess is worse than a gap.
+
+async function watchAsk($, id) {
+  S.asking.set(id, { at: await $.clock.now() });
+}
+
+async function markerTime($) {
+  try {
+    const t = Number(String(await $.fs.read(`${S.root}/mods.d/.prompted-${S.sessionId}`)).trim());
+    return Number.isFinite(t) ? t : 0;
+  } catch { return 0; }
+}
+
+async function rowThere($) {
+  try { await $.fs.read(`${S.root}/state.d/${S.sessionId}.json`); return true; } catch { return false; }
+}
+
+export const ranUnprompted = (r) => !!r && typeof r.deny !== "string" && r.result !== undefined && r.isError !== true;
+
+async function onCallAsked($, e, r) {
+  const id = e && e.tool_use_id;
+  const a = id ? S.asking.get(id) : null;
+  if (!a) return false;
+  S.asking.delete(id);
+  if (!ranUnprompted(r)) return true;
+  await ensureSession($);
+  if (!S.root || !S.sessionId || !(await rowThere($))) return true;
+  // A second of slack: the hook's clock and this one are the same machine's, but
+  // the ask is stamped after Claude Code has already started deciding.
+  if ((await markerTime($)) >= a.at - 1000) return true;
+  const added = pushDecision({
+    id, ts: Math.floor((await $.clock.now()) / 1000), tool: String(e.tool || ""),
+    input: pruneInput(e), verdict: "allow", by: "auto", rule: "", reason: "",
+  });
+  if (added) schedule($);
+  return true;
+}
+
 // A refusal that never reached tool.check: a hook beneath us in tool.call (a mod
 // holding a command, the person cancelling it there) answered `{ deny }`.
 async function onCall($, e, r) {
+  if (e && e.tool_use_id) settlePending($, e.tool_use_id);
+  if (await onCallAsked($, e, r)) return;
   const id = e && e.tool_use_id;
   if (!id || !r || typeof r.deny !== "string") return;
   if (S.seen.has(id) || S.asked.has(id) || READ_ONLY.has(e.tool)) return;
@@ -489,6 +613,7 @@ export function register(on) {
   }).catch(passThrough);
 
   on("tool.call", async ($, e, next) => {
+    try { onCallStart($, e); } catch { /* bookkeeping only */ }
     const r = await next(e);
     try { await onCall($, e, r); } catch { /* bookkeeping only */ }
     return r;

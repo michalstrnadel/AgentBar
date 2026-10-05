@@ -49,7 +49,8 @@ final class SessionRowView: NSView {
         }
         var detail: String
         switch s.state {
-        case .permission: detail = "needs approval"
+        // A held call's label is the command being held: the one thing worth reading.
+        case .permission: detail = s.heldByMod ? s.label : s.permissionWord
         case .error:      detail = s.label.isEmpty ? "failed" : "failed — \(s.label)"
         default:          detail = s.label
         }

@@ -38,14 +38,15 @@ struct AnsweredWithoutYouTests {
 
     @Test func eachSourceIsNamed() {
         let m = model([row(), row(), row(rule: "Bash(npm test:*)"), row(by: "mode"),
-                       row("deny", by: "hook")])
+                       row("deny", by: "hook"), row(by: "auto")])
         #expect(AnsweredWithoutYou.lines(m) == [
-            "Today 4 ran, 1 refused · last 7 days 4 ran, 1 refused",
+            "Today 5 ran, 1 refused · last 7 days 5 ran, 1 refused",
             "Your Claude Code rule `Bash(git:*)` — 2 ran",
             "Your Claude Code rule `Bash(npm test:*)` — 1 ran",
+            "Auto mode, instead of asking you — 1 ran",
             "Claude Code's permission mode — 1 ran",
             "A hook or another mod — 1 refused",
-            "Most often: git status 4×",
+            "Most often: git status 5×",
             AnsweredWithoutYou.blindSpotText,
         ])
     }

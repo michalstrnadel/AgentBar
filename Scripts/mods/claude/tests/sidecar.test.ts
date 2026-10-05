@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { SESSION, START, sidecarOf, worldOf } from './world'
+import { SESSION, START, rowOf, sidecarOf, worldOf } from './world'
 import { VERSION } from '../hooks/register.js'
 
 const S0 = Math.floor(START / 1000)
@@ -185,6 +185,87 @@ describe('what a decision row says', () => {
     })
     expect(row.reason.startsWith('Blast Radius held this command')).toBe(true)
     expect(row.reason).toHaveLength(300)
+  })
+
+  // tool.check sees an ask before the mode settles it; tool.call sees what came of
+  // it. Run with no prompt ever reaching the person (their row never waited) is
+  // auto mode's classifier — and only when the row is there to say so.
+  const own = (state: string) => ['/Users/me/.agentbar/state.d/sess-1.json',
+    rowOf({ agent: 'claude', state, sessionId: 'sess-1' })] as const
+  const askThenRun = async ($: any, on: any, files: Record<string, string>, result: unknown,
+                            during?: (w: any) => void) => {
+    const world = worldOf(on, { files })
+    on('tool.check', () => ({ decision: 'ask', reason: 'mkdir needs approval' }))
+    on('tool.call', () => { during?.(world); return result })
+    await $.session.start(SESSION)
+    await $.tool.check(check('Bash', { command: 'mkdir out' }, 'toolu_auto'))
+    const r = await $.tool.call({ tool: 'Bash', command: 'mkdir out', tool_use_id: 'toolu_auto' } as never)
+    await world.clock.advance(1000)
+    return { world, r }
+  }
+
+  test('an ask that ran with nobody prompted is written as by: auto', async ($, on) => {
+    const { world, r } = await askThenRun($, on, Object.fromEntries([own('tool')]), { result: 'ok' })
+    expect(r).toEqual({ result: 'ok' })
+    expect(sidecarOf(world).decisions).toMatchObject([
+      { id: 'toolu_auto', tool: 'Bash', input: { command: 'mkdir out' }, verdict: 'allow', by: 'auto', rule: '' },
+    ])
+  })
+
+  const MARK = '/Users/me/.agentbar/mods.d/.prompted-sess-1'
+
+  test('an ask the person was prompted for is not auto mode', async ($, on) => {
+    const { world } = await askThenRun($, on, Object.fromEntries([own('tool')]), { result: 'ok' },
+      (w) => { w.files.set(MARK, String(START)) })
+    expect(sidecarOf(world).decisions).toEqual([])
+  })
+
+  test('a prompt marked before this ask does not count for it', async ($, on) => {
+    const { world } = await askThenRun($, on,
+      { ...Object.fromEntries([own('tool')]), [MARK]: String(START - 60_000) }, { result: 'ok' })
+    expect(sidecarOf(world).decisions.map((d: any) => d.by)).toEqual(['auto'])
+  })
+
+  test('without AgentBar\'s hooks there is no row, and nothing is guessed', async ($, on) => {
+    const { world } = await askThenRun($, on, {}, { result: 'ok' })
+    expect(sidecarOf(world).decisions).toEqual([])
+  })
+
+  test('an error result is not written: a refusal and a failure look alike', async ($, on) => {
+    const { world } = await askThenRun($, on, Object.fromEntries([own('tool')]), { result: 'no', isError: true })
+    expect(sidecarOf(world).decisions).toEqual([])
+  })
+
+  // A mod beneath this one holding a command in its own pane: tool.call began and
+  // tool.check never came. That is a wait on the person, reported as `held`.
+  test('a call held before tool.check is reported as held, and cleared when it ends', async ($, on) => {
+    const world = worldOf(on)
+    let release: (v: unknown) => void = () => {}
+    on('tool.call', () => new Promise(res => { release = res }))
+    await $.session.start(SESSION)
+    const call = $.tool.call({ tool: 'Bash', command: 'rm -r build', tool_use_id: 'toolu_held2' } as never)
+    await world.clock.advance(2000)
+    expect(sidecarOf(world).held).toBeUndefined()
+    await world.clock.advance(2000)
+    expect(sidecarOf(world).held).toEqual({ tool: 'Bash', input: { command: 'rm -r build' }, since: S0 })
+    release({ deny: 'Blast Radius held this command' })
+    await call
+    await world.clock.advance(1000)
+    expect(sidecarOf(world).held).toBeUndefined()
+  })
+
+  test('a call that reaches tool.check in time is never held', async ($, on) => {
+    const world = worldOf(on)
+    let release: (v: unknown) => void = () => {}
+    on('tool.check', () => ({ decision: 'ask' }))
+    on('tool.call', () => new Promise(res => { release = res }))
+    await $.session.start(SESSION)
+    const call = $.tool.call({ tool: 'Bash', command: 'make', tool_use_id: 'toolu_slow' } as never)
+    await $.tool.check(check('Bash', { command: 'make' }, 'toolu_slow'))
+    await world.clock.advance(5000)
+    expect(sidecarOf(world).held).toBeUndefined()
+    release({ result: 'ok' })
+    await call
   })
 
   test('a call already decided in tool.check is not written twice', async ($, on) => {

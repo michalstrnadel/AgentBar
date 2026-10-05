@@ -47,6 +47,8 @@ final class ModSidecars {
         var size: Int
     }
 
+    static let promptedPrefix = ".prompted-"
+
     init(directory: URL = ModSidecars.defaultDirectory) {
         self.directory = directory
     }
@@ -61,6 +63,12 @@ final class ModSidecars {
             options: [])) ?? []
         var pass = Pass()
         var present: Set<String> = []
+        // `.prompted-<id>`, the permission hook's note to the mod that a prompt was
+        // due (docs/protocol.md, "mods.d"). Its session's row gone, it is done with.
+        for url in files where url.lastPathComponent.hasPrefix(Self.promptedPrefix) {
+            let id = String(url.lastPathComponent.dropFirst(Self.promptedPrefix.count))
+            if !sessionIDs.contains(id) { try? fm.removeItem(at: url) }
+        }
         for url in files where url.pathExtension == "json"
             && !url.lastPathComponent.hasPrefix(".") {     // our own `.ingested.json`
             let id = url.deletingPathExtension().lastPathComponent

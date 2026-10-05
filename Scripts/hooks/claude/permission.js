@@ -263,8 +263,26 @@ process.stdin.on("end", run);
 process.stdin.on("error", run);
 setTimeout(run, 1000); // stdin never arrived: bail, never hang the session start
 
+// The Claude Code mod's one question about a prompt: did one reach the person?
+// It sees the `ask` and what the call came to, never the dialog, and a call that
+// ran with nobody prompted is how it tells auto mode's classifier apart from you
+// (docs/protocol.md, "mods.d"). This hook is the only thing that knows, so it says
+// so first, before anything can bail — app running or not, answered here or in
+// the terminal: `mods.d/.prompted-<row id>` holding the time, in ms. Only where
+// the mod already writes (mods.d exists); a few bytes, and never a reason to fail.
+function markPrompted(text) {
+  try {
+    const dir = path.join(base, "mods.d");
+    if (!fs.existsSync(dir)) return;
+    const p = JSON.parse(text);
+    const id = p && typeof p.session_id === "string" ? rowId(p.session_id) : "";
+    if (id) fs.writeFileSync(path.join(dir, ".prompted-" + id), String(Date.now()));
+  } catch {}
+}
+
 function run() {
   if (started) return; started = true;
+  markPrompted(raw);
   if (!appRunning()) process.exit(0); // nobody to answer -> terminal prompt
   if (!raw) process.exit(0); // stdin closed (or never arrived) empty: nothing to request
 

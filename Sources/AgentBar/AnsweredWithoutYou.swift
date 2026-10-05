@@ -46,12 +46,13 @@ enum AnsweredWithoutYou {
         + "on its own is not kept either."
     static let nothingText = "Nothing in the last 7 days that Claude Code settled before "
         + "a prompt was due."
-    /// Said under every non-empty card. The mod looks before Claude Code's permission
-    /// mode has its say, so what auto mode's classifier or don't-ask mode settles on an
-    /// `ask` never reaches it — and a card that read as "everything that ran unasked"
-    /// would be the confident wrong number this page exists to replace.
-    static let blindSpotText = "Not counted: what auto mode or don't-ask mode decides "
-        + "after Claude Code would have asked."
+    /// Said under every non-empty card. What auto mode runs on an `ask` is counted
+    /// (`by: "auto"`), but only where AgentBar's hooks can say nobody was prompted,
+    /// and what it refuses never is: a refusal comes back looking like a command that
+    /// failed. A card that read as "everything that ran unasked" would be the
+    /// confident wrong number this page exists to replace.
+    static let blindSpotText = "Not counted: what auto mode or don't-ask mode refuses, "
+        + "or runs in a session without AgentBar's hooks."
 
     /// The card's contents. `modInstalled` and `ledgerOn` only choose between the
     /// empty states: rows in the ledger are counted whatever they say now.
@@ -62,7 +63,7 @@ enum AnsweredWithoutYou {
         let weekStart = t - span
         var m = Model()
         var rules: [String: Tally] = [:]
-        var mode = Tally(), hook = Tally()
+        var mode = Tally(), hook = Tally(), auto = Tally()
         var shapes: [String: Int] = [:]
         for r in records where r.via == "claude" && r.ts >= weekStart && r.ts <= t {
             let allow = r.decision == "allow"
@@ -73,6 +74,7 @@ enum AnsweredWithoutYou {
             switch r.by {
             case "rule": add(&rules[r.claudeRule.isEmpty ? "?" : r.claudeRule, default: Tally()])
             case "hook": add(&hook)
+            case "auto": add(&auto)
             default:     add(&mode)
             }
             if allow, !r.shape.isEmpty { shapes[r.shape, default: 0] += 1 }
@@ -95,6 +97,9 @@ enum AnsweredWithoutYou {
             }
             m.sources.append(Source(title: "\(ranked.count - maxRules) more of your rules", tally: rest))
         }
+        // Before the mode: it is the one source that ran what Claude Code itself
+        // thought worth asking about.
+        if auto.total > 0 { m.sources.append(Source(title: "Auto mode, instead of asking you", tally: auto)) }
         if mode.total > 0 { m.sources.append(Source(title: "Claude Code's permission mode", tally: mode)) }
         if hook.total > 0 { m.sources.append(Source(title: "A hook or another mod", tally: hook)) }
         m.shapes = shapes.sorted { ($0.value, $1.key) > ($1.value, $0.key) }

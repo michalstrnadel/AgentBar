@@ -39,7 +39,7 @@ struct ModReport: Equatable {
         var description = ""
         /// allow | deny — nothing else is a verdict here.
         var verdict: String
-        /// rule | mode | hook — who decided, as far as Claude Code says.
+        /// rule | mode | hook | auto — who decided, as far as can be told.
         var by: String
         /// The settings rule, when `by` is "rule". Empty otherwise.
         var rule = ""
@@ -55,6 +55,15 @@ struct ModReport: Equatable {
     var rateLimits: [RateLimit] = []
     var subagents = 0
     var decisions: [Decision] = []
+    /// A call held before it runs — a mod waiting on the person in its own pane.
+    var held: Held?
+
+    struct Held: Equatable {
+        var tool: String
+        var command = ""
+        var filePath = ""
+        var since: TimeInterval
+    }
 
     // MARK: - Caps
 
@@ -71,7 +80,7 @@ struct ModReport: Equatable {
     static let maxBytes = 4 * 1_024 * 1_024
 
     static let verdicts: Set<String> = ["allow", "deny"]
-    static let deciders: Set<String> = ["rule", "mode", "hook"]
+    static let deciders: Set<String> = ["rule", "mode", "hook", "auto"]
 
     // MARK: - Decoding
 
@@ -100,6 +109,7 @@ struct ModReport: Equatable {
         r.rateLimits = (o["rate_limits"] as? [Any] ?? []).prefix(maxRateLimits)
             .compactMap(rateLimit)
         r.subagents = int(o["subagents"]).map { min(max($0, 0), 999) } ?? 0
+        r.held = held(o["held"])
         var seen = Set<String>()
         // The newest end of the ring: a file listing more than the mod keeps
         // loses the oldest, the way the mod's own ring would have.
@@ -117,6 +127,18 @@ struct ModReport: Equatable {
         if let t = number(o["tokens"]), t >= 0, t < 1e9 { c.tokens = Int(t) }
         if let w = number(o["window"]), w > 0, w < 1e9 { c.window = Int(w) }
         return c.percent == nil && c.tokens == nil && c.window == nil ? nil : c
+    }
+
+    private static func held(_ any: Any?) -> Held? {
+        guard let o = any as? [String: Any],
+              let tool = o["tool"] as? String, !tool.isEmpty else { return nil }
+        let since = Session.plausibleTime(o["since"])
+        guard since > 0 else { return nil }
+        let input = o["input"] as? [String: Any] ?? [:]
+        return Held(tool: oneLine(tool, cap: 128),
+                    command: oneLine(text(input["command"], cap: maxField), cap: maxField),
+                    filePath: oneLine(text(input["file_path"], cap: maxField), cap: maxField),
+                    since: since)
     }
 
     private static func rateLimit(_ any: Any) -> RateLimit? {

@@ -207,7 +207,7 @@ final class IslandRowView: NSView {
         let working = NSColor(srgbRed: 0.45, green: 0.72, blue: 1, alpha: 1)
         switch s.state {
         case .permission:
-            let out = NSMutableAttributedString(string: "needs approval", attributes: [
+            let out = NSMutableAttributedString(string: s.permissionWord, attributes: [
                 .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
                 .foregroundColor: IconRenderer.amberDot,
             ])

@@ -413,7 +413,8 @@ decisions about the same command are two decisions, and counting them is the poi
   below). `claude` means Claude Code decided the call itself, before any prompt existed,
   and the AgentBar mod saw it (see `mods.d` below); such a row also carries `by`
   (`rule` — a Claude Code settings rule, named in `claudeRule`; `mode` — the permission
-  mode or the tool's own check; `hook` — a hook or another mod: Claude Code says a
+  mode or the tool's own check; `auto` — auto mode's classifier, on a call Claude Code
+  would otherwise have asked about; `hook` — a hook or another mod: Claude Code says a
   `PreToolUse` hook decided but not why, and names no mod, so `reason` is often empty), `reason` (Claude Code's sentence, capped at 300 characters) and
   `toolUseId`, which is unique: a frontend writes one row per id, ever. Its `waited`
   is `0`. A frontend that offers a switch to stop writing rows (AgentBar: *Remember
@@ -475,25 +476,47 @@ result through unchanged — and writes one file per session:
   figure it does not have is left out, never zeroed. `rate_limits` is empty off a
   subscription and until the session's first turn has been measured; `resets_at` is
   ISO 8601 as Claude Code gives it. `percent_used` is 0–100 and may pass 100 on an exceeded spend limit.
-- `decisions` is a ring of the newest 200 verdicts Claude Code reached **before a
-  prompt was due**: `allow` or `deny`, never `ask` (an `ask` reaches the person, and
-  from there `requests.d`). A verdict the permission mode reaches *on* an `ask` —
-  don't-ask mode, the auto-mode classifier, a headless host — happens after the mod
-  has looked and is not among them; a reader must not present the ring as everything
-  that ran unasked. Read-only tools (`Read`, `Glob`, `Grep`, `LS`, `TodoWrite`,
+- `decisions` is a ring of the newest 200 verdicts Claude Code reached **without a
+  prompt**: `allow` or `deny`, never `ask` (an `ask` reaches the person, and from
+  there `requests.d`). Most were reached before a prompt was due. One kind comes
+  after: an `ask` that the permission mode then settled with nobody prompted —
+  auto mode's classifier — written as `allow` with `by: "auto"`. The mod sees the
+  `ask` and what the call came to, but not the prompt; it knows none reached the
+  person because AgentBar's own permission hook turns the session's `state.d` row
+  to `permission` (or `question`) the moment one is due, and the row never did.
+  So `by: "auto"` is written only while that row exists — in a session without
+  AgentBar's hooks nothing is guessed — and only for a call that ran: a refusal
+  comes back as an error result, the same shape as a command that ran and failed,
+  so what auto mode refused (and what don't-ask mode refuses) is not among them. A
+  reader must not present the ring as everything that ran unasked. Read-only tools (`Read`, `Glob`, `Grep`, `LS`, `TodoWrite`,
   `NotebookRead`, `WebSearch`, `ToolSearch`, `BashOutput`) are left out: they change
   nothing, and listing every file read would bury the calls that did. `input` keeps
   only `command`, `file_path`, `url` and `description`, each capped at 2 KB. `by` is
-  as in `decisions.jsonl`: `rule` with `rule` naming the settings rule, `mode`, or
-  `hook`. A `deny` with `by: "hook"` is how a mod holding a command (and the person
+  as in `decisions.jsonl`: `rule` with `rule` naming the settings rule, `mode`,
+  `hook`, or `auto`. A `deny` with `by: "hook"` is how a mod holding a command (and the person
   cancelling it there) shows up. Such a mod acts before Claude Code's own permission
   check, so a call it holds is `by: "hook"` even where a settings rule would also have
   refused it.
 - `subagents` counts subagents launched and not yet finished, background ones
   included (`0` when none); foreground ones are dropped when the main turn ends.
+- `held`, present only while it lasts: `{"tool", "input", "since"}` (`input` as in
+  `decisions`, `since` in epoch seconds) for a call that has not reached Claude
+  Code's permission check 3 seconds after it began — something beneath the mod in
+  `tool.call` is holding it, typically a mod waiting for the person in its own pane
+  (blast-radius holds `rm -r` and force pushes that way). Nothing else reports such a
+  wait: the session's `state.d` row still says it is working. A frontend SHOULD show
+  the session as waiting on the person while `held` is there **and** the row has not
+  been written since `since` — a later write means the call moved on — and MUST NOT
+  offer to answer it: there is no request, only the pane in the terminal. A
+  `PreToolUse` hook slower than 3 seconds reads as held too.
 - `ended` is set when Claude Code ends the session. The mod cannot delete a file, so
   a frontend removes `mods.d/<id>.json` once the `state.d` row is gone and either
   `ended` is true or `ts` is more than 24 hours old.
+- `.prompted-<id>` beside the sidecars is the permission hook's, not the mod's: the
+  time in milliseconds of the newest prompt due in that session, written the moment
+  the hook starts, whether or not anything is there to answer it — the one place the
+  mod learns that an `ask` reached the person. Only where `mods.d/` already exists.
+  A frontend removes it with the session's `state.d` row.
 - A frontend turns each decision into one `decisions.jsonl` row (`via: "claude"`),
   keyed by `id`, and never again for the same id. It MAY keep its own record of the
   ids it has ledgered (AgentBar: `mods.d/.ingested.json`); a dot-file in `mods.d/` is

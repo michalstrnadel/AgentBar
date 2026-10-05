@@ -109,16 +109,24 @@ struct ModReportTests {
         #expect(r.context == nil)
     }
 
-    /// Only `allow` and `deny` are verdicts, and only `rule`, `mode` and `hook`
-    /// decide. Anything else costs that one decision, never the file.
+    /// Only `allow` and `deny` are verdicts, and only `rule`, `mode`, `hook` and
+    /// `auto` decide. Anything else costs that one decision, never the file.
     @Test func aDecisionThatIsNotOneIsDropped() throws {
         let r = try #require(decode(sidecar(decisions: [
             decision("a"), decision("b", verdict: "ask"), decision("c", by: "user"),
             decision("d", extra: ["id": ""]), decision("e", extra: ["tool": 5]),
             decision("f", extra: ["id": "has space"]), decision("g", verdict: "deny", by: "hook"),
-            ["not": "a decision"],
+            decision("h", by: "auto"), ["not": "a decision"],
         ])))
-        #expect(r.decisions.map(\.id) == ["a", "g"])
+        #expect(r.decisions.map(\.id) == ["a", "g", "h"])
+    }
+
+    @Test func aHeldCallIsReadAndCapped() throws {
+        let r = try #require(decode(sidecar(extra: ["held": ["tool": "Bash", "since": Self.now,
+                                                             "input": ["command": "rm -r build\nsecond"]]])))
+        #expect(r.held == .init(tool: "Bash", command: "rm -r build", since: Self.now))   // the first line: a label is one
+        #expect(try #require(decode(sidecar(extra: ["held": ["tool": "Bash"]]))).held == nil)
+        #expect(try #require(decode(sidecar(extra: ["held": "yes"]))).held == nil)
     }
 
     @Test func aRuleIsNamedOnlyWhenARuleDecided() throws {
