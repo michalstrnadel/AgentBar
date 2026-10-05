@@ -3,6 +3,21 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.39.0 - 2026-10-05
+
+### Added
+
+- **Release notes, inside AgentBar.** **Settings ▸ What's New** shows what changed in
+  every release that arrived since you last looked, marked **New**, with a few before
+  them — and, while an update is on offer, what it brings before it installs, with the
+  button to install it. A downloaded update's notes come from inside the verified
+  bundle, so they cover every release since yours, not only the newest. After an
+  update the menu (and the island's ⋯ menu) offers **What's New in …** for two weeks,
+  and the page keeps a dot in the sidebar until you open it. Nothing opens by itself:
+  an update installs at a quiet moment and stays quiet afterwards. The notes are this
+  changelog, bundled with the app — readable offline, and the same text as the GitHub
+  release. `agentbar://settings/whats-new` opens the page.
+
 ## 1.38.0 - 2026-10-05
 
 Claude Code 2.1.287 runs **mods** — plugins whose code lives inside its process, sees
