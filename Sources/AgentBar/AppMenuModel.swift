@@ -16,8 +16,8 @@ import Cocoa
 /// AppKit state. `AppMenuRenderer` turns it into NSMenuItems; each surface hands
 /// the renderer its own target and selector, and its handler resolves the item
 /// back to an `AppMenuAction` and calls `perform()`. What a surface shows only for
-/// itself (the menu bar's New task…, Open ▸ and shortcut row; the island's nothing
-/// so far) stays in that surface's builder, outside this list.
+/// itself (the menu bar's Open ▸ and shortcut row; the island's Take a break; both
+/// surfaces' Today and New task…) stays in that surface's builder, outside this list.
 enum AppMenuModel {
     /// Everything the section is drawn from, gathered in one place so a test can
     /// feed both surfaces the same state and compare what they render.

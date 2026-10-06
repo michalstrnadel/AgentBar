@@ -52,7 +52,7 @@ extension IslandController {
         b.contentTintColor = resumable ? .controlAccentColor : NSColor.white.withAlphaComponent(0.55)
         b.toolTip = resumable
             ? "Back to the break — \(breakChoice?.title ?? "") \(Self.grouped(breakGame?.score ?? 0))"
-            : "Take a break — a small game that steps aside when an agent needs you"
+            : "Take a break — Space Bugs or Bug Hunt, set aside the moment an agent needs you"
         b.setAccessibilityLabel(b.toolTip)
         return b
     }
@@ -62,7 +62,8 @@ extension IslandController {
         dots.isBordered = false
         dots.font = .systemFont(ofSize: 15, weight: .semibold)
         dots.contentTintColor = NSColor.white.withAlphaComponent(0.55)
-        dots.toolTip = "AgentBar"
+        dots.toolTip = "AgentBar menu — Today, New task, Take a break, Settings, updates, Quit"
+        dots.setAccessibilityLabel("AgentBar menu")
 
         var views: [NSView] = []
         // The same line the footer always spent on quota, drawn instead of

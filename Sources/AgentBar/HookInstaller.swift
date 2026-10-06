@@ -76,6 +76,9 @@ enum HookInstaller {
     private(set) static var wired: [String] = []
     /// Called on the main queue when the install pass finishes.
     static var onFinish: (() -> Void)?
+    /// Whether a pass has finished this launch. Main queue only. Lets the welcome
+    /// window tell "still wiring" from "found nothing to wire".
+    private(set) static var finished = false
 
     /// One run over every integration: either the real one (launch, **Re-install
     /// hooks**), or a preview that works out every config write and makes none.
@@ -172,7 +175,7 @@ enum HookInstaller {
     static func installIfNeeded(then done: (() -> Void)? = nil) {
         DispatchQueue.global(qos: .utility).async {
             _ = installNow()
-            DispatchQueue.main.async { onFinish?(); done?() }
+            DispatchQueue.main.async { finished = true; onFinish?(); done?() }
         }
     }
 

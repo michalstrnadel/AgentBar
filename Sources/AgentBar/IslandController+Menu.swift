@@ -22,6 +22,13 @@ extension IslandController {
         // has to be reachable from it — otherwise the feature exists for menu bar
         // users and nobody else.
         menu.addItem(MenuBuilder.todayRow(target: self, action: #selector(openPastProject(_:))))
+        // The launcher, for the same reason: without this row an Island-only user
+        // reached it only by a chord that is off by default, or by a link.
+        let newTask = NSMenuItem(title: "New task…", action: #selector(openLauncher(_:)),
+                                 keyEquivalent: "")
+        newTask.target = self
+        newTask.image = NSImage(systemSymbolName: "plus.bubble", accessibilityDescription: nil)
+        menu.addItem(newTask)
         // Island only: the menu bar has nowhere to play it.
         for item in breakMenuItems() { menu.addItem(item) }
         menu.addItem(.separator())
@@ -46,6 +53,8 @@ extension IslandController {
     @objc func appMenuClicked(_ sender: NSMenuItem) {
         AppMenuRenderer.action(of: sender)?.perform()
     }
+
+    @objc private func openLauncher(_ sender: NSMenuItem) { LauncherPanel.shared.show() }
 
     /// A finished session's project folder — the session itself is gone, so there is
     /// no tab to jump back to. Mirrors `StatusItemController.openPastProject`.

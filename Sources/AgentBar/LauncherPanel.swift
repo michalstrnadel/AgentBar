@@ -67,8 +67,11 @@ final class LauncherPanel: NSObject, NSWindowDelegate {
         agents = Launcher.launchableAgents()
         guard !agents.isEmpty else {
             // Nothing on this machine could be started. Saying so beats a panel
-            // whose buttons all do nothing.
-            NSSound.beep()
+            // whose buttons all do nothing — and beats a beep, which says only no.
+            Self.note("No agent to start",
+                      "AgentBar found no supported agent's command line on this Mac. It looks in "
+                      + "~/.local/bin, /opt/homebrew/bin, /usr/local/bin and your PATH. Install "
+                      + "Claude Code, Codex, Gemini CLI or another supported agent, then try again.")
             return
         }
         chosenProject = 0
@@ -188,7 +191,7 @@ final class LauncherPanel: NSObject, NSWindowDelegate {
             projectRow.addArrangedSubview(b)
         }
         if projects.isEmpty {
-            let none = NSTextField(labelWithString: "No project yet — finish a session anywhere first")
+            let none = NSTextField(labelWithString: "No project yet — run any agent in a folder once")
             none.font = .systemFont(ofSize: 11)
             none.textColor = .tertiaryLabelColor
             projectRow.addArrangedSubview(none)
@@ -208,6 +211,10 @@ final class LauncherPanel: NSObject, NSWindowDelegate {
         b.setButtonType(.pushOnPushOff)
         b.controlSize = .small
         b.font = .systemFont(ofSize: 11)
+        // Six long project names in one row overflowed the panel; the middle of a
+        // name is the part least needed to tell it apart, and the tooltip has it all.
+        b.cell?.lineBreakMode = .byTruncatingMiddle
+        b.widthAnchor.constraint(lessThanOrEqualToConstant: 110).isActive = true
         return b
     }
 
@@ -228,7 +235,9 @@ final class LauncherPanel: NSObject, NSWindowDelegate {
         guard let agent = agents.indices.contains(chosenAgent) ? agents[chosenAgent] : nil,
               let project = projects.indices.contains(chosenProject) ? projects[chosenProject] : nil
         else {
-            hint.stringValue = "⏎ start · esc close"
+            hint.stringValue = projects.isEmpty
+                ? "Nothing to start in yet · esc closes"
+                : "⏎ start · esc closes"
             return
         }
         var text = "⏎ opens \(agent.name) in \(project.project)"
@@ -241,7 +250,10 @@ final class LauncherPanel: NSObject, NSWindowDelegate {
             text = armed ? "From a link · " + text
                          : "From a link — read it, then ⏎ twice · " + text
         }
-        hint.stringValue = text + " · esc closes"
+        // The keys, once there is more than one thing to choose between.
+        let keys = [projects.count > 1 ? "↑↓ project" : nil, agents.count > 1 ? "⇥ agent" : nil]
+            .compactMap { $0 }
+        hint.stringValue = text + (keys.isEmpty ? "" : " · " + keys.joined(separator: " · ")) + " · esc closes"
     }
 
     // MARK: - Acting
@@ -327,6 +339,21 @@ final class KeyPanel: NSPanel {
 }
 
 extension LauncherPanel: NSTextFieldDelegate {
+    /// The pills by keyboard: ↑ and ↓ walk the projects, ⇥ and ⇧⇥ the agents. The
+    /// field keeps the focus, so typing carries on where it was.
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+        func step(_ i: Int, _ by: Int, _ count: Int) -> Int { count == 0 ? i : (i + by + count) % count }
+        switch selector {
+        case #selector(NSResponder.moveUp(_:)):       chosenProject = step(chosenProject, -1, projects.count)
+        case #selector(NSResponder.moveDown(_:)):     chosenProject = step(chosenProject, 1, projects.count)
+        case #selector(NSResponder.insertTab(_:)):     chosenAgent = step(chosenAgent, 1, agents.count)
+        case #selector(NSResponder.insertBacktab(_:)): chosenAgent = step(chosenAgent, -1, agents.count)
+        default: return false
+        }
+        syncSelection()
+        return true
+    }
+
     /// Typing into a link-filled prompt makes it yours: it no longer needs the
     /// extra confirmation a prompt you did not write does.
     func controlTextDidChange(_ obj: Notification) {

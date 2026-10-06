@@ -385,7 +385,16 @@ final class SidebarItem: NSControl {
             dot.widthAnchor.constraint(equalToConstant: 7),
             dot.heightAnchor.constraint(equalToConstant: 7),
         ])
+        // A page in a list, to VoiceOver: a drawn control is otherwise nothing at all.
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(page.title)
         apply()
+    }
+
+    override func accessibilityPerformPress() -> Bool {
+        sendAction(action, to: target)
+        return true
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -418,6 +427,7 @@ final class SidebarItem: NSControl {
         label.textColor = selected ? .white : .labelColor
         label.font = .systemFont(ofSize: 13, weight: selected ? .medium : .regular)
         dot.layer?.backgroundColor = (selected ? NSColor.white : NSColor.controlAccentColor).cgColor
+        setAccessibilitySelected(selected)
     }
 
     /// A rounded tile with the glyph knocked out of it, the way the system's own

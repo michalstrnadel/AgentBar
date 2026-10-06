@@ -126,8 +126,11 @@ final class MascotDriver {
             // A task just finished → a brief celebratory hop, then settle to calm.
             // decayed = a watchdog's guess, not a reported finish — no celebration
             // (SoundCenter skips its done cue on the same condition).
+            // Reduce Motion skips it: a hop after every turn is exactly the motion
+            // that setting asks to be spared.
             if state == .some(.done), previousTopState?.isWorking == true,
-               topSession?.decayed != true {
+               topSession?.decayed != true,
+               !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
                 playHop(resting: resting)
             } else if hopTimer == nil {
                 image = restingOrAsleep(sprite: sprite, resting: resting)

@@ -28,8 +28,19 @@ final class ApprovalButtonsRow: NSView {
         for spec in buttons {
             let b = makeButton(spec.title, behavior: spec.behavior)
             b.toolTip = spec.toolTip
+            // Read without the glyph: "check mark Allow" is the symbol's name, not
+            // the button's.
+            b.setAccessibilityLabel(Self.spoken(spec.title))
             stack.addArrangedSubview(b)
         }
+    }
+
+    /// A title without its leading glyph: `✓ Allow` → `Allow`.
+    static func spoken(_ title: String) -> String {
+        guard let first = title.unicodeScalars.first, !CharacterSet.alphanumerics.contains(first),
+              let space = title.firstIndex(of: " ")
+        else { return title }
+        return String(title[title.index(after: space)...])
     }
 
     /// The native-request strip (Claude): Allow / Always / Deny / defer.

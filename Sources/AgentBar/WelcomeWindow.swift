@@ -1,17 +1,33 @@
 import Cocoa
 
 /// First-run window: says where AgentBar lives, lets the user pick the surface it
-/// shows itself on, and names the agents whose hooks were wired. Shown on launch
-/// until the user unticks it, and from the menu afterwards.
+/// shows itself on, and names the agents whose hooks were wired. Shown on the
+/// first launch, on later ones only if the user ticks the box, and from the menu.
 final class WelcomeWindow: NSObject, NSWindowDelegate {
     static let shared = WelcomeWindow()
 
     private static let showKey = "showWelcomeOnLaunch"
+    private static let shownKey = "welcomeShownOnce"
 
-    /// On until the user says otherwise, so a fresh install always gets it.
+    /// A fresh install gets it once. After that it is the person's choice: a
+    /// window that took focus on every launch — including the silent relaunch an
+    /// update waits for you to step away to make — is a window unfolding over the
+    /// screen on its own, which rule 2 does not allow.
     static var showOnLaunch: Bool {
-        get { UserDefaults.standard.object(forKey: showKey) as? Bool ?? true }
+        get { UserDefaults.standard.object(forKey: showKey) as? Bool
+                ?? !UserDefaults.standard.bool(forKey: shownKey) }
         set { UserDefaults.standard.set(newValue, forKey: showKey) }
+    }
+
+    static func markShownOnce() { UserDefaults.standard.set(true, forKey: shownKey) }
+
+    /// An install that has run before has seen this window already. Called before
+    /// anything this launch writes a preference, while an empty domain still means
+    /// a copy that has never run here.
+    static func seedForExistingInstall(domain: [String: Any]?) {
+        guard let domain, !domain.isEmpty,
+              UserDefaults.standard.object(forKey: shownKey) == nil else { return }
+        markShownOnce()
     }
 
     private var window: NSWindow?
@@ -345,7 +361,10 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         guard wiredLabel != nil else { return }
         let names = HookInstaller.wired.map { Agent.byID($0).name }
         wiredLabel.stringValue = names.isEmpty
-            ? "Setting up hooks…"
+            ? (HookInstaller.finished
+                ? "No agents wired yet. Install Claude Code, Codex, Gemini CLI or another supported "
+                  + "agent and relaunch AgentBar; Settings ▸ Diagnostics shows what it looked for."
+                : "Setting up hooks…")
             : "Hooks wired up for: " + names.joined(separator: ", ")
                 + ". New sessions show up from now on; ones already open started before the hooks."
         // Only once there is something to show: a machine where every file was

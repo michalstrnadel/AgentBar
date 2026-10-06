@@ -28,6 +28,11 @@ final class IslandRowView: NSView {
         // recap rides along so even a compact one-liner can say what finished.
         toolTip = session.recap.isEmpty ? Self.name(session)
             : "\(Self.name(session))\n\(session.agent.name): \(session.recap)"
+        // To VoiceOver a row is a button that says what the menu bar's row says,
+        // and pressing it does what a click does: jump to the session.
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel(SessionRowView.plainTitle(SessionRowView.content(for: session)))
 
         let chips = NSStackView(views: Self.chips(session))
         chips.orientation = .horizontal
@@ -346,6 +351,11 @@ final class IslandRowView: NSView {
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
     override func mouseUp(with event: NSEvent) { onClick(session) }
+
+    override func accessibilityPerformPress() -> Bool {
+        onClick(session)
+        return true
+    }
     /// See IslandButton: the panel never becomes key, so a click has to be taken
     /// as a real click rather than an activation.
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }

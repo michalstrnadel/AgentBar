@@ -141,7 +141,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         IslandScreen.onChange = { [weak self] in self?.applyPresentation() }
         applyPresentation()
 
-        if WelcomeWindow.showOnLaunch { WelcomeWindow.shared.show() }
+        if WelcomeWindow.showOnLaunch {
+            WelcomeWindow.shared.show()
+            WelcomeWindow.markShownOnce()
+        }
         // Layout work on Settings otherwise means clicking through the menu bar on
         // every rebuild, which is how a window ships unlooked-at. CONTRIBUTING lists
         // it next to islandExpandDebug.
@@ -314,7 +317,9 @@ if let bundleID = Bundle.main.bundleIdentifier, !AgentBarHome.isSandbox {
 // Before anything below writes a preference, while an empty domain still means a
 // copy that has never run here (`MascotPersonality.Prefs`).
 if let bundleID = Bundle.main.bundleIdentifier {
-    MascotPersonality.Prefs.seedForNewInstall(domain: UserDefaults.standard.persistentDomain(forName: bundleID))
+    let domain = UserDefaults.standard.persistentDomain(forName: bundleID)
+    MascotPersonality.Prefs.seedForNewInstall(domain: domain)
+    WelcomeWindow.seedForExistingInstall(domain: domain)
 }
 
 let app = NSApplication.shared
