@@ -109,7 +109,7 @@ import Testing
         #expect(DecisionLedger.read(url: url).map(\.decision) == ["watch"])
     }
 
-    /// An answer nobody clicked may only exist with the row naming its rule. A
+    /// **F22.** An answer nobody clicked may only exist with the row naming its rule. A
     /// ledger that cannot be written (here: its parent is a file, not a folder)
     /// means the rule stays quiet and the human decides.
     @Test func aRuleWhoseRowCannotBeWrittenAnswersNothing() throws {
@@ -538,5 +538,51 @@ import Testing
             #expect(RuleEngine.refusalInCommand(line, cwd: Self.repo) == nil,
                     "should approve: \(line) — \(RuleEngine.refusalInCommand(line, cwd: Self.repo) ?? "")")
         }
+    }
+
+    // MARK: - The 2026-10-06 audit
+
+    /// **F21.** The hook cuts a command at 2,000 units. A line padded past that hides its
+    /// tail — the second command — from every clause above, so length alone refuses.
+    @Test func aCommandLongEnoughToHaveBeenCutIsRefused() {
+        let head = "ls " + String(repeating: "a", count: 2_000)
+        let r = request(command: head + "…")
+        #expect(RuleEngine.refusal(for: r, cwd: Self.repo) != nil)
+        #expect(RuleEngine.refusal(for: request(command: "ls Sources"), cwd: Self.repo) == nil)
+    }
+
+    /// Options that hand git a program to run make a "read-only" subcommand
+    /// anything but; so does any option in front of the subcommand.
+    @Test func gitOptionsThatRunAProgramAreRefused() {
+        for line in ["git grep -O vim pattern", "git grep -Ovim pattern",
+                     "git grep --open-files-in-pager=vim pattern", "git grep --open pattern",
+                     "git diff --ext-diff", "git log -p --textconv",
+                     "git -c core.pager=less log", "git --config-env=core.pager=X log",
+                     "git -C elsewhere status", "npm --prefix x test"] {
+            #expect(RuleEngine.refusalInCommand(line, cwd: Self.repo) != nil, "should refuse: \(line)")
+        }
+    }
+
+    /// Inside on paper is not inside on disk.
+    @Test func aLinkLeadingOutOfTheDirectoryIsRefused() throws {
+        let fm = FileManager.default
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("agentbar-link-\(UUID().uuidString)")
+        let repo = root.appendingPathComponent("repo"), outside = root.appendingPathComponent("outside")
+        try fm.createDirectory(at: repo, withIntermediateDirectories: true)
+        try fm.createDirectory(at: outside, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: root) }
+        try fm.createSymbolicLink(at: repo.appendingPathComponent("link"), withDestinationURL: outside)
+        #expect(RuleEngine.refusalInPath("link/new-file.txt", cwd: repo.path) != nil)
+        #expect(RuleEngine.refusalInCommand("cat link/x.txt", cwd: repo.path) != nil)
+        #expect(RuleEngine.refusalInPath("Sources/new-file.txt", cwd: repo.path) == nil)
+    }
+
+    /// A question is not a permission, so no rule — a denial included — speaks for it.
+    @Test func noRuleSpeaksForAQuestion() {
+        let q = request(tool: "AskUserQuestion", command: nil,
+                        context: #"{"kind":"question","questions":[{"question":"Which?","options":[{"label":"A"}]}]}"#)
+        #expect(RuleEngine.verdict(for: q, cwd: Self.repo,
+                                   rules: [deny("tool:AskUserQuestion")]) == nil)
     }
 }

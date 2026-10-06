@@ -258,8 +258,9 @@ final class RuleSheet: NSObject {
         var out: [String] = []
         // Not Claude Code's own decisions: a rule is written from what the person
         // decided, and never from anything the agent produced.
+        // Nor a question's: no rule speaks for one (`RuleEngine.verdict`).
         for r in records.reversed() where r.via != "claude" && !r.shape.isEmpty
-            && seen.insert(r.shape).inserted {
+            && r.shape != "tool:AskUserQuestion" && seen.insert(r.shape).inserted {
             out.append(r.shape)
         }
         for c in common where seen.insert(c).inserted { out.append(c) }

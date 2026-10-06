@@ -871,11 +871,11 @@ wait "$hookpid"
 check "claude: still wrapped as before" 'grep -q "hookSpecificOutput" "$HOME/out.json"'
 
 # --- the fall-through contract, clause by clause ---------------------------------
-# SECURITY.md publishes these as F1..F18: every way this hook can fail must write
+# SECURITY.md publishes these as F1..F22: every way this hook can fail must write
 # nothing to stdout, because writing nothing is what sends the question back to the
 # agent's own terminal. Several are asserted elsewhere in this file already; they
 # are gathered here under their numbers so that a clause nobody checks is visible
-# as a gap rather than hidden in a scenario. F15-F18 are the rules engine's, in
+# as a gap rather than hidden in a scenario. F15-F18, F21 and F22 are the rules engine's, in
 # RuleEngineTests and RulesStoreTests.
 contract() { # $1 clause, $2 condition
   check "$1 falls through" "$2"

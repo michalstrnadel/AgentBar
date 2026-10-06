@@ -131,6 +131,10 @@ final class RuleEngine {
     /// parameter, which is what makes the table below testable.
     static func verdict(for request: ApprovalRequest, cwd: String,
                         rules: [RulesStore.Rule]) -> Verdict? {
+        // A question is not a permission, and a denial is not an answer to one: the
+        // hook drops a deny on a question as stale and keeps waiting, while the card
+        // was hidden as answered and the ledger said "deny" for nothing denied.
+        if request.questions != nil { return nil }
         let shape = DecisionLedger.shape(of: request)
         let matching = rules.filter { matches($0, shape: shape, agent: request.agentID, cwd: cwd) }
         guard !matching.isEmpty else { return nil }
@@ -175,6 +179,10 @@ final class RuleEngine {
 
         switch request.context {
         case .bash(let command):
+            // The hook cuts a command at 2,000 UTF-16 units and adds `…`, so a line
+            // this long may be the head of one whose tail nobody here can see — and
+            // the tail is exactly where a second command would sit.
+            if command.utf16.count >= maxCommandLength { return "a command too long to have been read whole" }
             return refusalInCommand(command, cwd: cwd)
         case .diff, .write, .none:
             // Every other tool is judged by the file it names. A tool that names
@@ -189,7 +197,10 @@ final class RuleEngine {
         }
     }
 
-    /// Commands whose presence anywhere on the line ends the matter. Some are
+    /// Where `permission.js` cuts a command (`cap(i.command, 2000)`).
+    static let maxCommandLength = 2_000
+
+    /// Commands that end the matter as the command itself, or under a wrapper. Some are
     /// destructive, some reach off the machine, some can run anything at all —
     /// the common property is that no argument makes them routine.
     static let refusedCommands: Set<String> = [
@@ -228,7 +239,11 @@ final class RuleEngine {
     /// for `grep`.
     static let refusedArguments: [String: Set<String>] = [
         "rm": ["-r", "-rf", "-fr", "-R", "-f", "--recursive", "--force", "-drf"],
-        "git": ["--force", "-f", "--force-with-lease", "--hard"],
+        // …and the options that hand git a program to run: grep's pager, a diff or
+        // text-conversion driver, another git's helpers.
+        "git": ["--force", "-f", "--force-with-lease", "--hard",
+                "-O", "--open-files-in-pager", "--ext-diff", "--textconv",
+                "--upload-pack", "--receive-pack", "--exec", "--exec-path", "--config-env"],
         "chmod": ["777", "666", "+s", "-R", "--recursive", "a+w"],
         "mv": ["-f", "--force"],
         "cp": ["-f", "--force"],
@@ -345,9 +360,16 @@ final class RuleEngine {
         if let bad = refusedSpelling(of: name, in: words) {
             return "`\(name) \(bad)` is never approved by a rule"
         }
-        if let subs = refusedSubcommands[name],
-           let sub = words.first(where: { !$0.hasPrefix("-") }), subs.contains(sub) {
-            return "`\(name) \(sub)` is never approved by a rule"
+        if let subs = refusedSubcommands[name] {
+            // An option in front of the subcommand is the tool's own, not the
+            // subcommand's: `git -c core.pager=… log` and `git --config-env=…` set
+            // what runs, and the shape — named after the subcommand — never says so.
+            if words.first?.hasPrefix("-") == true {
+                return "an option in front of `\(name)`'s subcommand"
+            }
+            if let sub = words.first, subs.contains(sub) {
+                return "`\(name) \(sub)` is never approved by a rule"
+            }
         }
         for word in words {
             // `--output=/tmp/x` and `PREFIX=/usr/local` carry their path after the
@@ -432,7 +454,29 @@ final class RuleEngine {
         guard full == cwd || full.hasPrefix(cwd + "/") else {
             return "a path outside the directory the rule names"
         }
+        // Inside on paper is not inside on disk: a link in the repository can point
+        // anywhere, and the tool follows it. Both ends are read as the disk has them.
+        let real = resolved(full), base = resolved(cwd)
+        if let fragment = refusedFragment(in: real) {
+            return "`\(fragment)` is never approved by a rule"
+        }
+        guard real == base || real.hasPrefix(base + "/") else {
+            return "a link that leads outside the directory the rule names"
+        }
         return nil
+    }
+
+    /// `path` with every symbolic link in it followed — through the deepest part
+    /// that exists, so a file an edit is about to create resolves by its folder.
+    static func resolved(_ path: String) -> String {
+        var head = path, tail: [String] = []
+        let fm = FileManager.default
+        while head != "/", !head.isEmpty, !fm.fileExists(atPath: head) {
+            tail.insert((head as NSString).lastPathComponent, at: 0)
+            head = (head as NSString).deletingLastPathComponent
+        }
+        let real = URL(fileURLWithPath: head).resolvingSymlinksInPath().path
+        return tail.reduce(real) { ($0 as NSString).appendingPathComponent($1) }
     }
 
     /// Which forbidden fragment this text carries, if any. Split out because the

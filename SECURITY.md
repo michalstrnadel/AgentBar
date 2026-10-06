@@ -66,7 +66,12 @@ guarantees worth knowing when auditing:
   or history-rewriting subcommands, on anything reaching off the machine, on a path
   outside the rule's directory **including the command's own path**, and on any path
   that configures permission itself, whether or not it is written with a separator —
-  `~/.agentbar`, an agent's settings directory, `.git/hooks`, `.git/config`. No
+  `~/.agentbar`, an agent's settings directory, `.git/hooks`, `.git/config`. A path
+  is checked twice — as written, and with its symbolic links followed — so a link
+  inside the directory that leads out of it is outside. An option in front of a
+  tool's subcommand (`git -c …`, `git --config-env=…`) and an option that hands git
+  a program to run (`grep -O`, `--ext-diff`, `--textconv`) are refused, and so is a
+  command long enough to have been cut by the hook (F21). No
   setting disables that table, and anything the engine cannot parse is a refusal.
   A rule also has a **watching** mode, which new rules start in: it matches and
   works out the answer, writes down what it would have done, and answers nothing,
@@ -123,6 +128,8 @@ clause whose test nobody can find is a clause somebody can delete.
 | F18 | The live command trips the refusal table | Falls through, and no setting turns that table off |
 | F19 | The request file carries a string starting with U+FEFF, which the app's JSON reader drops | The command the engine would check is not the one that runs |
 | F20 | The rules file repeats a key, has a trailing comma, or a field of the wrong type | as F16 — the app and the CLI used to read such a file differently |
+| F21 | The command is 2,000 units or longer — where the hook cuts it | The tail, where a second command would sit, was never read |
+| F22 | The rule's ledger row cannot be written | An answer nobody clicked may only exist with the row naming its rule |
 
 The asymmetry in F16 and F17 is deliberate: an unreadable policy file must fail
 towards asking, never towards allowing.
