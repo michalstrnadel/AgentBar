@@ -94,13 +94,16 @@ function run() {
     try {
       let cleared = 0;
       for (const f of fs.readdirSync(stateDir)) {
+        // Rows only: another hook's `x.json.<pid>.tmp` is a write in flight, and
+        // deleting it costs that hook its rename. A row naming no pid is not ours
+        // to judge either — the app ages those out after a day (protocol.md).
+        if (!f.endsWith(".json")) continue;
         const p = path.join(stateDir, f);
         let owner = 0;
         try { owner = Number(JSON.parse(fs.readFileSync(p, "utf8")).pid) || 0; } catch {}
-        if (owner > 0) {
-          try { process.kill(owner, 0); continue; } catch (e) {
-            if (e.code === "EPERM") continue; // exists, just not ours to signal
-          }
+        if (owner <= 0) continue;
+        try { process.kill(owner, 0); continue; } catch (e) {
+          if (e.code === "EPERM") continue; // exists, just not ours to signal
         }
         fs.rmSync(p, { force: true });
         cleared++;

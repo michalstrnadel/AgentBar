@@ -156,6 +156,11 @@ function run() {
   if (started) return; started = true;
   let p = {};
   try { p = JSON.parse(raw || "{}"); } catch {}
+  // No session id, no row: junk, an empty stdin, or one still arriving when the
+  // fallback timer fired would otherwise write `unknown.json`, a row pinned to
+  // the agent's pid that stays for the agent's whole life. The sibling hooks
+  // (permission, cursor, gemini) already leave in this case.
+  if (!p || typeof p.session_id !== "string" || !p.session_id) process.exit(0);
 
   // The session's own file is both the unit of state and the liveness marker; writing it on
   // any event also picks up sessions that predate the hook install (no SessionStart fired).

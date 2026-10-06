@@ -1114,6 +1114,7 @@ def walk(v):
     elif isinstance(v, list):
         for x in v: walk(x)
 d = sys.argv[1]
+if not os.path.isdir(d): sys.exit(0)   # nothing written is readable too
 for name in os.listdir(d):
     with open(os.path.join(d, name)) as fh: walk(json.load(fh))
 ' "$1"
@@ -1139,6 +1140,7 @@ quiet "a tool input that is an array" "$UPDATE" pre \
   '{"session_id":"q4","tool_name":"Bash","tool_input":[1,2,3]}'
 quiet "every field null" "$UPDATE" post \
   '{"session_id":null,"tool_name":null,"tool_input":null,"cwd":null}'
+check "quiet: no session id writes no row" '[ -z "$(ls "$HOME/.agentbar/state.d" 2>/dev/null)" ]'
 quiet "a session id shaped like a path" "$LIFECYCLE" start \
   '{"session_id":"../../../../tmp/pwned","cwd":"/tmp"}'
 quiet "nothing at all on stdin" "$LIFECYCLE" start ''
