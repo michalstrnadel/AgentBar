@@ -448,7 +448,11 @@ final class UpdateChecker {
             throw NSError(domain: "AgentBar", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "staged bundle version mismatch"])
         }
-        _ = try? run("/usr/bin/xattr", "-dr", "com.apple.quarantine", app.path)
+        do { try run("/usr/bin/xattr", "-dr", "com.apple.quarantine", app.path) } catch {
+            // Not fatal — the swap and relaunch go through LaunchServices — but if
+            // Gatekeeper then stops the new copy, this is the line that explains it.
+            NSLog("AgentBar update: could not clear quarantine on the staged app (\(error))")
+        }
         accepted = true
         return app
     }
@@ -465,7 +469,11 @@ final class UpdateChecker {
             do { try fm.moveItem(at: staged, to: current) }
             catch { try fm.copyItem(at: staged, to: current) }   // cross-volume temp
         } catch {
-            try? fm.moveItem(at: backup, to: current)
+            do { try fm.moveItem(at: backup, to: current) } catch let restore {
+                // The one way the promise above can break; leave a trail to the copy.
+                NSLog("AgentBar update: could not put the previous version back (\(restore)); "
+                      + "it is at \(backup.path)")
+            }
             throw error
         }
         let version = Bundle(url: current)?.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -479,7 +487,20 @@ final class UpdateChecker {
         relaunch.executableURL = URL(fileURLWithPath: "/bin/bash")
         relaunch.arguments = ["-c", UpdateInstallation.relaunchScript, "agentbar-relaunch",
                               current.path, staging.path, backup.path, "/usr/bin/open"]
-        try relaunch.run()
+        do {
+            try relaunch.run()
+        } catch {
+            // The new version is already in place; only the script that relaunches
+            // it would not start. That is not a failed install, so it is not
+            // reported as one: open the new copy directly and step aside for it.
+            NSLog("AgentBar update: relaunch script did not start (\(error)); opening \(current.path)")
+            let config = NSWorkspace.OpenConfiguration()
+            config.createsNewApplicationInstance = true
+            NSWorkspace.shared.openApplication(at: current, configuration: config) { _, _ in
+                DispatchQueue.main.async { NSApp.terminate(nil) }
+            }
+            return
+        }
         NSApp.terminate(nil)
     }
 
