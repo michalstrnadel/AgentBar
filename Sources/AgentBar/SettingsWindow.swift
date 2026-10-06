@@ -483,8 +483,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                     // either switch safe in island-only mode.
                     SettingsChrome.row("Hide the island when nothing is running",
                                        "The pill slips away and returns with the next "
-                                       + "session. Push the pointer up to the notch to "
-                                       + "peek at it.",
+                                       + "session. Push the pointer to the top of the "
+                                       + "screen to peek at it.",
                                        control: hideIslandBox),
                     SettingsChrome.row("Hide the island while you're away",
                                        "After three minutes without keyboard or mouse, "

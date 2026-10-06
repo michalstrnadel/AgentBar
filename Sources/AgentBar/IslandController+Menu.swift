@@ -24,7 +24,7 @@ extension IslandController {
         menu.addItem(MenuBuilder.todayRow(target: self, action: #selector(openPastProject(_:))))
         // The launcher, for the same reason: without this row an Island-only user
         // reached it only by a chord that is off by default, or by a link.
-        let newTask = NSMenuItem(title: "New task…", action: #selector(openLauncher(_:)),
+        let newTask = NSMenuItem(title: "New Task…", action: #selector(openLauncher(_:)),
                                  keyEquivalent: "")
         newTask.target = self
         newTask.image = NSImage(systemSymbolName: "plus.bubble", accessibilityDescription: nil)

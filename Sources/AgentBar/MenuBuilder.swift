@@ -85,7 +85,7 @@ enum MenuBuilder {
 
         // Start a task, rather than an agent: the launcher, reachable without the
         // global chord — a keystroke nobody has heard of is a feature nobody has.
-        let newTask = NSMenuItem(title: "New task…",
+        let newTask = NSMenuItem(title: "New Task…",
                                  action: #selector(StatusItemController.openLauncher(_:)),
                                  keyEquivalent: "")
         newTask.target = controller
@@ -130,7 +130,7 @@ enum MenuBuilder {
         // Opt-in global Allow/Deny shortcut; the row opens Settings (enable + rebind).
         // Menu bar only: it is the chord that answers from anywhere, and the island
         // shows its keys on the approval card itself, where they apply.
-        let shortcut = NSMenuItem(title: "Global Allow / Deny shortcut…",
+        let shortcut = NSMenuItem(title: "Global Allow / Deny Shortcut…",
                                   action: #selector(StatusItemController.openShortcutSettings(_:)),
                                   keyEquivalent: "")
         shortcut.identifier = NSUserInterfaceItemIdentifier("shortcutRow")

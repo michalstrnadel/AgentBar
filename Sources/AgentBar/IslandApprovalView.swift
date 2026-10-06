@@ -419,7 +419,7 @@ final class IslandNoteField: NSView {
         didSet {
             field.placeholderAttributedString = NSAttributedString(string: placeholder, attributes: [
                 .font: NSFont.systemFont(ofSize: 12),
-                .foregroundColor: NSColor.white.withAlphaComponent(0.35),
+                .foregroundColor: IslandInk.quiet,
             ])
         }
     }

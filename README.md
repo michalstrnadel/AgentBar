@@ -29,7 +29,7 @@ do, or a rule you wrote yourself, and every answer is written down.
 | Answer the same prompt the same way five times | The card offers to write it down as a rule; a new rule starts out **watching** and answers nothing until you let it |
 | Type `git push --force origin main` into a rule's test field | Says on the spot whether that rule would have taken it, and which clause stopped it |
 | Switch on ⌥⌘A / ⌥⌘D in **Settings ▸ Shortcuts** | Allows or denies the newest request from any app |
-| **New task…** in the menu (or ⌥⌘N, once switched on) | A project, an agent and one line of what you want; the agent opens in a terminal with the prompt given |
+| **New Task…** in the menu (or ⌥⌘N, once switched on) | A project, an agent and one line of what you want; the agent opens in a terminal with the prompt given |
 | Turn on **Hide the island when nothing is running** (or **…while you're away**) | The pill slips out of sight; push the pointer up to the notch to peek. Anything waiting on you keeps it up |
 | **Settings ▸ Agents ▸ Show changes…** | Every write AgentBar made into an agent's settings, as a unified diff, with the copy it kept beside the file |
 | Flip an agent's switch off in **Settings ▸ Agents** | Shows what it will take out of that agent's settings, then removes only AgentBar's own entries — and leaves them out from then on |
@@ -198,7 +198,7 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   branch, state and elapsed time; click a row to jump to its app or terminal.
 - **Open anything** — launch any supported agent (Claude, Codex, Copilot,
   Antigravity, Cursor, Gemini, Qwen, OpenCode) straight from the menu.
-- **Start a task, not just an agent** — **New task…** in the menu (or ⌥⌘N, once you
+- **Start a task, not just an agent** — **New Task…** in the menu (or ⌥⌘N, once you
   switch that on) opens a small panel: a project you have worked in, an agent, and a
   line of what you want. The agent opens in a terminal, in that directory, with the
   prompt already given. It closes the moment it loses focus and takes no space until
@@ -278,11 +278,11 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   score, a best and a few tokens to catch. It steps aside the moment an agent needs
   you — the request shows in its place, and **Back to the break** picks up where you
   left off. Arrows and Space to play, P to pause, Esc to close. Island only.
-- **Bug Hunt** — the joystick's second game: bugs rise out of the grass and you
-  have three shots to bring each one down, then the dog fetches it (or laughs when it
-  gets away). Ten bugs a round, enough hits to go on, a perfect round for a bonus;
-  Game A flies one at a time, Game B two. Aim with the pointer and click, or the
-  arrows and Space. It steps aside for your agents exactly like Take a break.
+  **Bug Hunt** is the second: bugs rise out of the grass and you have three shots
+  to bring each one down, then the dog fetches it (or laughs when it gets away). Ten
+  bugs a round, enough hits to go on, a perfect round for a bonus; Game A flies one
+  at a time, Game B two. Aim with the pointer and click, or the arrows and Space. It
+  steps aside for your agents exactly like Space Bugs.
 - **Release notes where you'll look for them** — **Settings ▸ What's New** has the
   notes of the update on offer before it installs, and of every release that arrived
   since you last looked, marked **New**. After an update the menu offers
@@ -686,8 +686,9 @@ the notch:
   and re-pins itself when it returns, so AgentBar never goes missing.
 
 In Island-only mode the menu bar item is hidden, so the panel's **⋯** button carries
-everything the menu bar's own menu ends with — Color, Sounds, Appearance, Diagnostics,
-Settings, updates, Send Feedback and Quit. Both menus are drawn from one list, so
+everything the menu bar's own menu ends with — Icon Color, Sounds, Appearance,
+Diagnostics, Settings, updates, Send Feedback and Quit — and starts with Today,
+New Task… and Take a break. Both menus are drawn from one list, so
 neither can lose a row the other has.
 
 ### Appearance
@@ -697,7 +698,7 @@ you get on first launch. The preview above the buttons is the real mascot driven
 through the real code, not a picture of one, so it animates exactly as the bar will.
 
 <p align="center">
-  <img src="docs/assets/welcome-appearance.png?v=2026-09-23" width="430" alt="AgentBar's Appearance window: a live mascot preview, the Menu bar / Dynamic Island / Both picker, an 'Island on:' row of drawn displays with 'Follow pointer' selected, the mark colour choice, and the list of agents whose hooks are wired up">
+  <img src="docs/assets/welcome-appearance.png?v=2026-09-23" width="430" alt="AgentBar's Appearance window: a live mascot preview, the Menu bar / Dynamic Island / Both picker, an 'Island on:' row of drawn displays with 'Follow pointer' selected, the icon colour choice, and the list of agents whose hooks are wired up">
 </p>
 
 **Island on:** draws your displays rather than listing them — a laptop for the

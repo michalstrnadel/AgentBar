@@ -156,7 +156,7 @@ final class UpdateChecker {
         var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(Self.repo)/releases/latest")!)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.timeoutInterval = 15
-        URLSession.shared.dataTask(with: req) { [weak self] data, _, err in
+        URLSession.shared.dataTask(with: req) { [weak self] data, response, err in
             DispatchQueue.main.async {
                 guard let self else { return }
                 guard err == nil, let data,
@@ -164,9 +164,14 @@ final class UpdateChecker {
                       let tag = o["tag_name"] as? String else {
                     // The UI stays vague, so the reason (offline, TLS, rate limit) has to
                     // reach Console or a bug report has nothing to go on.
-                    NSLog("AgentBar update: check failed: \(err.map { "\($0)" } ?? "unreadable release payload")")
+                    let http = (response as? HTTPURLResponse)?.statusCode
+                    NSLog("AgentBar update: check failed: \(err.map { "\($0)" } ?? "unreadable release payload")"
+                          + (http.map { " (HTTP \($0))" } ?? ""))
                     // Silent when automatic: a laptop that's offline isn't an error.
-                    self.setStatus(manual ? .failed("Update check failed") : .idle)
+                    // A refusal from GitHub is worth naming when asked: a rate limit
+                    // passes, and "failed" alone reads as broken.
+                    let why = http == 403 || http == 429 ? "GitHub is limiting requests" : "Update check failed"
+                    self.setStatus(manual ? .failed(why) : .idle)
                     return
                 }
                 let latest = tag.hasPrefix("v") ? String(tag.dropFirst()) : tag

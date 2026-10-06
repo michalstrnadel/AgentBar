@@ -188,7 +188,7 @@ extension IslandController {
     func more(_ n: Int) -> NSView {
         let l = NSTextField(labelWithString: "+\(n) more session\(n == 1 ? "" : "s")")
         l.font = .systemFont(ofSize: 11)
-        l.textColor = NSColor.white.withAlphaComponent(0.45)
+        l.textColor = IslandInk.quiet
         return l
     }
 
@@ -196,11 +196,11 @@ extension IslandController {
         let firstRun = EmptyState.firstRun
         let l = NSTextField(labelWithString: EmptyState.title(firstRun: firstRun))
         l.font = .systemFont(ofSize: 12)
-        l.textColor = NSColor.white.withAlphaComponent(0.45)
+        l.textColor = IslandInk.quiet
         guard let hint = EmptyState.hint(firstRun: firstRun) else { return l }
         let h = NSTextField(wrappingLabelWithString: hint)
         h.font = .systemFont(ofSize: 11)
-        h.textColor = NSColor.white.withAlphaComponent(0.35)
+        h.textColor = IslandInk.quiet
         h.preferredMaxLayoutWidth = width
         let stack = NSStackView(views: [l, h])
         stack.orientation = .vertical

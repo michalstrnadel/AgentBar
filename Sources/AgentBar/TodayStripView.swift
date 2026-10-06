@@ -97,7 +97,7 @@ final class TodayStripView: NSView, NSViewToolTipOwner {
         guard Self.showsTotal else { return }
         headline.stringValue = HistoryDigest.headline(summary)
         headline.font = .monospacedDigitSystemFont(ofSize: 10, weight: .regular)
-        headline.textColor = NSColor.white.withAlphaComponent(0.38)
+        headline.textColor = IslandInk.quiet
         headline.lineBreakMode = .byTruncatingTail
         headline.translatesAutoresizingMaskIntoConstraints = false
         addSubview(headline)
@@ -121,7 +121,7 @@ final class TodayStripView: NSView, NSViewToolTipOwner {
         guard overflow > 0 else { return }
         "+\(overflow)".draw(at: NSPoint(x: 0, y: 0), withAttributes: [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 8, weight: .regular),
-            .foregroundColor: NSColor.white.withAlphaComponent(0.3),
+            .foregroundColor: IslandInk.quiet,
         ])
     }
 

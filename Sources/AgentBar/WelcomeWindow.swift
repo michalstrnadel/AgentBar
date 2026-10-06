@@ -254,12 +254,12 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
     }
 
     private func colorPicker() -> NSView {
-        let label = NSTextField(labelWithString: "Mark color:")
+        let label = NSTextField(labelWithString: "Icon color:")
         label.font = .systemFont(ofSize: NSFont.systemFontSize)
         let row = NSStackView(views: [label])
         row.orientation = .horizontal
         row.spacing = 18
-        for (i, title) in ["Color", "System"].enumerated() {
+        for (i, title) in ["Colorful", "Monochrome"].enumerated() {
             let b = NSButton(radioButtonWithTitle: title, target: self, action: #selector(pickColor(_:)))
             b.tag = i
             colorRadios.append(b)

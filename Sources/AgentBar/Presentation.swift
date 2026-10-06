@@ -36,10 +36,10 @@ enum Presentation: String, CaseIterable {
 
     var caption: String {
         switch self {
-        case .menuBar: return "The mark sits in the menu bar. Click it for the full menu."
-        case .island:  return "A small pill under the notch. Push the pointer up to the "
-                            + "notch to open the sessions and any approval, question or plan "
-                            + "waiting on you."
+        case .menuBar: return "An icon in the menu bar. Click it for the full menu."
+        case .island:  return "A small pill at the top of the screen, under the notch if there "
+                            + "is one. Point at it to open the sessions and any approval, question "
+                            + "or plan waiting on you."
         case .both:    return "Island for glancing, menu bar for the full menu."
         }
     }

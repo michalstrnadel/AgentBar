@@ -17,7 +17,7 @@ import Cocoa
 /// the renderer its own target and selector, and its handler resolves the item
 /// back to an `AppMenuAction` and calls `perform()`. What a surface shows only for
 /// itself (the menu bar's Open ▸ and shortcut row; the island's Take a break; both
-/// surfaces' Today and New task…) stays in that surface's builder, outside this list.
+/// surfaces' Today and New Task…) stays in that surface's builder, outside this list.
 enum AppMenuModel {
     /// Everything the section is drawn from, gathered in one place so a test can
     /// feed both surfaces the same state and compare what they render.
@@ -56,10 +56,10 @@ enum AppMenuModel {
     /// between "how AgentBar looks" and "AgentBar the app" is the same on both.
     static func appSection(_ i: Inputs) -> [AppMenuEntry] {
         [
-            AppMenuEntry(id: "color", title: "Color", symbol: "paintpalette", children: [
-                AppMenuEntry(id: "color.color", title: "Color", action: .chooseColor(system: false),
+            AppMenuEntry(id: "color", title: "Icon Color", symbol: "paintpalette", children: [
+                AppMenuEntry(id: "color.color", title: "Colorful", action: .chooseColor(system: false),
                              on: !i.systemColor),
-                AppMenuEntry(id: "color.system", title: "System", action: .chooseColor(system: true),
+                AppMenuEntry(id: "color.system", title: "Monochrome", action: .chooseColor(system: true),
                              on: i.systemColor),
             ]),
             // One-click mute/unmute; volume and the cue details live in Settings.
@@ -147,6 +147,9 @@ enum AppMenuModel {
             e.title = "\(reason) — Retry"
             e.action = .checkForUpdates
             e.symbol = "exclamationmark.arrow.triangle.2.circlepath"
+            // What to do about it, not only that it happened.
+            e.toolTip = "Nothing was changed. Check your connection and retry, or get the "
+                + "latest from github.com/michalstrnadel/AgentBar/releases."
         }
         return e
     }

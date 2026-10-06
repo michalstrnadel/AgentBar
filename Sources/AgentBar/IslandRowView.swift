@@ -203,7 +203,7 @@ final class IslandRowView: NSView {
     private static func activityLine(_ s: Session) -> NSAttributedString {
         NSAttributedString(string: s.activity.joined(separator: " · "), attributes: [
             .font: NSFont.systemFont(ofSize: 10.5),
-            .foregroundColor: NSColor.white.withAlphaComponent(0.35),
+            .foregroundColor: IslandInk.quiet,
         ])
     }
 

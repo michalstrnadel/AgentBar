@@ -64,7 +64,7 @@ import Testing
 
     @Test func theSectionHasTheRowsBothSurfacesPromise() {
         let titles = Self.snapshot(Self.island(Self.inputs(.idle))).map(\.title)
-        #expect(titles == ["Color", "Sounds", "Appearance…", "Diagnostics…", "Settings…", "",
+        #expect(titles == ["Icon Color", "Sounds", "Appearance…", "Diagnostics…", "Settings…", "",
                            "Check for Updates…", "Send Feedback…", "Quit AgentBar"])
     }
 
