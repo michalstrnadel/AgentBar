@@ -3,6 +3,78 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+From a full audit — security, engineering, UX and the paths that failed in silence.
+
+### Security
+
+- **A rule never answers without its row.** The ledger row naming the rule is now
+  written first, and a rule whose row cannot be written (full disk, read-only
+  `~/.agentbar`) gives no answer — the human decides (F22).
+- **A command too long to have been read whole is refused.** The hook cuts a
+  command at 2,000 characters, so a line padded past that could hide a second
+  command after the cut (F21).
+- **Git's program-running options are refused**: an option in front of the
+  subcommand (`git -c …`, `--config-env`, `-C`) and `grep -O`, `--ext-diff`,
+  `--textconv`, `--upload-pack` and friends.
+- **Paths are checked with their links followed**, so a symbolic link inside the
+  rule's directory that leads out of it is outside.
+- **No rule speaks for a question.** A deny rule hid the question's card and wrote
+  a "deny" row for something nothing denied.
+- **Links and rows are narrower.** An `agentbar://new-task` prompt starting with
+  `-` is refused (it would reach the agent's CLI as an option), and a typed one is
+  kept a prompt; a cloud row opens only https, http, ssh and the vendors' own
+  schemes.
+- **Hooks look for this user's AgentBar only**, so another account's copy on a
+  shared Mac cannot keep a hook waiting for nobody.
+- `requests.d` and `answers.d` are private to you (0700), and **the install
+  script verifies the download's signature** before installing it.
+
+### Fixed
+
+- **Copy, paste, select all, undo and ⌘W work** in every text field — the
+  Launcher, the deny note, the token field. They did nothing before.
+- **Re-install hooks and the Agents switch say when they did not work** (a
+  settings file AgentBar will not rewrite, no node), instead of reporting success.
+  A switch that could not wire its agent goes back off.
+- **Off and Remove in Settings ▸ Rules** edit the file as it is now — a rule added
+  by hand meanwhile is kept — and say so when the write fails.
+- **A broken `rules.json` shows on the Diagnostics… row at once**, not after a
+  relaunch, and Diagnostics names session rows it cannot read.
+- **The welcome window greets a new install once.** It used to take focus on every
+  launch, the update's silent relaunch included. From the menu it is the
+  **Appearance** window; Esc closes it; with nothing to wire it says so instead of
+  "Setting up hooks…" for ever.
+- **New Task… is in the island's ⋯ menu**, and the Launcher says why when there is
+  no agent to start, walks projects with ↑↓ and agents with ⇥.
+- Approvals left waiting by **Antigravity or Cowork** are retired when the watcher
+  stops reading their logs, instead of saying "approve?" all day.
+- **A notification is posted again** when its request is replaced by a new one
+  under the same file name.
+- **The ledger and history keep their limits while the app runs**, not only at
+  launch; a row appended during pruning is no longer lost, and a line pruning
+  cannot read is kept rather than deleted. A corrupt settings-change record is set
+  aside instead of overwritten.
+- Hooks no longer write an `unknown` row for a payload without a session, and the
+  stale-row sweep no longer deletes another hook's write in flight.
+- A login shell that blocks, or a stale network mount, no longer stalls the node
+  probe or the Antigravity lookup; the Cowork watcher reads its logs off the main
+  thread.
+- An update whose relaunch script fails is opened directly instead of being
+  reported as a failed install.
+
+### Changed
+
+- **Island text is easier to read**: secondary lines are brighter, and brighter
+  still with Increase Contrast.
+- **Icon Color ▸ Colorful / Monochrome** (was Color ▸ Color / System); New Task…
+  and Global Allow / Deny Shortcut… in title case.
+- VoiceOver: Settings' sidebar pages and the island's session rows are buttons,
+  approval buttons are read without their glyphs, and the finish hop respects
+  Reduce Motion.
+- A failed update check says what to do, and names a GitHub rate limit.
+
 ## 1.43.0 - 2026-10-06
 
 ### Changed
