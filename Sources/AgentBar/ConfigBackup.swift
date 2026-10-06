@@ -257,6 +257,20 @@ enum ConfigBackup {
     }
 
     private static func append(_ record: Record, to log: URL) {
+        // A record that is there and does not decode is set aside before it is
+        // written over: otherwise one bad byte turns a hundred diffs into one.
+        if let data = try? Data(contentsOf: log),
+           (try? JSONDecoder().decode([Record].self, from: data)) == nil {
+            let aside = log.deletingPathExtension()
+                .appendingPathExtension("corrupt-\(Int(Date().timeIntervalSince1970)).json")
+            do {
+                try FileManager.default.moveItem(at: log, to: aside)
+                NSLog("AgentBar: \(log.lastPathComponent) did not decode; kept as \(aside.lastPathComponent)")
+            } catch {
+                NSLog("AgentBar: \(log.path) did not decode and could not be set aside (\(error)); not recording")
+                return
+            }
+        }
         var rows: [Record] = recent(log: log).reversed()
         rows.append(record)
         if rows.count > recordLimit { rows.removeFirst(rows.count - recordLimit) }

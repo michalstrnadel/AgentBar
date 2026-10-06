@@ -286,6 +286,24 @@ import Testing
         #expect(kept[0].ts == fresh.ts)
     }
 
+    /// A row this version cannot read is not this version's to delete: prune used
+    /// to rewrite the file from the rows it understood and drop the rest for good.
+    @Test func pruneKeepsALineItCannotRead() throws {
+        let url = ledgerFile()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let now = Self.noon.timeIntervalSince1970
+        var old = DecisionLedger.Record()
+        old.shape = "bash:ls"; old.decision = "allow"; old.ts = now - 40 * 86_400
+        DecisionLedger.append([old], to: url)
+        let future = #"{"v":9,"ts":1,"kind":"something newer"}"#
+        let handle = try FileHandle(forWritingTo: url)
+        handle.seekToEndOfFile()
+        handle.write(Data((future + "\n").utf8))
+        try handle.close()
+        DecisionLedger.prune(url: url, now: now)
+        #expect(try String(contentsOf: url, encoding: .utf8) == future + "\n")
+    }
+
     /// A hand-edited `ts` of `1e19` or NaN is read as no time: prune does `Int(ts)`
     /// on every row at launch, and one poisoned line must not trap it.
     @Test func aTimeThatIsNotATimeIsReadAsNone() throws {

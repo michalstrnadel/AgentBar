@@ -715,7 +715,13 @@ final class DecisionLedger {
 
     static func prune(url: URL = DecisionLedger.fileURL,
                       now: TimeInterval = Date().timeIntervalSince1970) {
-        let all = read(url: url)
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        // A line this version cannot read — a row from a newer AgentBar, a hand edit
+        // gone wrong — is not this version's to delete. It stays, word for word, and
+        // only rows that were understood are aged out.
+        let unread = lines.filter { Record(jsonLine: $0) == nil }
+        let all = lines.compactMap { Record(jsonLine: $0) }
         let fresh = all.enumerated().filter { now - $0.element.ts <= maxAge }
         var own = fresh.filter { $0.element.via != "claude" }
         var claude = fresh.filter { $0.element.via == "claude" }
@@ -729,7 +735,12 @@ final class DecisionLedger {
                                                       options: [.sortedKeys])
             else { return nil }
             return String(data: d, encoding: .utf8)
-        }.joined(separator: "\n")
-        try? (body.isEmpty ? "" : body + "\n").write(to: url, atomically: true, encoding: .utf8)
+        }
+        let out = (unread + body).joined(separator: "\n")
+        do {
+            try (out.isEmpty ? "" : out + "\n").write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            NSLog("AgentBar: decisions.jsonl was not pruned: \(error)")
+        }
     }
 }
