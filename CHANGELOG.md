@@ -3,6 +3,18 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.43.0 - 2026-10-06
+
+### Changed
+
+- **The two games have their own names.** The joystick's menu is headed **Take a
+  break** and offers **Space Bugs…** (the shooter that was called Take a break)
+  and **Bug Hunt…**.
+- **Bug Hunt's dog, drawn again.** A proper beagle now: from the side as he walks
+  in, with a long dark ear, a saddle on his back and his tail up; from the front
+  with a white blaze when he holds up the catch, and a wide-open laugh when one
+  gets away.
+
 ## 1.42.0 - 2026-10-06
 
 ### Added
