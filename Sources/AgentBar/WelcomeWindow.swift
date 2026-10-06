@@ -45,12 +45,20 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
     private var wiredLabel: NSTextField!
     private var changesButton: NSButton!
     private var showBox: NSButton!
+    private var headline: NSTextField!
+    private var quitButton: NSButton!
     /// A driver of its own, fed a canned session, so the preview animates whether
     /// or not anything real is running.
     private let mascot = MascotDriver()
 
-    func show() {
+    /// `firstRun` is the launch that greets a new install. From the menu or a link
+    /// the same window is the Appearance window, and greeting someone who has used
+    /// the app for months as if they had just installed it reads as a bug.
+    func show(firstRun: Bool = false) {
         if window == nil { build() }
+        window?.title = firstRun ? "Welcome to AgentBar" : "AgentBar Appearance"
+        headline.stringValue = firstRun ? "AgentBar is running." : "Where AgentBar shows itself"
+        quitButton.isHidden = !firstRun
         reload()
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
@@ -74,8 +82,8 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
     private static let rowWidth = contentWidth - 40
 
     private func build() {
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: Self.contentWidth, height: 460),
-                         styleMask: [.titled, .closable], backing: .buffered, defer: false)
+        let w = EscapeClosingWindow(contentRect: NSRect(x: 0, y: 0, width: Self.contentWidth, height: 460),
+                                    styleMask: [.titled, .closable], backing: .buffered, defer: false)
         w.title = "Welcome to AgentBar"
         w.isReleasedWhenClosed = false
         w.delegate = self
@@ -114,6 +122,7 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
 
         let title = NSTextField(labelWithString: "AgentBar is running.")
         title.font = .systemFont(ofSize: 15, weight: .semibold)
+        headline = title
         let body = NSTextField(wrappingLabelWithString:
             "It watches your AI coding sessions and tells you the moment one needs "
             + "you. Pick where it should show them — you can change this any time "
@@ -286,6 +295,7 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
 
         let quit = NSButton(title: "Quit", target: NSApp, action: #selector(NSApplication.terminate(_:)))
         quit.bezelStyle = .rounded
+        quitButton = quit
         let close = NSButton(title: "Close", target: self, action: #selector(closeClicked))
         close.bezelStyle = .rounded
         close.keyEquivalent = "\r"
@@ -552,4 +562,10 @@ extension WelcomeWindow {
         }
         return (rep, frames)
     }
+}
+
+/// Esc closes it, the way it closes every other small window: without this the key
+/// beeped at a window with nothing to cancel.
+private final class EscapeClosingWindow: NSWindow {
+    override func cancelOperation(_ sender: Any?) { performClose(sender) }
 }

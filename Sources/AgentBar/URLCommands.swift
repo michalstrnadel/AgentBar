@@ -132,7 +132,8 @@ enum URLCommands {
             default: return nil
             }
 
-        case "welcome":
+        // The window the menu calls Appearance, by either name.
+        case "welcome", "appearance":
             guard path.isEmpty else { return nil }
             return .welcome
 

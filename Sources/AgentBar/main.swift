@@ -142,7 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyPresentation()
 
         if WelcomeWindow.showOnLaunch {
-            WelcomeWindow.shared.show()
+            WelcomeWindow.shared.show(firstRun: true)
             WelcomeWindow.markShownOnce()
         }
         // Layout work on Settings otherwise means clicking through the menu bar on

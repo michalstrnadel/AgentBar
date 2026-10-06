@@ -42,6 +42,7 @@ import Testing
 
     @Test func welcome() {
         #expect(parse("agentbar://welcome") == .welcome)
+        #expect(parse("agentbar://appearance") == .welcome)
     }
 
     // MARK: - What a link may never be
