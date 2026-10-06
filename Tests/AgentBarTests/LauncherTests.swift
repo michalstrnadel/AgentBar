@@ -90,6 +90,23 @@ import Testing
                 == ["/opt/agents/claude", "do the thing"])
     }
 
+    /// A prompt that starts with `-` is an option to the agent's own parser.
+    @Test func aPromptThatLooksLikeAnOptionStaysAPrompt() throws {
+        let task = Launcher.Task(agent: agent("claude"), cwd: "/tmp", prompt: "--dangerously-skip-permissions")
+        #expect(Launcher.argv(for: task, using: anywhere)
+                == ["/opt/agents/claude", " --dangerously-skip-permissions"])
+    }
+
+    /// Only http(s) and the vendors' own schemes open from a row.
+    @Test func aRowOpensOnlyTheSchemesOnTheList() throws {
+        for ok in ["https://app.devin.ai/s/1", "cursor://anysphere.cursor-deeplink/x", "ssh://box"] {
+            #expect(AgentActions.openableCloudURL(try #require(URL(string: ok))), "\(ok)")
+        }
+        for bad in ["file:///etc/passwd", "x-man-page://ls", "applescript://x", "vnc://h", "ftp://h"] {
+            #expect(!AgentActions.openableCloudURL(try #require(URL(string: bad))), "\(bad)")
+        }
+    }
+
     // MARK: - Recent projects
 
     private func record(_ project: String, cwd: String, ended: TimeInterval)

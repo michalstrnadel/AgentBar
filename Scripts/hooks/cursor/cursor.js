@@ -48,7 +48,7 @@ const running = () => {
   if (process.env.AGENTBAR_FORCE_APP === "1") return true;
   if (process.env.AGENTBAR_FORCE_APP === "0") return false;
   if (process.platform === "darwin") {
-    try { cp.execSync(`pgrep -x ${EXEC}`, { stdio: "ignore" }); return true; } catch {}
+    try { cp.execSync(`pgrep -x -U ${process.getuid()} ${EXEC}`, { stdio: "ignore" }); return true; } catch {}
   }
   try {
     const w = JSON.parse(fs.readFileSync(path.join(stateDir, "..", "watcher.json"), "utf8"));

@@ -459,7 +459,7 @@ function readDecisions() {
 }
 
 function answer(r, behavior, note) {
-  fs.mkdirSync(ansDir, { recursive: true });
+  fs.mkdirSync(ansDir, { recursive: true, mode: 0o700 });
   const obj = { behavior };
   // What to do instead, on a deny only: the hook hands it to the agent as the
   // denial's reason. Same flattening the hook applies, so what is echoed here is
@@ -479,7 +479,7 @@ function answer(r, behavior, note) {
 // Chosen option labels for a question request, one array per question. The hook
 // only accepts labels the request itself offered.
 function answerQuestion(r, labels) {
-  fs.mkdirSync(ansDir, { recursive: true });
+  fs.mkdirSync(ansDir, { recursive: true, mode: 0o700 });
   const obj = { behavior: "answer", answers: labels };
   if (r.hookPid > 0) obj.hookPid = r.hookPid;
   writeAtomic(path.join(ansDir, r.fileName), obj);

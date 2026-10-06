@@ -138,6 +138,13 @@ import Testing
         #expect(URLCommands.prompt("\n\u{202E}") == nil)
     }
 
+    /// Any web page can open a link; an option to the agent's CLI is not a prompt.
+    @Test func aPromptThatIsAnOptionIsRefused() {
+        #expect(URLCommands.prompt("--dangerously-skip-permissions") == nil)
+        #expect(URLCommands.prompt("  -c x") == nil)
+        #expect(URLCommands.prompt("fix -v flag") == "fix -v flag")
+    }
+
     // MARK: - ids
 
     @Test func idsKeepToTheirCharacters() {

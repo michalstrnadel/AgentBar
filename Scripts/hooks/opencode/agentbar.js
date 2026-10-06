@@ -46,7 +46,7 @@ const writeAtomic = (file, obj) => {
 // The macOS app, or the CLI's watch/waybar heartbeat (any platform).
 const running = () => {
   if (process.platform === "darwin") {
-    try { execSync("pgrep -x AgentBar", { stdio: "ignore" }); return true; } catch {}
+    try { execSync(`pgrep -x -U ${process.getuid()} AgentBar`, { stdio: "ignore" }); return true; } catch {}
   }
   try {
     const w = JSON.parse(fs.readFileSync(path.join(base, "watcher.json"), "utf8"));

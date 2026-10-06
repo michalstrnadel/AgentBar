@@ -27,8 +27,14 @@ final class RequestStore {
     private var lastSnapshot: [String] = []
 
     func start() {
-        try? FileManager.default.createDirectory(at: Self.requestsDir, withIntermediateDirectories: true)
-        try? FileManager.default.createDirectory(at: Self.answersDir, withIntermediateDirectories: true)
+        // A request carries the whole command and the tool's input, and an answer
+        // decides one: both folders are this user's alone, including ones an older
+        // version made with the default mode.
+        for dir in [Self.requestsDir, Self.answersDir] {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
+                                                     attributes: [.posixPermissions: 0o700])
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
+        }
         watchDirectory()
         // Fallback poll, same as SessionStore: dead-hook pruning, maxAge expiry, and
         // orphan-answer GC are time-based and must run without a directory event —

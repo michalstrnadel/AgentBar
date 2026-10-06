@@ -60,7 +60,11 @@ enum Launcher {
         guard let cli = task.agent.cli, let tool = find(cli) else { return nil }
         let prompt = task.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard task.agent.takesPrompt, !prompt.isEmpty else { return [tool] }
-        return [tool, prompt]
+        // A prompt starting with `-` is read as an option by the agent's own parser,
+        // and every one of these CLIs has an option that widens what it may do. One
+        // space in front keeps it a prompt to all of them; `--` is not read the same
+        // way by every parser.
+        return [tool, prompt.hasPrefix("-") ? " " + prompt : prompt]
     }
 
     /// One line a shell will run: into the directory, then the agent. Used where a

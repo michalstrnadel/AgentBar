@@ -10,6 +10,8 @@ TMP=""
 # Everything inside main() so a truncated download can never execute half a script.
 main() {
   local REPO="michalstrnadel/AgentBar"
+  # The certificate every release is signed with (`codesign -d -r- AgentBar.app`).
+  local REQUIREMENT='identifier "com.michalstrnadel.agentbar" and certificate root = H"939875ba4aeb9765f98c218fddd2eecf97f83b5f"'
   local DEST
   if [ -n "${AGENTBAR_INSTALL_DIR:-}" ]; then
     DEST="$AGENTBAR_INSTALL_DIR"
@@ -66,6 +68,13 @@ main() {
     curl -fsSL -o "$TMP/AgentBar.app.zip" "$ZIP_URL"
     ditto -x -k "$TMP/AgentBar.app.zip" "$TMP/unpacked"
     APP="$TMP/unpacked/AgentBar.app"
+    # TLS says the zip came from GitHub; this says the app is the one the release
+    # was signed as. The app's own updater pins whatever this installs, so this is
+    # the check every later update stands on. Same requirement the updater uses.
+    if ! codesign --verify --deep --strict -R="$REQUIREMENT" "$APP" 2>/dev/null; then
+      echo "install failed: the download is not signed as AgentBar's releases are — nothing was installed" >&2
+      exit 1
+    fi
   else
     echo "No prebuilt release reachable — building from source (needs Xcode CLT)…"
     git clone --quiet --depth 1 "https://github.com/$REPO.git" "$TMP/src"

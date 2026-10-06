@@ -211,7 +211,9 @@ enum URLCommands {
             out.append(scalar)
         }
         let text = String(out).trimmingCharacters(in: .whitespaces)
-        return text.isEmpty ? nil : text
+        // Any web page can open a link. A prompt that is an option to the agent's
+        // CLI is not one a link gets to fill in.
+        return text.isEmpty || text.hasPrefix("-") ? nil : text
     }
 
     private static let allowedID = CharacterSet(

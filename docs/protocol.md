@@ -91,7 +91,8 @@ session becomes two rows. The cap counts the prefix.
   "url": "https://app.devin.ai/sessions/abc"
                                // OPTIONAL: where the session lives when it isn't local.
                                // Required for entrypoint "cloud": a row click opens it
-                               // (https:// or a vendor scheme like cursor://).
+                               // One of https, http, ssh, cursor, devin, codex,
+                               // vscode — any other scheme is not opened.
 }
 ```
 

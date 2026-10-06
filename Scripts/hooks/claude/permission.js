@@ -65,7 +65,7 @@ const appRunning = () => {
   if (process.env.AGENTBAR_FORCE_APP === "1") return true;
   if (process.env.AGENTBAR_FORCE_APP === "0") return false;
   if (process.platform === "darwin") {
-    try { cp.execSync("pgrep -x AgentBar", { stdio: "ignore" }); return true; } catch {}
+    try { cp.execSync(`pgrep -x -U ${process.getuid()} AgentBar`, { stdio: "ignore" }); return true; } catch {}
   }
   try {
     const w = JSON.parse(fs.readFileSync(path.join(base, "watcher.json"), "utf8"));
@@ -374,8 +374,9 @@ function run() {
       .find((v) => typeof v === "string" && v);
     const filePath = named && named.length <= 1024 ? named : "";
 
-    fs.mkdirSync(reqDir, { recursive: true });
-    fs.mkdirSync(ansDir, { recursive: true });
+    // This user's alone: a request carries the whole command and tool input.
+    fs.mkdirSync(reqDir, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(ansDir, { recursive: true, mode: 0o700 });
 
     // The session row itself shows what's pending, even before the menu opens.
     // What it said just before is kept: an allowed tool goes back to being the

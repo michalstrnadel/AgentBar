@@ -260,7 +260,9 @@ account; the tooling is ready for the day there is one, in this order:
    certificate (`UpdateSignature`) and would refuse a Developer ID release, with a
    click or without. Add the new signer to `UpdateSignature.successors`
    (`anchor apple generic and identifier "com.michalstrnadel.agentbar" and
-   certificate leaf[subject.OU] = "<TEAM ID>"`) and release that as usual. Wait
+   certificate leaf[subject.OU] = "<TEAM ID>"`), widen `REQUIREMENT` in
+   `Scripts/install.sh` to accept either signer (`… or …`) — the script refuses
+   any download its requirement does not name — and release that as usual. Wait
    until most installs have updated — automatic updates make that days, not weeks.
 2. **First notarized release.** In step 3 above, replace the `codesign` line with
    `Scripts/dev/notarize.sh AgentBar.app` (hardened runtime, the Apple Events

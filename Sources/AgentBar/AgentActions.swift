@@ -38,15 +38,14 @@ enum AgentActions {
 
     /// Any state file in `~/.agentbar/state.d` can name a `url`, and the protocol
     /// deliberately invites third-party writers — so a row click must not become
-    /// "open an arbitrary local path with its default app". Web and vendor schemes
-    /// (`cursor://`, `devin://`, …) stay open-ended; the ones that reach the
-    /// filesystem or a script interpreter are refused.
-    private static let refusedURLSchemes: Set<String> =
-        ["file", "javascript", "data", "vbscript", "about", "smb", "afp", "nfs"]
+    /// "open whatever handler this scheme names". A list of what may open, not of
+    /// what may not: the web, and the vendors whose cloud rows link into their app.
+    /// A denylist was always one scheme short (`x-man-page`, `applescript`, `vnc`…).
+    static let openableURLSchemes: Set<String> = ["https", "http", "ssh", "cursor", "devin", "codex", "vscode"]
 
-    private static func openableCloudURL(_ url: URL) -> Bool {
+    static func openableCloudURL(_ url: URL) -> Bool {
         guard let scheme = url.scheme?.lowercased(), !scheme.isEmpty else { return false }
-        return !refusedURLSchemes.contains(scheme)
+        return openableURLSchemes.contains(scheme)
     }
 
     /// A row click: jump to wherever the session actually lives. A session waiting
