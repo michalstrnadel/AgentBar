@@ -377,7 +377,7 @@ import Testing
 
     @Test func makingTheDirectoriesMakesThem() throws {
         let base = home.appendingPathComponent(".agentbar-fresh", isDirectory: true)
-        #expect(Diagnostics.apply(.makeDirectories, base: base))
+        #expect(Diagnostics.apply(.makeDirectories, base: base).isEmpty)
         for name in ["state.d", "requests.d", "answers.d"] {
             #expect(FileManager.default.fileExists(atPath: base.appendingPathComponent(name).path))
         }
@@ -395,7 +395,7 @@ import Testing
         try fm.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -3_600)],
                              ofItemAtPath: stale.path)
 
-        #expect(Diagnostics.apply(.sweepOrphans, base: base))
+        #expect(Diagnostics.apply(.sweepOrphans, base: base).isEmpty)
         #expect(fm.fileExists(atPath: fresh.path))
         #expect(!fm.fileExists(atPath: stale.path))
     }

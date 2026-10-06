@@ -59,26 +59,29 @@ enum Diagnostics {
         }
     }
 
-    /// Performs a repair and says whether anything threw. Synchronous and slow
-    /// enough to matter (`reinstallHooks` probes the login shell for node), so
-    /// callers run it off the main thread.
+    /// Performs a repair and says what it could not do — empty is done. Synchronous
+    /// and slow enough to matter (`reinstallHooks` probes the login shell for node),
+    /// so callers run it off the main thread.
     @discardableResult
     static func apply(_ repair: Repair,
-                      base: URL = AgentBarHome.root()) -> Bool {
+                      base: URL = AgentBarHome.root()) -> [String] {
         let fm = FileManager.default
         switch repair {
         case .reinstallHooks:
-            HookInstaller.installIfNeeded()
-            return true
+            // Waited for, not fired off: the button used to say done the moment the
+            // pass was queued, whatever the pass then refused to write.
+            let problems = HookInstaller.installNow()
+            DispatchQueue.main.async { HookInstaller.onFinish?() }
+            return problems
         case .makeDirectories:
-            var ok = true
+            var problems: [String] = []
             for name in ["state.d", "requests.d", "answers.d"] {
                 do {
                     try fm.createDirectory(at: base.appendingPathComponent(name, isDirectory: true),
                                            withIntermediateDirectories: true)
-                } catch { ok = false }
+                } catch { problems.append("\(name): \(error.localizedDescription)") }
             }
-            return ok
+            return problems
         case .sweepOrphans:
             // The same windows the pruning rules use, so this button removes exactly
             // what a running AgentBar would have removed anyway — never more.
@@ -92,7 +95,7 @@ enum Diagnostics {
                     if now - mtime > maxAge { try? fm.removeItem(at: url) }
                 }
             }
-            return true
+            return []
         }
     }
 

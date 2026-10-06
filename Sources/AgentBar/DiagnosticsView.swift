@@ -210,15 +210,20 @@ final class DiagnosticsView: NSView {
         sender.isEnabled = false
         sender.title = "Fixing…"
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let ok = Diagnostics.apply(repair)
+            let problems = Diagnostics.apply(repair)
             DispatchQueue.main.async {
-                sender.title = ok ? was : "Could not"
+                sender.title = problems.isEmpty ? was : "Could not"
+                sender.toolTip = problems.isEmpty ? nil : problems.joined(separator: "\n")
                 sender.isEnabled = true
-                // The installer finishes its own work asynchronously; re-check once
-                // it has had a moment, or the report is of the state before the fix.
-                DispatchQueue.main.asyncAfter(deadline: .now() + (ok ? 1.2 : 0)) {
-                    self?.refresh()
+                if !problems.isEmpty, let window = self?.window {
+                    // What did not happen, in the words the pass logged it with:
+                    // "Could not" alone sends somebody to Console.app to find out.
+                    let alert = NSAlert()
+                    alert.messageText = "\(repair.title) did not finish"
+                    alert.informativeText = problems.joined(separator: "\n")
+                    alert.beginSheetModal(for: window)
                 }
+                self?.refresh()
             }
         }
     }

@@ -424,7 +424,9 @@ final class ConfigChangesSheet: NSObject {
                 self.done.isEnabled = true
                 self.apply.title = wire ? "Wire it" : "Turn off"
                 self.apply.isEnabled = true
-                self.empty.stringValue = "Could not save the choice: \(error.localizedDescription)"
+                self.empty.stringValue = error is HookInstaller.NotWired
+                    ? error.localizedDescription
+                    : "Could not save the choice: \(error.localizedDescription)"
                 self.empty.isHidden = false
                 return
             }

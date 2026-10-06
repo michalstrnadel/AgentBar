@@ -99,6 +99,16 @@ enum HookInstaller {
         private(set) var planned: [ConfigBackup.Record] = []
         /// What this pass wired, whether or not it publishes it.
         private(set) var noted: [String] = []
+        /// What this pass meant to do and did not — a step that threw, a config it
+        /// refused to rewrite, no node to point the hooks at — as one sentence per
+        /// problem, naming the agent. A repair that left any of these behind did not
+        /// repair anything, and the button that ran it says so.
+        private(set) var problems: [(agent: String?, text: String)] = []
+
+        func problem(_ text: String) {
+            NSLog("AgentBar: \(text)")
+            problems.append((currentAgent, text))
+        }
 
         init(preview: Bool, ctx: Context, only: String? = nil) {
             self.preview = preview
@@ -161,34 +171,39 @@ enum HookInstaller {
 
     static func installIfNeeded(then done: (() -> Void)? = nil) {
         DispatchQueue.global(qos: .utility).async {
-            let finish = { DispatchQueue.main.async { onFinish?(); done?() } }
-            guard let bundled = Bundle.main.resourceURL?.appendingPathComponent("hooks") else {
-                finish()
-                return
-            }
-            // Without the scripts on disk there is nothing worth wiring to.
-            guard step("copy scripts", { try copyScripts(from: bundled) }) else {
-                finish()
-                return
-            }
-            // The mod is copied whether or not anybody switched it on — it is
-            // inert until Claude Code is told where it is — and a failure here
-            // costs only the mod, never the hooks.
-            if let mods = Bundle.main.resourceURL?.appendingPathComponent("mods") {
-                step("copy mods") { try copyMods(from: mods, to: realModsDir) }
-            }
-            // A sandbox wires nothing. Its scripts are copied (the self-test runs
-            // them), but every agent config it would write is the person's real one,
-            // and pointing those at a throwaway folder is the leak `AgentBarHome`
-            // exists to stop.
-            guard !AgentBarHome.isSandbox else {
-                NSLog("AgentBar: \(AgentBarHome.variable) is set — not wiring any agent")
-                finish()
-                return
-            }
-            run(Pass(preview: false, ctx: .live()))
-            finish()
+            _ = installNow()
+            DispatchQueue.main.async { onFinish?(); done?() }
         }
+    }
+
+    /// The launch pass, on the calling thread, returning what it could not do —
+    /// for Diagnostics' **Re-install hooks**, which must not call a repair that
+    /// wrote nothing a success. Empty means every agent here is wired as asked.
+    static func installNow() -> [String] {
+        guard let bundled = Bundle.main.resourceURL?.appendingPathComponent("hooks") else {
+            return ["the app bundle has no hook scripts in it"]
+        }
+        // Without the scripts on disk there is nothing worth wiring to.
+        guard step("copy scripts", { try copyScripts(from: bundled) }) else {
+            return ["the hook scripts could not be copied to \(AgentBarHome.root().path)/hooks"]
+        }
+        // The mod is copied whether or not anybody switched it on — it is
+        // inert until Claude Code is told where it is — and a failure here
+        // costs only the mod, never the hooks.
+        if let mods = Bundle.main.resourceURL?.appendingPathComponent("mods") {
+            step("copy mods") { try copyMods(from: mods, to: realModsDir) }
+        }
+        // A sandbox wires nothing. Its scripts are copied (the self-test runs
+        // them), but every agent config it would write is the person's real one,
+        // and pointing those at a throwaway folder is the leak `AgentBarHome`
+        // exists to stop.
+        guard !AgentBarHome.isSandbox else {
+            NSLog("AgentBar: \(AgentBarHome.variable) is set — not wiring any agent")
+            return []
+        }
+        let pass = Pass(preview: false, ctx: .live())
+        run(pass)
+        return pass.problems.map(\.text)
     }
 
     /// Every config write the next install pass would make, as diffs, without making
@@ -234,8 +249,23 @@ enum HookInstaller {
                 DispatchQueue.main.async { done(error) }
                 return
             }
-            _ = runPass(.live(), preview: false, only: agent)
-            DispatchQueue.main.async { onFinish?(); done(nil) }
+            let problems = runPass(.live(), preview: false, only: agent).problems
+            // Switched on and not wired is not success: the switch would sit there
+            // saying "on" over an agent that never reports. Off has no such case —
+            // nothing to find is the same as nothing left.
+            let error = wired && !problems.isEmpty ? NotWired(problems: problems) : nil
+            // …and the saved choice goes back with the switch, so the next launch
+            // does not quietly retry what the person was just told did not work.
+            if error != nil { try? WiringPrefs.set(agent, disabled: true, home: realHome) }
+            DispatchQueue.main.async { onFinish?(); done(error) }
+        }
+    }
+
+    /// Why a pass that ran did not do what it was asked.
+    struct NotWired: LocalizedError {
+        let problems: [String]
+        var errorDescription: String? {
+            "AgentBar could not wire it: " + problems.joined(separator: "; ") + "."
         }
     }
 
@@ -248,11 +278,11 @@ enum HookInstaller {
 
     /// One pass over `ctx` — the entry point the tests drive with a temporary home.
     /// The script copy is not part of it; that is `installIfNeeded`'s alone.
-    static func runPass(_ ctx: Context, preview: Bool,
-                        only: String? = nil) -> (planned: [ConfigBackup.Record], wired: [String]) {
+    static func runPass(_ ctx: Context, preview: Bool, only: String? = nil)
+    -> (planned: [ConfigBackup.Record], wired: [String], problems: [String]) {
         let pass = Pass(preview: preview, ctx: ctx, only: only)
         run(pass)
-        return (pass.planned, pass.noted)
+        return (pass.planned, pass.noted, pass.problems.map(\.text))
     }
 
     /// Every agent the user has not switched off is wired; every one they have is
@@ -313,7 +343,11 @@ enum HookInstaller {
         if let only = pass.only, only != agent { return }
         pass.currentAgent = agent
         defer { pass.currentAgent = nil }
-        step(name, body)
+        do {
+            try body()
+        } catch {
+            pass.problem("\(name): \(error.localizedDescription)")
+        }
     }
 
     /// Every Claude config dir we should wire hooks into. Covers a custom
@@ -422,20 +456,22 @@ enum HookInstaller {
     /// destroy the user's config.
     /// An unreadable file counts as present-but-unparseable, not as missing: a
     /// permission glitch or a torn read must never look like a fresh install.
-    private static func readConfig(at url: URL) -> [String: Any]? {
+    private static func readConfig(at url: URL, _ pass: Pass? = nil) -> [String: Any]? {
         let data: Data
         do {
             data = try Data(contentsOf: url)
         } catch {
             guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
-            NSLog("AgentBar: \(url.path) exists but could not be read (\(error)) — leaving it untouched")
+            let why = "\(url.path) exists but could not be read (\(error.localizedDescription)) — left untouched"
+            if let pass { pass.problem(why) } else { NSLog("AgentBar: \(why)") }
             return nil
         }
         // A trailing comma is the case the comment above names, and JSONSerialization
         // accepts it: this installer rewrote such a file while the CLI's left it alone.
         guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               !StrictJSON.hasTrailingComma(data) else {
-            NSLog("AgentBar: \(url.path) exists but is not parseable JSON — leaving it untouched")
+            let why = "\(url.path) is not valid JSON, so it was left untouched"
+            if let pass { pass.problem(why) } else { NSLog("AgentBar: \(why)") }
             return nil
         }
         return parsed
@@ -523,11 +559,11 @@ enum HookInstaller {
 
     private static func installClaude(configDir: URL, _ pass: Pass) throws {
         let hooksDir = pass.hooksDir
-        guard let node = pass.node else { NSLog("AgentBar: node not found, Claude hooks skipped"); return }
+        guard let node = pass.node else { return pass.problem("node was not found, so Claude hooks were not wired") }
         let settingsURL = configDir.appendingPathComponent("settings.json")
         try pass.createDirectory(settingsURL.deletingLastPathComponent())
 
-        guard var root = readConfig(at: settingsURL) else { return }
+        guard var root = readConfig(at: settingsURL, pass) else { return }
         var hooks = root["hooks"] as? [String: Any] ?? [:]
 
         let dir = hooksDir.appendingPathComponent("claude").path
@@ -573,7 +609,7 @@ enum HookInstaller {
 
     private static func installCodex(_ pass: Pass) throws {
         let hooksDir = pass.hooksDir
-        guard let node = pass.node else { NSLog("AgentBar: node not found, Codex hooks skipped"); return }
+        guard let node = pass.node else { return pass.problem("node was not found, so Codex hooks were not wired") }
         let codexDir = pass.home.appendingPathComponent(".codex")
         guard FileManager.default.fileExists(atPath: codexDir.path) else { return } // not a Codex user
         let configURL = codexDir.appendingPathComponent("config.toml")
@@ -804,7 +840,7 @@ enum HookInstaller {
         let scriptURL = pass.hooksDir.appendingPathComponent("cursor/cursor.js")
         if !pass.preview { try pinNodeShebang(of: scriptURL, node: pass.node) }
 
-        guard var root = readConfig(at: cfgURL) else { return }
+        guard var root = readConfig(at: cfgURL, pass) else { return }
         root["version"] = root["version"] ?? 1
         var hooks = root["hooks"] as? [String: Any] ?? [:]
         let marker = cursorMarker
@@ -868,7 +904,7 @@ enum HookInstaller {
         }
         for dir in dirs {
             let cfgURL = dir.appendingPathComponent("hooks.json")
-            guard var root = readConfig(at: cfgURL) else { continue }
+            guard var root = readConfig(at: cfgURL, pass) else { continue }
             root["agentbar"] = group
             let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
             try pass.write(data, to: cfgURL)
@@ -884,13 +920,13 @@ enum HookInstaller {
     /// unverified against permission.js, and a blocking hook must never be wired
     /// on faith. Timeouts here are milliseconds (Qwen), not seconds (Claude).
     private static func installQwen(_ pass: Pass) throws {
-        guard let node = pass.node else { NSLog("AgentBar: node not found, Qwen hooks skipped"); return }
+        guard let node = pass.node else { return pass.problem("node was not found, so Qwen hooks were not wired") }
         let qwenDir = pass.home.appendingPathComponent(".qwen")
         guard FileManager.default.fileExists(atPath: qwenDir.path) else { return } // not a Qwen user
         let cfgURL = qwenDir.appendingPathComponent("settings.json")
         let dir = pass.hooksDir.appendingPathComponent("claude").path
 
-        guard var root = readConfig(at: cfgURL) else { return }
+        guard var root = readConfig(at: cfgURL, pass) else { return }
         var hooks = root["hooks"] as? [String: Any] ?? [:]
 
         // Drop earlier AgentBar entries from every event before re-adding.
@@ -944,7 +980,7 @@ enum HookInstaller {
     /// AgentBar owns the whole file: Copilot loads every `*.json` in the hooks dir,
     /// so our entries live in ours and the user's live in theirs.
     private static func installCopilot(_ pass: Pass) throws {
-        guard let node = pass.node else { NSLog("AgentBar: node not found, Copilot hooks skipped"); return }
+        guard let node = pass.node else { return pass.problem("node was not found, so Copilot hooks were not wired") }
         let copilotDir = copilotDir(pass)
         guard FileManager.default.fileExists(atPath: copilotDir.path) else { return } // not a Copilot user
         let hooksFileDir = copilotDir.appendingPathComponent("hooks", isDirectory: true)
@@ -1008,14 +1044,14 @@ enum HookInstaller {
     // MARK: - Gemini CLI (~/.gemini/settings.json)
 
     private static func installGemini(_ pass: Pass) throws {
-        guard let node = pass.node else { NSLog("AgentBar: node not found, Gemini hooks skipped"); return }
+        guard let node = pass.node else { return pass.problem("node was not found, so Gemini hooks were not wired") }
         let geminiDir = pass.home.appendingPathComponent(".gemini")
         guard FileManager.default.fileExists(atPath: geminiDir.path) else { return } // not a Gemini user
         let cfgURL = geminiDir.appendingPathComponent("settings.json")
         let script = pass.hooksDir.appendingPathComponent("gemini/gemini.js").path
         let command = "\"\(node)\" \"\(script)\""
 
-        guard var root = readConfig(at: cfgURL) else { return }
+        guard var root = readConfig(at: cfgURL, pass) else { return }
         var hooks = root["hooks"] as? [String: Any] ?? [:]
         let marker = geminiMarker
 
@@ -1092,7 +1128,7 @@ enum HookInstaller {
     /// rewritten at all — unwiring must never reformat a file it had no part in.
     private static func unwireHooksJSON(at url: URL, marker: String, _ pass: Pass) throws {
         guard FileManager.default.fileExists(atPath: url.path),
-              var root = readConfig(at: url),
+              var root = readConfig(at: url, pass),
               let hooks = root["hooks"] as? [String: Any] else { return }
         let (left, removed) = strippingOurs(hooks, marker: marker)
         guard removed else { return }
@@ -1128,7 +1164,7 @@ enum HookInstaller {
         }
         guard FileManager.default.fileExists(atPath: configDir.path) else { return }
         let url = configDir.appendingPathComponent("settings.json")
-        guard let root = readConfig(at: url) else { return }
+        guard let root = readConfig(at: url, pass) else { return }
         let (plan, next) = ClaudeModWiring.wired(root, modDir: modDir.path)
         switch plan {
         case .unchanged: return
@@ -1142,7 +1178,7 @@ enum HookInstaller {
 
     private static func unwireClaudeMod(configDir: URL, _ pass: Pass) throws {
         let url = configDir.appendingPathComponent("settings.json")
-        guard FileManager.default.fileExists(atPath: url.path), let root = readConfig(at: url) else { return }
+        guard FileManager.default.fileExists(atPath: url.path), let root = readConfig(at: url, pass) else { return }
         let (plan, next) = ClaudeModWiring.unwired(root)
         guard plan == .write else { return }
         let data = try JSONSerialization.data(withJSONObject: next, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
@@ -1183,7 +1219,7 @@ enum HookInstaller {
         for dir in antigravityDirs(pass) {
             let url = dir.appendingPathComponent("hooks.json")
             guard FileManager.default.fileExists(atPath: url.path),
-                  var root = readConfig(at: url), root["agentbar"] != nil else { continue }
+                  var root = readConfig(at: url, pass), root["agentbar"] != nil else { continue }
             root.removeValue(forKey: "agentbar")
             let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
             try pass.write(data, to: url)

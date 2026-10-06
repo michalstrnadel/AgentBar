@@ -292,6 +292,31 @@ import Testing
         #expect(home.records().count == 2)
     }
 
+    /// A config the installer will not rewrite is a problem the pass reports, not
+    /// a success: the Agents switch and Diagnostics' repair both used to say done.
+    @Test func aConfigLeftUntouchedIsReportedAsAProblem() throws {
+        let home = try Home()
+        defer { home.cleanUp() }
+        let broken = #"{"model": "x",}"#
+        try home.put(".gemini/settings.json", broken)
+        let pass = HookInstaller.runPass(home.ctx(), preview: false, only: "gemini")
+        #expect(pass.wired.isEmpty)
+        #expect(pass.problems.count == 1)
+        #expect(pass.problems.first?.contains("not valid JSON") == true)
+        #expect(home.read(".gemini/settings.json") == broken)
+    }
+
+    @Test func noNodeIsReportedAsAProblem() throws {
+        let home = try Home()
+        defer { home.cleanUp() }
+        try home.dir(".gemini")
+        let ctx = HookInstaller.Context(home: home.url, environment: [:], node: nil,
+                                        log: home.log, disabled: [])
+        let pass = HookInstaller.runPass(ctx, preview: false, only: "gemini")
+        #expect(pass.wired.isEmpty)
+        #expect(pass.problems.first?.contains("node was not found") == true)
+    }
+
     @Test func claudeUnwiresBackToTheUsersOwnSettings() throws {
         let before = try Home.json([
             "env": ["FOO": "1"],
