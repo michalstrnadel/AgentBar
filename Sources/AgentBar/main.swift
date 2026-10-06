@@ -324,6 +324,7 @@ let app = NSApplication.shared
 // System Settings ▸ Notifications to turn on. Setting the policy here, before
 // `run()`, keeps the icon away without making the app ineligible.
 app.setActivationPolicy(.accessory)
+KeyEquivalentsMenu.install()
 let delegate = AppDelegate()
 app.delegate = delegate
 app.run()
