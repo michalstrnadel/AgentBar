@@ -199,6 +199,13 @@ if let i = CommandLine.arguments.firstIndex(of: "--render-break-game"),
         to: URL(fileURLWithPath: CommandLine.arguments[i + 1])) ? 0 : 1)
 }
 
+if let i = CommandLine.arguments.firstIndex(of: "--render-hunt-game"),
+   CommandLine.arguments.indices.contains(i + 1) {
+    _ = NSApplication.shared
+    exit(HuntGameView.renderForVerification(
+        to: URL(fileURLWithPath: CommandLine.arguments[i + 1])) ? 0 : 1)
+}
+
 if let i = CommandLine.arguments.firstIndex(of: "--render-menu-rows"),
    CommandLine.arguments.indices.contains(i + 1) {
     _ = NSApplication.shared

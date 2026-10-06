@@ -1,7 +1,8 @@
 import Cocoa
 
-/// **Take a break**: the island opened into a small game, on the person's click
-/// from its ⋯ menu — and only then. It holds the island open and takes the keys
+/// **Take a break**: the island opened into a small game — Take a break's space
+/// bugs or Bug Hunt (`GameChoice`) — on the person's click from its ⋯ menu or
+/// the joystick, and only then. It holds the island open and takes the keys
 /// the way a denial note does (`IslandController+Composing`), and gives both back
 /// when it closes.
 ///
@@ -21,29 +22,63 @@ extension IslandController {
             .union(sessions.filter { $0.state.waitsOnHuman }.map { "ses:" + $0.id })
     }
 
-    /// The ⋯ menu's row for it: start one, or go back to the one put aside.
-    func breakMenuItem() -> NSMenuItem {
+    /// The ⋯ menu's rows for it: the games on offer, the last one played first —
+    /// or the one put aside, to go back to.
+    func breakMenuItems() -> [NSMenuItem] {
         if let suspended = breakSuspendedAt, Date().timeIntervalSince(suspended) > Self.breakKept {
             dropBreak()
         }
-        let title = breakGame.map { "Back to the break — \(Self.grouped($0.score))" } ?? "Take a break…"
-        let item = NSMenuItem(title: title, action: #selector(breakClicked(_:)), keyEquivalent: "")
-        item.target = self
-        item.image = NSImage(systemSymbolName: "gamecontroller", accessibilityDescription: nil)
-        item.toolTip = "A small game in the island. It steps aside the moment an agent needs you."
-        return item
+        if let game = breakGame, let choice = breakChoice {
+            let item = NSMenuItem(title: "Back to the break — \(choice.title) \(Self.grouped(game.score))",
+                                  action: #selector(breakClicked(_:)), keyEquivalent: "")
+            item.target = self
+            item.image = NSImage(systemSymbolName: choice.symbol, accessibilityDescription: nil)
+            return [item]
+        }
+        return Self.gameOrder.map { choice in
+            let item = NSMenuItem(title: "\(choice.title)…", action: #selector(gameChosen(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = choice.rawValue
+            item.image = NSImage(systemSymbolName: choice.symbol, accessibilityDescription: nil)
+            item.toolTip = choice.detail + " It steps aside the moment an agent needs you."
+            return item
+        }
     }
 
+    /// The last game played first.
+    static var gameOrder: [GameChoice] {
+        [GameChoice.last] + GameChoice.allCases.filter { $0 != GameChoice.last }
+    }
+
+    /// The joystick, or the way back: a game put aside comes straight back; with
+    /// none, the joystick offers the games.
     @objc func breakClicked(_ sender: Any?) {
+        if breakGame == nil, let button = sender as? NSButton {
+            let menu = NSMenu()
+            for item in breakMenuItems() { menu.addItem(item) }
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
+            return
+        }
         // After the menu has gone: a menu still tracking would take the key back.
         DispatchQueue.main.async { [weak self] in self?.beginBreak() }
     }
 
-    func beginBreak() {
+    @objc func gameChosen(_ sender: NSMenuItem) {
+        guard let choice = (sender.representedObject as? String).flatMap(GameChoice.init) else { return }
+        DispatchQueue.main.async { [weak self] in self?.beginBreak(choice) }
+    }
+
+    /// Opens `choice` (or the game put aside, or the last one played). Choosing
+    /// the other game ends the one put aside: one break at a time.
+    func beginBreak(_ choice: GameChoice? = nil) {
         guard Presentation.current.showsIsland else { return }
         if composing != nil { endComposing(relayout: false) }
-        let view = breakGame ?? makeBreakView()
+        if let choice, breakChoice != nil, breakChoice != choice { dropBreak() }
+        let pick = choice ?? breakChoice ?? GameChoice.last
+        let view = breakGame ?? makeBreakView(pick)
         breakGame = view
+        breakChoice = pick
+        GameChoice.last = pick
         breakSuspendedAt = nil
         // What is already waiting was the person's to leave for later; only what
         // arrives after this does the game step aside for.
@@ -92,8 +127,8 @@ extension IslandController {
         }
     }
 
-    private func makeBreakView() -> BreakGameView {
-        let view = BreakGameView()
+    private func makeBreakView(_ choice: GameChoice) -> NSView & IslandGame {
+        let view = choice.make()
         view.onClose = { [weak self] in self?.endBreak() }
         view.onWantsKeys = { [weak self, weak view] in
             guard let self, let view, self.breakShown else { return }
@@ -102,8 +137,8 @@ extension IslandController {
             self.panel.makeFirstResponder(view)
         }
         NSLayoutConstraint.activate([
-            view.widthAnchor.constraint(equalToConstant: BreakGameView.size.width),
-            view.heightAnchor.constraint(equalToConstant: BreakGameView.size.height),
+            view.widthAnchor.constraint(equalToConstant: GameChoice.size.width),
+            view.heightAnchor.constraint(equalToConstant: GameChoice.size.height),
         ])
         return view
     }
@@ -111,6 +146,7 @@ extension IslandController {
     private func dropBreak() {
         breakGame?.stop()
         breakGame = nil
+        breakChoice = nil
         breakShown = false
         breakSuspendedAt = nil
         breakWaiting = []

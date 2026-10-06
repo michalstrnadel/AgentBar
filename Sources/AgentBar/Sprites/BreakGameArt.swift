@@ -118,8 +118,10 @@ enum BreakGameArt {
     ..yyy..
     """
 
-    /// Rendered at `pixel` points to a pixel, `scale` device pixels to a point.
-    static func image(_ art: String, pixel: CGFloat, scale: CGFloat = 2) -> CGImage? {
+    /// Rendered at `pixel` points to a pixel, `scale` device pixels to a point, in
+    /// `colors` (this game's palette unless another game passes its own).
+    static func image(_ art: String, pixel: CGFloat, scale: CGFloat = 2,
+                      colors: [Character: UInt32] = palette) -> CGImage? {
         let lines = art.split(separator: "\n").map(Array.init)
         let rows = lines.count
         let cols = lines.map(\.count).max() ?? 0
@@ -132,7 +134,7 @@ enum BreakGameArt {
         let p = pixel * scale
         for (y, line) in lines.enumerated() {
             for (x, mark) in line.enumerated() {
-                guard let rgb = palette[mark] else { continue }
+                guard let rgb = colors[mark] else { continue }
                 ctx.setFillColor(red: CGFloat(rgb >> 16 & 0xff) / 255, green: CGFloat(rgb >> 8 & 0xff) / 255,
                                  blue: CGFloat(rgb & 0xff) / 255, alpha: 1)
                 ctx.fill(CGRect(x: CGFloat(x) * p, y: CGFloat(rows - 1 - y) * p, width: p, height: p))
@@ -156,6 +158,7 @@ enum BreakGameArt {
         "6": ".###..####.####", "7": "###..#.#..#..#.", "8": "####.#####.####", "9": "####.####..###.",
         " ": "...............", "-": "......###......", ":": "....#.....#....", "!": ".#..#..#.....#.",
         ".": ".............#.", "·": ".......#.......", "<": "..#.#.#...#...#", ">": "#...#...#.#.#..",
+        "=": "...###...###...",
     ]
 
     /// The lit cells of a glyph, as (column, row) with row 0 at the top. A glyph

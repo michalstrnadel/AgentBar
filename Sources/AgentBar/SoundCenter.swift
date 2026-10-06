@@ -80,10 +80,19 @@ final class SoundCenter {
         ],
     ]
 
-    /// The break game's blips (`BreakGameView`). Quieter and shorter than the cues,
-    /// and kept out of `Cue`: they are not about agents, and a sound pack has no
-    /// business replacing them.
-    enum GameSound: CaseIterable { case hit, lost, over, token }
+    /// The island games' blips (`BreakGameView`, `HuntGameView`). Quieter and
+    /// shorter than the cues, and kept out of `Cue`: they are not about agents, and
+    /// a sound pack has no business replacing them. Bug Hunt's are its own tunes,
+    /// written here, not anyone else's jingles.
+    enum GameSound: CaseIterable {
+        case hit, lost, over, token
+        case shot, fall, thump, flyAway, laugh, retrieve, roundClear, perfect
+    }
+
+    private static func blip(_ f: Double, _ ms: Int, square: Bool = true, gap: Int = 0, peak: Float = 0.18) -> Note {
+        Note(freq: f, square: square, detune: false, durMs: Double(ms), gapMs: Double(gap),
+             attackMs: 2, decayTauMs: Double(ms) * 0.6, peak: peak)
+    }
 
     private static let gameSpecs: [GameSound: [Note]] = [
         .hit: [Note(freq: 1318.51, square: true, detune: false, durMs: 40, gapMs: 0,
@@ -102,6 +111,20 @@ final class SoundCenter {
                      attackMs: 3, decayTauMs: 80, peak: 0.20),
                 Note(freq: 261.63, square: true, detune: true, durMs: 320, gapMs: 0,
                      attackMs: 3, decayTauMs: 200, peak: 0.22)],
+        // Bug Hunt.
+        .shot: [blip(146.83, 30, peak: 0.2), blip(98.0, 60, peak: 0.16)],
+        // The hit, then the whistle down.
+        .fall: [blip(1318.51, 40, peak: 0.16)]
+            + stride(from: 0, to: 9, by: 1).map { blip(1760 * pow(0.86, Double($0)), 55, square: false, peak: 0.14) },
+        .thump: [blip(110, 70, peak: 0.2), blip(82.41, 90, peak: 0.16)],
+        .flyAway: [blip(523.25, 70), blip(659.25, 70), blip(783.99, 70), blip(1046.5, 140)],
+        .laugh: [blip(392, 70, gap: 30), blip(349.23, 70, gap: 30), blip(392, 70, gap: 30),
+                 blip(349.23, 70, gap: 30), blip(329.63, 160)],
+        .retrieve: [blip(659.25, 80), blip(783.99, 80), blip(987.77, 160)],
+        .roundClear: [blip(523.25, 90), blip(659.25, 90), blip(783.99, 90), blip(1046.5, 90),
+                      blip(783.99, 90), blip(1046.5, 240)],
+        .perfect: [blip(783.99, 80), blip(1046.5, 80), blip(1318.51, 80), blip(1567.98, 160, gap: 40),
+                   blip(1318.51, 80), blip(1567.98, 80), blip(2093.0, 280)],
     ]
 
     private static let sampleRate = 44_100.0

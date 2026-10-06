@@ -62,9 +62,11 @@ final class IslandController: NSObject {
     /// The app that had the keyboard when a note was opened.
     var keysCameFrom: NSRunningApplication?
     /// Take a break (`IslandController+Game`): the game, while there is one — on
-    /// screen, or put aside because work came in — and whether it is on screen now.
-    /// On screen it is held like a note being typed: open, keyed, rows frozen.
-    var breakGame: BreakGameView?
+    /// screen, or put aside because work came in — which one it is, and whether it
+    /// is on screen now. On screen it is held like a note being typed: open, keyed,
+    /// rows frozen.
+    var breakGame: (NSView & IslandGame)?
+    var breakChoice: GameChoice?
     var breakShown = false
     var breakWaiting: Set<String> = []
     var breakSuspendedAt: Date?
@@ -198,8 +200,11 @@ final class IslandController: NSObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.sayHello() }
         // The game is a panel that pauses the instant it loses the keyboard, which is
         // what happens when you go to look at it. CONTRIBUTING lists it.
-        if UserDefaults.standard.bool(forKey: "islandGameDebug") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.beginBreak() }
+        // `-bool true` opens Take a break; `hunt` opens Bug Hunt.
+        let debugGame = UserDefaults.standard.string(forKey: "islandGameDebug").flatMap(GameChoice.init)
+            ?? (UserDefaults.standard.bool(forKey: "islandGameDebug") ? .spaceBugs : nil)
+        if let debugGame {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in self?.beginBreak(debugGame) }
         }
     }
 

@@ -6,7 +6,7 @@ import Cocoa
 /// Left, the playfield; right, a narrow column with the score, the best, the wave,
 /// the ships left, the tokens caught, and how to play. Everything is pixels from
 /// `BreakGameArt`, drawn without smoothing.
-final class BreakGameView: NSView {
+final class BreakGameView: NSView, IslandGame {
     static let size = NSSize(width: 432, height: BreakGame.height)
     static let fieldWidth = CGFloat(BreakGame.width)
     static let columnX = fieldWidth + 14
@@ -326,24 +326,12 @@ final class BreakGameView: NSView {
     }
 
     private func banner(_ ctx: CGContext, _ s: String, y: CGFloat, pixel: CGFloat, color: NSColor, mid: CGFloat) {
-        text(ctx, s, x: mid - BreakGameArt.textWidth(s, pixel: pixel) / 2, y: y, pixel: pixel, color: color)
+        PixelFont.banner(ctx, s, y: y, pixel: pixel, color: color, mid: mid)
     }
 
-    /// `s` in the pixel font with its baseline at `y`.
     private func text(_ ctx: CGContext, _ s: String, x: CGFloat, y: CGFloat, pixel: CGFloat, color: NSColor) {
-        ctx.setFillColor(color.cgColor)
-        var cx = x
-        for ch in s {
-            for (col, row) in BreakGameArt.cells(ch) {
-                ctx.fill(CGRect(x: cx + CGFloat(col) * pixel, y: y + CGFloat(4 - row) * pixel,
-                                width: pixel, height: pixel))
-            }
-            cx += 4 * pixel
-        }
+        PixelFont.text(ctx, s, x: x, y: y, pixel: pixel, color: color)
     }
 
-    static func color(_ rgb: UInt32) -> NSColor {
-        NSColor(srgbRed: CGFloat(rgb >> 16 & 0xff) / 255, green: CGFloat(rgb >> 8 & 0xff) / 255,
-                blue: CGFloat(rgb & 0xff) / 255, alpha: 1)
-    }
+    static func color(_ rgb: UInt32) -> NSColor { PixelFont.color(rgb) }
 }

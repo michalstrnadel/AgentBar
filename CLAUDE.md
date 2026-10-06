@@ -55,9 +55,10 @@ open "build/AgentBar.app"
    session, never answers it. The mod itself observes and answers nothing (see
    SECURITY.md); a hook in it that returned anything but `next`'s result would be a
    rule 3 violation, not a feature.
-   **Take a break** (`BreakGame`, `IslandController+Game`) is the island itself,
-   opened into a small game — not a new surface — and only from a click on the
-   island's ⋯ menu. It takes the keyboard the way a denial note does and gives it
+   **Take a break** (`BreakGame`, `HuntGame`, `IslandController+Game`) is the island
+   itself, opened into one of two small games (`GameChoice`: the space bugs, or Bug
+   Hunt) — not a new surface — and only from a click on the island's ⋯ menu or its
+   joystick. Both are `IslandGame`s under the same contract. It takes the keyboard the way a denial note does and gives it
    back on Esc or Close; it pauses the moment the panel loses the keyboard, and it
    steps aside the instant something new waits on the person, showing the rows with
    that request in them. Closed, paused or yielded, its clock does not run.
