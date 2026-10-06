@@ -279,7 +279,7 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   in its place, and **Back to the break** picks up where you left off. Arrows and
   Space to play, P to pause, Esc to close. Island only.
 - **Bug Hunt** — the joystick's second game: bugs rise out of the grass and you
-  have three shots to bring each one down, then Clawd fetches it (or laughs when it
+  have three shots to bring each one down, then the dog fetches it (or laughs when it
   gets away). Ten bugs a round, enough hits to go on, a perfect round for a bonus;
   Game A flies one at a time, Game B two. Aim with the pointer and click, or the
   arrows and Space. It steps aside for your agents exactly like Take a break.

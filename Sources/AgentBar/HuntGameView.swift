@@ -4,7 +4,7 @@ import Cocoa
 /// clock only while it is played. Paused, closed or yielded, nothing ticks.
 ///
 /// The field fills the island: sky, a tree, the tall grass the bugs rise out of
-/// and Clawd pops up from, and a dirt strip with the scoreboard (round and shells,
+/// and the dog pops up from, and a dirt strip with the scoreboard (round and shells,
 /// the hit bar, the score). Aim with the mouse (a crosshair over the field) or
 /// with the arrows and Space; P pauses, Esc closes.
 final class HuntGameView: NSView, IslandGame {
@@ -47,10 +47,10 @@ final class HuntGameView: NSView, IslandGame {
     private static let held: [BreakGame.Kind: CGImage] = BreakGameArt.bugs.compactMapValues {
         $0.first.flatMap { HuntGameArt.image(HuntGameArt.flipped($0, horizontally: false), pixel: 2.8) }
     }
-    private static let cheer = HuntGameArt.image(HuntGameArt.cheer, pixel: 5)
-    private static let laugh = HuntGameArt.laugh.compactMap { HuntGameArt.image($0, pixel: 5) }
-    private static let walk = HuntGameArt.walk.compactMap { HuntGameArt.image($0, pixel: 5) }
-    private static let sniff = HuntGameArt.image(HuntGameArt.sniff, pixel: 5)
+    private static let hold = HuntGameArt.dogHold.compactMap { HuntGameArt.image($0, pixel: 4) }
+    private static let laugh = HuntGameArt.dogLaugh.compactMap { HuntGameArt.image($0, pixel: 4) }
+    private static let walk = HuntGameArt.dogWalk.compactMap { HuntGameArt.image($0, pixel: 4) }
+    private static let sniff = HuntGameArt.image(HuntGameArt.dogSniff, pixel: 4)
     private static let tree = HuntGameArt.image(HuntGameArt.tree, pixel: 6)
     private static let bush = HuntGameArt.image(HuntGameArt.bush, pixel: 4)
     private static let grassEdge = HuntGameArt.image(HuntGameArt.grassEdge, pixel: 3)
@@ -284,9 +284,9 @@ final class HuntGameView: NSView, IslandGame {
         if let tree = Self.tree { place(tree, x: 2, y: HuntGame.grassTop - 40, in: ctx) }
 
         drawBugs(ctx)
-        drawClawd(ctx, front: false)
+        drawDog(ctx, front: false)
         drawGrass(ctx)
-        drawClawd(ctx, front: true)
+        drawDog(ctx, front: true)
         for p in puffs {
             if let img = Self.puff { centre(img, at: CGPoint(x: p.x, y: p.y), in: ctx, scale: 1 + p.age * 3) }
         }
@@ -326,8 +326,8 @@ final class HuntGameView: NSView, IslandGame {
         }
     }
 
-    /// Clawd: in front of the grass while he walks in, behind it when he pops up.
-    private func drawClawd(_ ctx: CGContext, front: Bool) {
+    /// The dog: in front of the grass while he walks in, behind it when he pops up.
+    private func drawDog(_ ctx: CGContext, front: Bool) {
         let grass = CGFloat(HuntGame.grassTop)
         switch game.phase {
         case .intro(let t):
@@ -344,23 +344,24 @@ final class HuntGameView: NSView, IslandGame {
                 let k = (t - sniffEnd) / (HuntGame.introTime - sniffEnd)
                 let y = groundY + CGFloat(sin(k * .pi)) * 70 - CGFloat(max(0, k - 0.5)) * 80
                 let falling = k > 0.5
-                if falling != front, let img = Self.cheer { bottom(img, x: 180 + CGFloat(k) * 30, y: y, in: ctx) }
+                if falling != front, let img = Self.walk.first { bottom(img, x: 180 + CGFloat(k) * 30, y: y, in: ctx) }
             }
         case .retrieve(let t, let x, let kinds) where !front:
-            let y = grass - 58 + popUp(t, length: HuntGame.retrieveTime) * 44
-            guard let img = Self.cheer else { return }
+            let y = grass - 62 + popUp(t, length: HuntGame.retrieveTime) * 56
+            guard let img = Self.hold[safe: kinds.count > 1 ? 1 : 0] else { return }
             bottom(img, x: CGFloat(x), y: y, in: ctx)
-            let hands: [CGFloat] = kinds.count == 1 ? [40] : [-40, 40]
+            // Held up by the raised paws (one, or both for two).
+            let paws: [CGFloat] = kinds.count == 1 ? [38] : [-42, 34]
             for (i, k) in kinds.prefix(2).enumerated() {
-                if let bug = Self.held[k] { bottom(bug, x: CGFloat(x) + hands[i], y: y + 48, in: ctx) }
+                if let bug = Self.held[k] { bottom(bug, x: CGFloat(x) + paws[i], y: y + 54, in: ctx) }
             }
         case .laugh(let t) where !front:
-            let y = grass - 58 + popUp(t, length: HuntGame.laughTime) * 40
+            let y = grass - 62 + popUp(t, length: HuntGame.laughTime) * 54
             let frame = Int(t * 8) % 2
             if let img = Self.laugh[safe: frame] { bottom(img, x: CGFloat(HuntGame.width / 2), y: y + CGFloat(frame * 2), in: ctx) }
         case .over where !front:
             let frame = Int(game.clock * 8) % 2
-            if let img = Self.laugh[safe: frame] { bottom(img, x: CGFloat(HuntGame.width / 2), y: grass - 18 + CGFloat(frame * 2), in: ctx) }
+            if let img = Self.laugh[safe: frame] { bottom(img, x: CGFloat(HuntGame.width / 2), y: grass - 8 + CGFloat(frame * 2), in: ctx) }
         default:
             break
         }
@@ -526,8 +527,8 @@ final class HuntGameView: NSView, IslandGame {
 
     // MARK: - Looking at it without a panel
 
-    /// Six moments side by side — the title, Clawd's walk-in, a flight, a hit,
-    /// Clawd holding the catch, a fly-away laugh — and game over, drawn offscreen:
+    /// Six moments side by side — the title, the dog's walk-in, a flight, a hit,
+    /// the dog holding the catch, a fly-away laugh — and game over, drawn offscreen:
     /// `AgentBar --render-hunt-game out.png`.
     static func renderForVerification(to url: URL) -> Bool {
         guard let d = UserDefaults(suiteName: "agentbar-hunt-render-\(getpid())") else { return false }

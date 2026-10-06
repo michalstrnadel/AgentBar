@@ -29,7 +29,7 @@ enum GameChoice: String, CaseIterable {
     var detail: String {
         switch self {
         case .spaceBugs: return "Clawd vs. a formation of bugs. Arrows and Space."
-        case .bugHunt: return "Shoot the bugs out of the sky; Clawd fetches. Aim and click."
+        case .bugHunt: return "Shoot the bugs out of the sky; the dog fetches. Aim and click."
         }
     }
 

@@ -9,13 +9,14 @@ All notable changes to AgentBar are documented here. This project follows
 
 - **Bug Hunt, a second game for your break.** The joystick beside ⋯ now offers two
   games (the last one you played first), and so does the ⋯ menu. Bug Hunt plays
-  by the rules of the old light-gun hunt, drawn in AgentBar's own pixels:
-  - Clawd walks in and jumps into the grass, and bugs rise out of it one at a time
+  by the rules of the old light-gun hunt, drawn in AgentBar's own pixels (the
+  dog is ours, a beagle in Clawd's orange collar):
+  - The dog walks in, sniffs, and jumps into the grass; bugs rise out of it one at a time
     (**Game A**) or in pairs (**Game B**).
   - You get **three shots** per flight. A hit bug freezes, tumbles into the grass,
-    and Clawd pops up holding it.
+    and the dog pops up holding it.
   - Miss three times, or wait too long, and it **flies away**: the sky turns, and
-    Clawd laughs at you.
+    the dog laughs at you.
   - A round is ten bugs, and the hit bar along the bottom shows how many the round
     needs: six at first, then seven, eight, nine and ten. Go short and the game is
     over; hit all ten for a **perfect** bonus.

@@ -2,11 +2,11 @@ import Foundation
 
 /// **Bug Hunt**: the island's second game, played by the rules of the old light-gun
 /// hunting game. The pictures, the name and the sounds are ours: the bugs from
-/// Take a break are the quarry and Clawd plays the dog.
+/// Take a break are the quarry, and a dog of our own does the fetching.
 ///
 /// A round is ten bugs, one at a time (Game A) or in pairs (Game B). Each flight
-/// gets three shots. A hit bug freezes, falls into the grass, and Clawd holds it
-/// up. A bug that outlives the shots, or the clock, flies away and Clawd laughs.
+/// gets three shots. A hit bug freezes, falls into the grass, and the dog holds it
+/// up. A bug that outlives the shots, or the clock, flies away and the dog laughs.
 /// Hit enough of the ten and the next round comes faster; hit all ten for a
 /// bonus; fall short and the game is over.
 ///
@@ -79,11 +79,11 @@ struct HuntGame {
     enum Phase: Equatable {
         /// The title: pick Game A or B.
         case title
-        /// Clawd walks in, sniffs, and jumps into the grass.
+        /// The dog walks in, sniffs, and jumps into the grass.
         case intro(t: Double)
         case banner(t: Double)
         case flight
-        /// Clawd holds up what was caught, at `x`.
+        /// The dog holds up what was caught, at `x`.
         case retrieve(t: Double, x: Double, kinds: [Kind])
         case laugh(t: Double)
         /// The hit bar sorts itself, then the verdict.
@@ -127,7 +127,7 @@ struct HuntGame {
     }
 
     var hitsThisRound: Int { results.filter { $0 == .hit }.count }
-    /// The sky turns while something flies away, and while Clawd laughs about it.
+    /// The sky turns while something flies away, and while the dog laughs about it.
     var skyAlarmed: Bool {
         if case .laugh = phase { return true }
         return bugs.contains { $0.state == .escaping }
@@ -170,7 +170,7 @@ struct HuntGame {
 
     // MARK: - Starting
 
-    /// From the title (or after a game over): straight to Clawd's walk-in.
+    /// From the title (or after a game over): straight to the dog's walk-in.
     mutating func start(_ mode: Mode) {
         self.mode = mode
         round = 1
