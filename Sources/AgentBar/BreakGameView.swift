@@ -51,7 +51,7 @@ final class BreakGameView: NSView, IslandGame {
         translatesAutoresizingMaskIntoConstraints = false
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
-        setAccessibilityLabel("Take a break: a small shooting game. Arrows move, Space fires, Escape closes.")
+        setAccessibilityLabel("Space Bugs: a small shooting game. Arrows move, Space fires, Escape closes.")
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -257,7 +257,7 @@ final class BreakGameView: NSView, IslandGame {
         let h = CGFloat(BreakGame.height)
         switch game.phase {
         case .ready:
-            banner(ctx, "TAKE A BREAK", y: h * 0.42, pixel: 3, color: Self.color(0xd77757), mid: mid)
+            banner(ctx, "SPACE BUGS", y: h * 0.42, pixel: 3, color: Self.color(0xd77757), mid: mid)
             banner(ctx, "SPACE TO START", y: h * 0.42 - 28, pixel: 2, color: .white, mid: mid)
         case .intro:
             banner(ctx, "WAVE \(game.wave)", y: h * 0.42, pixel: 3, color: Self.color(0xf5c542), mid: mid)

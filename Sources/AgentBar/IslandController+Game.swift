@@ -1,7 +1,7 @@
 import Cocoa
 
-/// **Take a break**: the island opened into a small game — Take a break's space
-/// bugs or Bug Hunt (`GameChoice`) — on the person's click from its ⋯ menu or
+/// **Take a break**: the island opened into a small game — Space Bugs or Bug
+/// Hunt (`GameChoice`) — on the person's click from its ⋯ menu or
 /// the joystick, and only then. It holds the island open and takes the keys
 /// the way a denial note does (`IslandController+Composing`), and gives both back
 /// when it closes.
@@ -35,7 +35,10 @@ extension IslandController {
             item.image = NSImage(systemSymbolName: choice.symbol, accessibilityDescription: nil)
             return [item]
         }
-        return Self.gameOrder.map { choice in
+        // Both games are a break; the header says so, the rows say which.
+        let header = NSMenuItem(title: "Take a break", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        return [header] + Self.gameOrder.map { choice in
             let item = NSMenuItem(title: "\(choice.title)…", action: #selector(gameChosen(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = choice.rawValue

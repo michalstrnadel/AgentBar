@@ -1,6 +1,7 @@
 import Foundation
 
-/// **Take a break**: a small Galaxian-like shooter that runs inside the island when
+/// **Space Bugs**, one of Take a break's two games: a small Galaxian-like shooter
+/// that runs inside the island when
 /// the person asks for it from the island's ⋯ menu — and steps aside the moment an
 /// agent needs them (`yields(before:now:)`). Clawd is the ship; the formation is bugs.
 ///

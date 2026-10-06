@@ -49,8 +49,8 @@ final class HuntGameView: NSView, IslandGame {
     }
     private static let hold = HuntGameArt.dogHold.compactMap { HuntGameArt.image($0, pixel: 4) }
     private static let laugh = HuntGameArt.dogLaugh.compactMap { HuntGameArt.image($0, pixel: 4) }
-    private static let walk = HuntGameArt.dogWalk.compactMap { HuntGameArt.image($0, pixel: 4) }
-    private static let sniff = HuntGameArt.image(HuntGameArt.dogSniff, pixel: 4)
+    private static let walk = HuntGameArt.dogWalk.compactMap { HuntGameArt.image($0, pixel: 3.5) }
+    private static let sniff = HuntGameArt.image(HuntGameArt.dogSniff, pixel: 3.5)
     private static let tree = HuntGameArt.image(HuntGameArt.tree, pixel: 6)
     private static let bush = HuntGameArt.image(HuntGameArt.bush, pixel: 4)
     private static let grassEdge = HuntGameArt.image(HuntGameArt.grassEdge, pixel: 3)
@@ -347,21 +347,21 @@ final class HuntGameView: NSView, IslandGame {
                 if falling != front, let img = Self.walk.first { bottom(img, x: 180 + CGFloat(k) * 30, y: y, in: ctx) }
             }
         case .retrieve(let t, let x, let kinds) where !front:
-            let y = grass - 62 + popUp(t, length: HuntGame.retrieveTime) * 56
+            let y = grass - 64 + popUp(t, length: HuntGame.retrieveTime) * 50
             guard let img = Self.hold[safe: kinds.count > 1 ? 1 : 0] else { return }
             bottom(img, x: CGFloat(x), y: y, in: ctx)
             // Held up by the raised paws (one, or both for two).
-            let paws: [CGFloat] = kinds.count == 1 ? [38] : [-42, 34]
+            let paws: [CGFloat] = kinds.count == 1 ? [38] : [-42, 38]
             for (i, k) in kinds.prefix(2).enumerated() {
-                if let bug = Self.held[k] { bottom(bug, x: CGFloat(x) + paws[i], y: y + 54, in: ctx) }
+                if let bug = Self.held[k] { bottom(bug, x: CGFloat(x) + paws[i], y: y + 62, in: ctx) }
             }
         case .laugh(let t) where !front:
-            let y = grass - 62 + popUp(t, length: HuntGame.laughTime) * 54
+            let y = grass - 64 + popUp(t, length: HuntGame.laughTime) * 50
             let frame = Int(t * 8) % 2
             if let img = Self.laugh[safe: frame] { bottom(img, x: CGFloat(HuntGame.width / 2), y: y + CGFloat(frame * 2), in: ctx) }
         case .over where !front:
             let frame = Int(game.clock * 8) % 2
-            if let img = Self.laugh[safe: frame] { bottom(img, x: CGFloat(HuntGame.width / 2), y: grass - 8 + CGFloat(frame * 2), in: ctx) }
+            if let img = Self.laugh[safe: frame] { bottom(img, x: CGFloat(HuntGame.width / 2), y: grass - 14 + CGFloat(frame * 2), in: ctx) }
         default:
             break
         }

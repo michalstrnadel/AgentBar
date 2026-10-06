@@ -2,7 +2,7 @@ import Foundation
 
 /// **Bug Hunt**: the island's second game, played by the rules of the old light-gun
 /// hunting game. The pictures, the name and the sounds are ours: the bugs from
-/// Take a break are the quarry, and a dog of our own does the fetching.
+/// Space Bugs are the quarry, and a dog of our own does the fetching.
 ///
 /// A round is ten bugs, one at a time (Game A) or in pairs (Game B). Each flight
 /// gets three shots. A hit bug freezes, falls into the grass, and the dog holds it

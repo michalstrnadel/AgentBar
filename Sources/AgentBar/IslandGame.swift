@@ -3,7 +3,7 @@ import Cocoa
 /// What the island needs from a game it opens into (`IslandController+Game`):
 /// a view of the island's size that runs a clock only while it is played, can be
 /// paused and stopped, and says when it wants to close or wants the keys back.
-/// Both games — Take a break and Bug Hunt — are one of these; the island's rules
+/// Both games — Space Bugs and Bug Hunt — are one of these; the island's rules
 /// for them (opened on a click, stepping aside for work) are the same.
 protocol IslandGame: NSView {
     var score: Int { get }
@@ -21,7 +21,7 @@ enum GameChoice: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .spaceBugs: return "Take a break"
+        case .spaceBugs: return "Space Bugs"
         case .bugHunt: return "Bug Hunt"
         }
     }
