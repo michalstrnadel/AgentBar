@@ -375,6 +375,20 @@ import Testing
         #expect(check("dirs.state.d")?.repair == nil)
     }
 
+    /// A row that does not parse is a session nobody sees; Diagnostics names it.
+    @Test func unreadableRowsAreNamed() throws {
+        let dir = home.appendingPathComponent("state-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data(#"{"agent":"codex","state":"thinking"}"#.utf8).write(to: dir.appendingPathComponent("ok.json"))
+        try Data("{not json".utf8).write(to: dir.appendingPathComponent("torn.json"))
+        try Data("x".utf8).write(to: dir.appendingPathComponent("w.json.123.tmp"))
+        let checks = Diagnostics.unreadableRows(in: dir)
+        #expect(checks.count == 1)
+        #expect(checks.first?.detail?.hasPrefix("torn.json") == true)
+        try FileManager.default.removeItem(at: dir.appendingPathComponent("torn.json"))
+        #expect(Diagnostics.unreadableRows(in: dir).isEmpty)
+    }
+
     @Test func makingTheDirectoriesMakesThem() throws {
         let base = home.appendingPathComponent(".agentbar-fresh", isDirectory: true)
         #expect(Diagnostics.apply(.makeDirectories, base: base).isEmpty)

@@ -255,10 +255,22 @@ enum RulesStore {
         let stamp = ((attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0,
                      (attrs?[.size] as? Int) ?? 0)
         cacheLock.lock()
-        defer { cacheLock.unlock() }
-        if let c = cache, c.url == url.path, c.stamp == stamp { return c.load }
+        if let c = cache, c.url == url.path, c.stamp == stamp { cacheLock.unlock(); return c.load }
+        // The file moved since the last read — not the first read of this launch.
+        let edited = cache?.url == url.path
         let load = load(url: url)
         cache = (url.path, stamp, load)
+        cacheLock.unlock()
+        // A hand edit that breaks the file switches every rule off, deny rules
+        // included, and that must not wait for a relaunch to be visible: Diagnostics
+        // runs again, and its failure count is the badge on the menu's
+        // Diagnostics… row. A fix clears it the same way.
+        if edited, url == fileURL {
+            if case .invalid(let why) = load {
+                NSLog("AgentBar: rules.json is invalid, so no rule answers anything: \(why)")
+            }
+            DispatchQueue.main.async { Diagnostics.runInBackground() }
+        }
         return load
     }
 

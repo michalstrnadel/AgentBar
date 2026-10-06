@@ -290,7 +290,22 @@ enum Diagnostics {
                              detail: wrote ? nil : "Exists but is not writable — hooks cannot report anything.",
                              fix: wrote ? nil : "chmod u+w \(dir.path)"))
         }
+        out += unreadableRows(in: base.appendingPathComponent("state.d", isDirectory: true))
         return out
+    }
+
+    /// A row the app cannot read is a session nobody sees, and until now only
+    /// Console said so. Rows are named, so a third-party writer can find its own.
+    static func unreadableRows(in dir: URL) -> [Check] {
+        let files = ((try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "json" }
+        let bad = files.filter { Session(fileURL: $0) == nil }.map(\.lastPathComponent).sorted()
+        guard !bad.isEmpty else { return [] }
+        let shown = bad.prefix(3).joined(separator: ", ") + (bad.count > 3 ? " and \(bad.count - 3) more" : "")
+        return [Check(id: "state.unreadable", title: "Session rows AgentBar cannot read", status: .warn,
+                      detail: "\(shown) — these sessions are not shown anywhere.",
+                      fix: "Each is a JSON file in ~/.agentbar/state.d; docs/protocol.md says what it "
+                           + "must hold. A row from an agent that has ended can simply be deleted.")]
     }
 
     /// What a check says about an agent the user turned off in Settings ▸ Diagnostics.

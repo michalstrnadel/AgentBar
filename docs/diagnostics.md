@@ -51,6 +51,7 @@ naming the next action is just a nicer way of saying nothing.
 | `dirs.state.d` | exists **and an actual write succeeds** |
 | `dirs.requests.d` | the same |
 | `dirs.answers.d` | the same |
+| `state.unreadable` | every row in `state.d` parses. **Warn** naming up to three that do not — each is a session shown nowhere. Absent when all parse. App only |
 
 Existence is not enough: a directory can be there and unusable, and this is the
 failure hooks hit most often — they have nowhere to report it to.
@@ -123,7 +124,7 @@ Where each agent lives, and what says it is ours:
 |---|---|
 | `orphans` | nothing in `state.d` / `requests.d` / `answers.d` is past its pruning window. Warn only — frontends skip them |
 | `frontend.present` | somebody can answer a blocking hook: the app on macOS (`pgrep -x AgentBar`), a fresh `watcher.json` heartbeat anywhere. CLI only; the app knows this about itself |
-| `rules.file` | `~/.agentbar/rules.json` parses and every rule in it is valid. **`fail` when it does not**, naming the rule — this is the one failure in the app that is invisible by design: no rule fires, every prompt comes back, and that is indistinguishable from AgentBar working normally. `skipped` when there is no file, which is most people. The detail counts the rules by mode (answering / watching / off). Reported by both halves, and the CLI's wording says the app is what applies them — a `doctor --json` pasted into a bug report is often the only thing anybody sees |
+| `rules.file` | `~/.agentbar/rules.json` parses and every rule in it is valid. **`fail` when it does not**, naming the rule — this is the one failure in the app that is invisible by design: no rule fires, every prompt comes back, and that is indistinguishable from AgentBar working normally. `skipped` when there is no file, which is most people. The detail counts the rules by mode (answering / watching / off). Reported by both halves, and the CLI's wording says the app is what applies them — a `doctor --json` pasted into a bug report is often the only thing anybody sees. The app re-runs Diagnostics whenever the file changes, so a hand edit that breaks it shows on the menu's **Diagnostics…** row at once |
 
 ### macOS only
 
