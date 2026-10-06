@@ -48,6 +48,10 @@ final class AntigravityWatcher {
     /// `antigravity-app` sessions (the protocol asks watchers to stamp a pid
     /// that dies with the session, the way CoworkWatcher stamps Claude's).
     private var appPid: Int32?
+    /// Conversations last published as waiting on the human. Past the window this
+    /// watcher stops reading a transcript, so a prompt abandoned there would say
+    /// "approve?" for the rest of the day; these get one `done` on the way out.
+    private var waiting: Set<String> = []
 
     func start() {
         let fm = FileManager.default
@@ -81,7 +85,10 @@ final class AntigravityWatcher {
                     let last = Self.lastEntry(transcript)
                     upsert(id: id, root: r, ts: ts,
                            state: Self.isFinalResponse(last) ? "done" : "thinking")
-                } else if age < 900 {
+                    waiting.remove(id)
+                } else if age >= 900 {
+                    if waiting.remove(id) != nil { upsert(id: id, root: r, ts: ts, state: "done") }
+                } else {
                     // Quiet with an unexecuted tool request as the last entry: the agent
                     // is sitting on its own approval prompt (auto-allowed tools append
                     // their result within moments).
@@ -89,6 +96,7 @@ final class AntigravityWatcher {
                         // ask_permission is the prompt itself, not a tool worth naming
                         upsert(id: id, root: r, ts: ts, state: "permission",
                                label: tool == "ask_permission" ? "" : tool)
+                        waiting.insert(id)
                     }
                 }
             }
@@ -153,17 +161,10 @@ final class AntigravityWatcher {
         return nil
     }
 
+    /// With a deadline: `lsof` is known to hang on a stale network mount, and this
+    /// runs on a shared utility queue.
     private static func run(_ path: String, _ args: [String]) -> String? {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: path)
-        p.arguments = args
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }
-        let data = (try? pipe.fileHandleForReading.readToEnd()) ?? Data()
-        p.waitUntilExit()
-        return String(data: data, encoding: .utf8)
+        WorkDiff.run(path, args, in: "/", timeout: 5, anyExit: true)
     }
 
     private static func lastEntry(_ url: URL) -> [String: Any]? {

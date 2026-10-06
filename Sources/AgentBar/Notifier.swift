@@ -39,6 +39,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     private var primed = false
     /// Identifiers currently on screen, so they can be taken back down.
     private var deliveredRequests: Set<String> = []
+    /// File name → the identity of the request its banner was posted for.
+    private var deliveredIdentities: [String: String] = [:]
     /// The run of work currently in progress, or the one that just ended.
     private var burst = Burst()
     /// A banner is the whole point while the screen is locked, but the lock is also
@@ -210,11 +212,18 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     ///
     /// Questions get no buttons: their answer is a choice from a list or free text,
     /// which a two-button banner cannot express — tapping one jumps to the session.
+    /// `shown` is the identity each banner was posted for. A file name that comes
+    /// back holding a different request is a new request, and it is announced —
+    /// posted under the same id, so it replaces the stale banner instead of
+    /// leaving the old command on screen and the new one unheard.
     static func requestEvents(previous: Set<String>, requests: [ApprovalRequest],
-                              sessions: [Session], enabled: Bool) -> (post: [Event], withdraw: [String]) {
+                              sessions: [Session], enabled: Bool,
+                              shown: [String: String] = [:]) -> (post: [Event], withdraw: [String]) {
         guard enabled else { return ([], Array(previous)) }
         let live = Set(requests.map(\.fileName))
-        let post = requests.filter { !previous.contains($0.fileName) }.map { r -> Event in
+        let post = requests.filter { r in
+            !previous.contains(r.fileName) || shown[r.fileName].map { $0 != r.identity } == true
+        }.map { r -> Event in
             // The project names the work; the agent names it when there is no project
             // yet, and the request carries its own agent id — a request can arrive
             // before the session row it belongs to.
@@ -367,15 +376,21 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
 
     func requestsChanged(_ requests: [ApprovalRequest], sessions: [Session]) {
         let (post, withdraw) = Self.requestEvents(previous: deliveredRequests, requests: requests,
-                                                  sessions: sessions, enabled: Prefs.approvals)
+                                                  sessions: sessions, enabled: Prefs.approvals,
+                                                  shown: deliveredIdentities)
         // Withdraw first, and always — a delivered banner whose request has been
         // answered elsewhere, or has timed out, has two live buttons that would do
         // nothing. That is worse than never having shown it.
         if !withdraw.isEmpty {
             UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: withdraw)
             deliveredRequests.subtract(withdraw)
+            for id in withdraw { deliveredIdentities[id] = nil }
         }
-        for e in post { self.post(e); deliveredRequests.insert(e.id) }
+        for e in post {
+            self.post(e)
+            deliveredRequests.insert(e.id)
+            deliveredIdentities[e.id] = e.requestIdentity
+        }
     }
 
     /// Posts one harmless notification so "are these reaching me?" has an answer
@@ -401,6 +416,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current()
             .removeDeliveredNotifications(withIdentifiers: Array(deliveredRequests))
         deliveredRequests.removeAll()
+        deliveredIdentities.removeAll()
     }
 
     private func post(_ e: Event) {
@@ -449,6 +465,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         let sessionId = info["sessionId"] as? String ?? ""
         let identity = info["requestIdentity"] as? String ?? ""
         deliveredRequests.remove(requestId)
+        deliveredIdentities[requestId] = nil
 
         let behavior: String?
         var note: String?

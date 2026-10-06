@@ -80,10 +80,17 @@ final class WorkDiff {
         }
         lock.unlock()
 
+        // Claimed here, under the lock, before git runs: the store changes several
+        // times a second while a session starts, and every change used to spawn
+        // another baseline for the same id — the last to finish won, possibly one
+        // taken after the agent's first edits. A claimed slot reads as "no
+        // baseline" until git answers, which is the honest answer meanwhile.
         let fresh = sessions.filter { s in
             guard s.started, !s.cwd.isEmpty else { return false }
             lock.lock(); defer { lock.unlock() }
-            return baselines.index(forKey: s.id) == nil
+            guard baselines.index(forKey: s.id) == nil else { return false }
+            baselines[s.id] = .some(nil)
+            return true
         }
         guard !fresh.isEmpty else { return }
         // Off the main queue: this shells out to git, and nothing on screen is
@@ -93,7 +100,8 @@ final class WorkDiff {
             for s in fresh {
                 let baseline = Self.baseline(at: s.cwd)
                 self.lock.lock()
-                self.baselines[s.id] = baseline
+                // Forgotten meanwhile means gone; do not bring it back.
+                if self.baselines.index(forKey: s.id) != nil { self.baselines[s.id] = baseline }
                 self.lock.unlock()
             }
         }
@@ -222,8 +230,10 @@ final class WorkDiff {
 
     /// The runner itself, separate from git so the deadline can be tested with a
     /// child that is guaranteed to hang — which no git invocation reliably is.
+    /// `anyExit` keeps the output of a tool that prints what it found and exits
+    /// non-zero over what it could not read — `lsof` does both on most machines.
     static func run(_ tool: String, _ args: [String], in cwd: String,
-                    timeout: TimeInterval = 8) -> String? {
+                    timeout: TimeInterval = 8, anyExit: Bool = false) -> String? {
         guard FileManager.default.fileExists(atPath: cwd) else { return nil }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: tool)
@@ -265,7 +275,7 @@ final class WorkDiff {
             return nil
         }
         p.waitUntilExit()
-        guard p.terminationStatus == 0 else { return nil }
+        guard anyExit || p.terminationStatus == 0 else { return nil }
         lock.lock(); defer { lock.unlock() }
         return String(decoding: data, as: UTF8.self)
     }

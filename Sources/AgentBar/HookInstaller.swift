@@ -534,21 +534,15 @@ enum HookInstaller {
         if let hit = stableNodePaths.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
             return hit
         }
-        // Version-manager setups (nvm/fnm) and Cellar paths: ask the user's shell once.
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        p.arguments = ["-lc", "command -v node"]
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        do {
-            try p.run()
-        } catch {
-            NSLog("AgentBar: could not probe the login shell for node (\(error))")
+        // Version-manager setups (nvm/fnm) and Cellar paths: ask the user's shell once,
+        // with a deadline — a profile that blocks would otherwise hold the install
+        // pass, and with it the welcome window's list and Diagnostics, for good.
+        guard let answer = WorkDiff.run("/bin/zsh", ["-lc", "command -v node"],
+                                        in: NSHomeDirectory(), timeout: 10) else {
+            NSLog("AgentBar: the login shell named no node binary (or took longer than 10 s)")
             return nil
         }
-        p.waitUntilExit()
-        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let out = answer.trimmingCharacters(in: .whitespacesAndNewlines)
         // This is where the pinned paths come from: under nvm/fnm `command -v node`
         // answers with the version's own bin dir. Map it back onto a stable alias
         // when one names the same binary.

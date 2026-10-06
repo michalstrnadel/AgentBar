@@ -66,6 +66,11 @@ final class CoworkWatcher {
     private static let maxParsableLine = 512 * 1024
 
     private var timer: Timer?
+    /// The scan reads up to a megabyte of log per thinking session every tick, so
+    /// it runs here, not on the main thread. `published` and `titles` belong to it.
+    private let queue = DispatchQueue(label: "agentbar.cowork", qos: .utility)
+    /// Main-thread only: a slow scan is not stacked under the next tick.
+    private var scanning = false
     /// Session dir path -> what we last published for it, so an audit log that
     /// hasn't moved isn't re-parsed. "thinking" is exempt: it ages out on its own.
     private var published: [String: (ts: TimeInterval, state: String)] = [:]
@@ -75,17 +80,25 @@ final class CoworkWatcher {
     func start() {
         guard FileManager.default.fileExists(atPath: Self.root.path) else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.scan()
+            self?.tick()
         }
     }
 
-    private func scan() {
+    private func tick() {
         // No app, no Cowork. Its pid also anchors every row we write: SessionStore
         // prunes on a dead pid, so quitting Claude clears the sessions by itself.
-        guard let claude = NSWorkspace.shared.runningApplications.first(where: {
+        guard !scanning, let claude = NSWorkspace.shared.runningApplications.first(where: {
             $0.bundleIdentifier == Self.claudeBundleID
         }) else { return }
+        scanning = true
         let pid = claude.processIdentifier
+        queue.async { [weak self] in
+            self?.scan(pid: pid)
+            DispatchQueue.main.async { self?.scanning = false }
+        }
+    }
+
+    private func scan(pid: Int32) {
         let now = Date().timeIntervalSince1970
 
         for dir in Self.sessionDirs() {
@@ -94,7 +107,16 @@ final class CoworkWatcher {
                     as? Date else { continue }
             let ts = mtime.timeIntervalSince1970
             let age = now - ts
-            guard age < Self.pendingWindow else { continue }
+            guard age < Self.pendingWindow else {
+                // Past the window the log is no longer read, so a prompt left
+                // waiting there would keep saying "approve?" until the day-old
+                // prune. One `done` on the way out retires it.
+                if let prev = published[dir.path], prev.state == "permission" || prev.state == "question" {
+                    upsert(dir: dir, state: "done", label: "", ts: ts, pid: pid, recap: "")
+                    published[dir.path] = (ts, "done")
+                }
+                continue
+            }
             // Settled state on an untouched log: nothing can have changed.
             if let prev = published[dir.path], prev.ts == ts, prev.state != "thinking" { continue }
             guard let read = Self.inspect(audit) else { continue }

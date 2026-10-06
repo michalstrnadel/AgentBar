@@ -256,15 +256,11 @@ enum Diagnostics {
         return out
     }
 
+    /// With a deadline: a login shell whose profile blocks (a network call, a
+    /// `read`) would otherwise hold Diagnostics open for good.
     private static func probedNode() -> String? {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        p.arguments = ["-lc", "command -v node"]
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        guard (try? p.run()) != nil else { return nil }
-        p.waitUntilExit()
-        let out = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+        let out = WorkDiff.run("/bin/zsh", ["-lc", "command -v node"],
+                               in: NSHomeDirectory(), timeout: 10)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return out.isEmpty ? nil : out
     }

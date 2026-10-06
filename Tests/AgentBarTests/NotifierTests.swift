@@ -102,6 +102,21 @@ import Testing
         #expect(Notifier.answerable(requestId: shown.id, identity: "", requests: [first]) == nil)
     }
 
+    /// A successor under the same file name is a new request and is announced,
+    /// replacing the banner that showed its predecessor's command.
+    @Test func aSuccessorUnderTheSameNameIsAnnounced() throws {
+        let first = try request("r1.json")
+        let successor = try request("r1.json", display: "Bash: git reset", hookPid: 3)
+        let (same, _) = Notifier.requestEvents(previous: ["r1.json"], requests: [first], sessions: [],
+                                               enabled: true, shown: ["r1.json": first.identity])
+        #expect(same.isEmpty)
+        let (post, withdraw) = Notifier.requestEvents(previous: ["r1.json"], requests: [successor],
+                                                      sessions: [], enabled: true,
+                                                      shown: ["r1.json": first.identity])
+        #expect(post.map(\.requestIdentity) == [successor.identity])
+        #expect(withdraw.isEmpty)
+    }
+
     /// The one that makes the buttons trustworthy: answered in the menu, by the
     /// hotkey, or simply timed out — either way the banner has to come down, because
     /// two live buttons that do nothing are worse than no banner at all.
