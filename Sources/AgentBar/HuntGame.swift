@@ -165,7 +165,7 @@ struct HuntGame {
     static func speed(_ kind: Kind, round: Int, mode: Mode) -> Double {
         let k: Double = kind == .drone ? 1 : kind == .wasp ? 1.22 : 1.45
         let r = min(1 + 0.07 * Double(round - 1), 2.1)
-        return 105 * k * r * (mode == .b ? 0.9 : 1)
+        return 140 * k * r * (mode == .b ? 0.9 : 1)
     }
 
     // MARK: - Starting
@@ -311,7 +311,9 @@ struct HuntGame {
                     // A new heading at the same speed: never flat, never straight up.
                     let s = hypot(b.vx, b.vy)
                     let angle = 0.35 + rng.unit() * 0.8
-                    let up: Double = b.risen ? (rng.unit() < 0.5 ? 1 : -1) : 1
+                    // Low in the sky it tends to climb, high up to dive: the whole sky gets used.
+                    let climb = b.y < (Self.grassTop + Self.height) / 2 ? 0.7 : 0.35
+                    let up: Double = b.risen ? (rng.unit() < climb ? 1 : -1) : 1
                     let side: Double = rng.unit() < 0.35 ? -(b.vx < 0 ? -1 : 1) : (b.vx < 0 ? -1 : 1)
                     b.vx = cos(angle) * s * side
                     b.vy = sin(angle) * s * up

@@ -198,7 +198,7 @@ final class HuntGameView: NSView, IslandGame {
                 aim.y += (ty - aim.y) / d * step
             }
             keyAim = true
-            if d < 10, autoCooldown <= 0, game.flightClock > 0.6 {
+            if d < 10, autoCooldown <= 0, game.flightClock > 1.4 {
                 autoCooldown = 0.5
                 shoot(at: aim)
             }
