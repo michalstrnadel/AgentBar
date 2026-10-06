@@ -1,6 +1,6 @@
 {
   "name": "agentbar",
-  "version": "1.41.0",
+  "version": "1.42.0",
   "description": "AgentBar's Claude Code mod. Observes only: writes what Claude Code decided without asking, and what it measures (context, rate limits, running subagents), to ~/.agentbar/mods.d for the AgentBar app and CLI. Optionally draws one line above the prompt when another agent waits on you.",
   "author": {
     "name": "Michal Strnadel"

@@ -3,6 +3,32 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.42.0 - 2026-10-06
+
+### Added
+
+- **Bug Hunt, a second game for your break.** The joystick beside ⋯ now offers two
+  games (the last one you played first), and so does the ⋯ menu. Bug Hunt plays
+  by the rules of the old light-gun hunt, drawn in AgentBar's own pixels:
+  - Clawd walks in and jumps into the grass, and bugs rise out of it one at a time
+    (**Game A**) or in pairs (**Game B**).
+  - You get **three shots** per flight. A hit bug freezes, tumbles into the grass,
+    and Clawd pops up holding it.
+  - Miss three times, or wait too long, and it **flies away**: the sky turns, and
+    Clawd laughs at you.
+  - A round is ten bugs, and the hit bar along the bottom shows how many the round
+    needs: six at first, then seven, eight, nine and ten. Go short and the game is
+    over; hit all ten for a **perfect** bonus.
+  - Each round is faster. The three kinds of bug are worth 500, 1000 and 1500,
+    rising in later rounds.
+  - Each game keeps its own best score on this Mac.
+  - Aim with the pointer (a crosshair over the field) and click, or move a sight
+    with the arrows and fire with Space. P pauses; Esc or Close stops.
+  - It follows Take a break's rules to the letter: it opens only on your click,
+    pauses when you click away, and steps aside the moment an agent needs you, with
+    **Back to the break** to pick it up again.
+  - Its sounds are its own and play only with Sounds on.
+
 ## 1.41.0 - 2026-10-05
 
 ### Added
