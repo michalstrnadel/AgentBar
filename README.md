@@ -275,9 +275,9 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   Switch it off in Settings ▸ General to install from **Check for Updates…** instead.
 - **Take a break** — the joystick beside ⋯ on the island offers two small games.
   **Space Bugs** is an arcade shooter: Clawd against a formation of bugs, with a
-  score, a best and a few tokens to catch. It steps aside the moment an agent needs you — the request shows
-  in its place, and **Back to the break** picks up where you left off. Arrows and
-  Space to play, P to pause, Esc to close. Island only.
+  score, a best and a few tokens to catch. It steps aside the moment an agent needs
+  you — the request shows in its place, and **Back to the break** picks up where you
+  left off. Arrows and Space to play, P to pause, Esc to close. Island only.
 - **Bug Hunt** — the joystick's second game: bugs rise out of the grass and you
   have three shots to bring each one down, then the dog fetches it (or laughs when it
   gets away). Ten bugs a round, enough hits to go on, a perfect round for a bonus;
@@ -293,6 +293,17 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
 - **Nothing else** — no dock icon, no countdown timers, no sounds unless you ask
   for them, nothing that unfolds over your screen on its own. One process, tiny
   footprint.
+
+## Take a break
+
+Two small games live in the island, one click away on the joystick beside ⋯. They
+open only when you ask, pause the moment you click elsewhere, and step aside the
+instant an agent needs you.
+
+<p align="center">
+  <img src="docs/assets/space-bugs.gif?v=2026-10-06" width="360" alt="Space Bugs in the island: Clawd's ship at the bottom firing up at a swaying formation of blue, yellow and purple bugs, with the score, best, wave, ships and tokens in a column on the right">
+  <img src="docs/assets/bug-hunt.gif?v=2026-10-06" width="360" alt="Bug Hunt: a beagle walks in and jumps into the grass, bugs fly across a blue sky, a crosshair shoots them down, and the beagle pops up from the grass holding the catch; the round, shells, hit bar and score run along the bottom">
+</p>
 
 ## Clawd's scenes
 
