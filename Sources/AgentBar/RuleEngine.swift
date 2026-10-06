@@ -97,6 +97,13 @@ final class RuleEngine {
         // A denying rule may say why, in the person's words — the refusal then
         // steers the agent instead of leaving it to guess and try the next thing.
         let tell = verdict.behavior == "deny" ? verdict.rule.tell : ""
+        // The row first. If it cannot be written the rule does not answer: an
+        // answer with no row naming its rule is the one thing rule 3 forbids, and
+        // the human deciding instead costs a click.
+        guard ledger.recordNow(verdict.behavior, request: request, session: session,
+                               via: "rule", rule: verdict.rule.id,
+                               now: now.timeIntervalSince1970)
+        else { return false }
         guard AnswerWriter.write(behavior: verdict.behavior,
                                  message: tell.isEmpty ? nil : tell, for: request)
         else { return false }
@@ -107,10 +114,6 @@ final class RuleEngine {
                               would: "", display: request.display), at: 0)
         if firings.count > 20 { firings.removeLast(firings.count - 20) }
         lock.unlock()
-
-        ledger.record(verdict.behavior, request: request, session: session,
-                      via: "rule", rule: verdict.rule.id,
-                      now: now.timeIntervalSince1970)
         return true
     }
 

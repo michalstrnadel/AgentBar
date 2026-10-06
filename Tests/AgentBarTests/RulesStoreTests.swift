@@ -51,6 +51,35 @@ import Testing
         #expect(try String(contentsOf: url, encoding: .utf8) == broken)
     }
 
+    /// Switching one rule off edits the file as it is now: a rule the person added
+    /// by hand after the list was drawn survives it.
+    @Test func editingOneRuleKeepsARuleAddedSince() {
+        let url = file()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let a = RulesStore.Rule(id: "r-a", decision: "deny", shape: "bash:curl")
+        let b = RulesStore.Rule(id: "r-b", decision: "deny", shape: "bash:wget")
+        #expect(RulesStore.save([a], to: url))
+        #expect(RulesStore.save([a, b], to: url)) // the hand edit
+        #expect(RulesStore.edit("r-a", to: url) { var r = $0; r.mode = .off; return r })
+        let after = RulesStore.load(url: url).rules
+        #expect(after.map(\.id) == ["r-a", "r-b"])
+        #expect(after.first?.mode == .off)
+        #expect(RulesStore.edit("r-a", to: url) { _ in nil })
+        #expect(RulesStore.load(url: url).rules.map(\.id) == ["r-b"])
+    }
+
+    @Test func editingIsRefusedOnABrokenFileAndForAMissingRule() throws {
+        let url = file()
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(RulesStore.save([RulesStore.Rule(id: "r-a", decision: "deny", shape: "bash:curl")],
+                                to: url))
+        #expect(RulesStore.edit("r-zzz", to: url) { $0 } == false)
+        let broken = #"{"version": 1, "rules": [,]}"#
+        write(broken, to: url)
+        #expect(RulesStore.edit("r-a", to: url) { _ in nil } == false)
+        #expect(try String(contentsOf: url, encoding: .utf8) == broken)
+    }
+
     // MARK: - Refusals, each one whole-file
 
     @Test func junkIsRefused() {

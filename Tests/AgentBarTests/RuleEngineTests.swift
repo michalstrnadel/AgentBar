@@ -109,6 +109,24 @@ import Testing
         #expect(DecisionLedger.read(url: url).map(\.decision) == ["watch"])
     }
 
+    /// An answer nobody clicked may only exist with the row naming its rule. A
+    /// ledger that cannot be written (here: its parent is a file, not a folder)
+    /// means the rule stays quiet and the human decides.
+    @Test func aRuleWhoseRowCannotBeWrittenAnswersNothing() throws {
+        let was = RulesStore.enabled
+        defer { RulesStore.enabled = was }
+        RulesStore.enabled = true
+        let blocker = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("agentbar-blocker-\(UUID().uuidString)")
+        try Data().write(to: blocker)
+        defer { try? FileManager.default.removeItem(at: blocker) }
+        let ledger = DecisionLedger(url: blocker.appendingPathComponent("decisions.jsonl"))
+        #expect(RuleEngine.shared.handle(request(), session: nil,
+                                         load: .rules([deny("bash:git status")]),
+                                         ledger: ledger)
+                == false)
+    }
+
     @Test func aRuleCanBeHeldToOneAgent() {
         let forCopilot = allow("bash:git status", agent: "copilot")
         #expect(RuleEngine.verdict(for: request(agent: "claude"), cwd: Self.repo,

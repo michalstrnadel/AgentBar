@@ -324,9 +324,25 @@ final class RulesView: NSView {
               let i = rules.firstIndex(where: { $0.id == id }),
               let raw = sender.selectedItem?.representedObject as? String,
               let mode = RulesStore.Rule.Mode(rawValue: raw) else { return }
-        rules[i].mode = mode
-        RulesStore.save(rules)
+        let ok = RulesStore.edit(rules[i].id) { var r = $0; r.mode = mode; return r }
+        if !ok { Self.notSaved("The rule's mode was not changed") }
         reload()
+    }
+
+    /// Off and Remove are the safety exits, so a write that did not land is said
+    /// out loud: otherwise the row redraws as it was and the rule keeps answering
+    /// with nothing to say why.
+    private static func notSaved(_ what: String) {
+        let alert = NSAlert()
+        alert.messageText = what
+        if case .invalid(let reason) = RulesStore.load() {
+            alert.informativeText = "~/.agentbar/rules.json has a mistake in it, so AgentBar "
+                + "left the file exactly as it is: " + reason + " Fix it there and try again."
+        } else {
+            alert.informativeText = "~/.agentbar/rules.json could not be written. Check that the "
+                + "folder is writable and that the rule is still in the file, then try again."
+        }
+        alert.runModal()
     }
 
     /// The one way the rules list turns a rule on by itself being asked to — and it
@@ -359,7 +375,7 @@ final class RulesView: NSView {
             refused.informativeText = why.text
             refused.runModal()
         case .success(let saved):
-            RulesStore.put(saved)
+            if !RulesStore.put(saved) { Self.notSaved("The rule was not switched on") }
         }
         reload()
     }
@@ -381,8 +397,7 @@ final class RulesView: NSView {
         alert.addButton(withTitle: "Remove")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        rules.removeAll { $0.id == id }
-        RulesStore.save(rules)
+        if !RulesStore.edit(id, { _ in nil }) { Self.notSaved("The rule was not removed") }
         reload()
     }
 }

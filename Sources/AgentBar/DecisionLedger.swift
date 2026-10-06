@@ -170,12 +170,34 @@ final class DecisionLedger {
     func record(_ decision: String, request: ApprovalRequest, session: Session?,
                 via: String = "app", rule: String = "", would: String = "",
                 now: TimeInterval = Date().timeIntervalSince1970) {
+        guard let r = row(decision, request: request, session: session, via: via,
+                          rule: rule, would: would, now: now)
+        else { return }
+        writer.async { [url] in Self.append([r], to: url) }
+    }
+
+    /// A rule's answer, written down before it is given and on this thread. An
+    /// answer nobody clicked may only exist with the row that names its rule
+    /// (CLAUDE.md rule 3), so when the row cannot be written — a full disk, a
+    /// read-only `~/.agentbar` — the caller gives no answer and the human decides.
+    func recordNow(_ decision: String, request: ApprovalRequest, session: Session?,
+                   via: String, rule: String,
+                   now: TimeInterval = Date().timeIntervalSince1970) -> Bool {
+        guard let r = row(decision, request: request, session: session, via: via,
+                          rule: rule, would: "", now: now)
+        else { return false }
+        return writer.sync { Self.append([r], to: url) }
+    }
+
+    private func row(_ decision: String, request: ApprovalRequest, session: Session?,
+                     via: String, rule: String, would: String,
+                     now: TimeInterval) -> Record? {
         // The switch is about the human's own clicks. A rule's firing is written
         // whatever it says: an answer nobody clicked is only allowed to exist
         // because it leaves a row naming the rule (CLAUDE.md rule 3), and a
         // watching rule with no rows can never be judged. Off, rules kept
         // approving and nothing anywhere said so.
-        guard Self.enabled || via == "rule" else { return }
+        guard Self.enabled || via == "rule" else { return nil }
         var r = Record()
         r.ts = now
         r.agent = request.agentID
@@ -194,7 +216,7 @@ final class DecisionLedger {
         r.via = via
         r.rule = rule
         r.would = would
-        writer.async { [url] in Self.append([r], to: url) }
+        return r
     }
 
     func flush() { writer.sync {} }
@@ -656,7 +678,9 @@ final class DecisionLedger {
     /// counts from the ledger listens here instead of waiting to be shown again.
     static let didAppend = Notification.Name("AgentBarDecisionLedgerDidAppend")
 
-    static func append(_ records: [Record], to url: URL = DecisionLedger.fileURL) {
+    /// True only when every byte reached the file.
+    @discardableResult
+    static func append(_ records: [Record], to url: URL = DecisionLedger.fileURL) -> Bool {
         let lines = records.compactMap { r -> String? in
             guard let data = try? JSONSerialization.data(withJSONObject: r.json,
                                                          options: [.sortedKeys]),
@@ -664,16 +688,24 @@ final class DecisionLedger {
             else { return nil }
             return line + "\n"
         }
-        guard !lines.isEmpty, let data = lines.joined().data(using: .utf8) else { return }
+        guard !lines.isEmpty, let data = lines.joined().data(using: .utf8) else { return false }
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         // O_APPEND, like the history: the app and a CLI on a shared home must not be
         // able to truncate each other.
         let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
-        guard fd >= 0 else { return }
+        guard fd >= 0 else {
+            NSLog("AgentBar: decisions.jsonl could not be opened (errno %d)", errno)
+            return false
+        }
         defer { close(fd) }
-        _ = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+        let written = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+        guard written == data.count else {
+            NSLog("AgentBar: decisions.jsonl took %d of %d bytes", written, data.count)
+            return false
+        }
         DispatchQueue.main.async { NotificationCenter.default.post(name: didAppend, object: nil) }
+        return true
     }
 
     /// Claude Code's own decisions have a ceiling of their own. A busy day can

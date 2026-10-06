@@ -312,6 +312,21 @@ enum RulesStore {
         return save(all, to: url)
     }
 
+    /// One rule changed or removed, against the file as it is now rather than the
+    /// copy a view drew a minute ago: a rule added by hand since then must not be
+    /// written over by switching another one off. A broken file is refused the
+    /// way `put` refuses it. `change` returning nil removes the rule.
+    @discardableResult
+    static func edit(_ id: String, to url: URL = RulesStore.fileURL,
+                     _ change: (Rule) -> Rule?) -> Bool {
+        let current = load(url: url)
+        if case .invalid = current { return false }
+        var all = current.rules
+        guard let i = all.firstIndex(where: { $0.id == id }) else { return false }
+        if let changed = change(all[i]) { all[i] = changed } else { all.remove(at: i) }
+        return save(all, to: url)
+    }
+
     /// Short, readable, and unique enough for a file a person edits by hand.
     static func newID() -> String {
         "r-" + String(format: "%06x", Int.random(in: 0..<0x100_0000))
