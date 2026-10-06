@@ -191,6 +191,8 @@ final class HistoryStore {
         // O_APPEND, not read-modify-write: two frontends (the app and `agentbar
         // watch` on a shared home) must not be able to truncate each other, and a
         // line-sized append is atomic.
+        Self.fileLock.lock()
+        defer { Self.fileLock.unlock() }
         let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
         guard fd >= 0 else { return }
         defer { close(fd) }
@@ -225,23 +227,35 @@ final class HistoryStore {
              ($0[.size] as? Int) ?? 0)
         } ?? (0, 0)
         cacheLock.lock()
-        defer { cacheLock.unlock() }
-        if let c = cache, c.url == url.path, c.stamp == stamp { return c.records }
+        if let c = cache, c.url == url.path, c.stamp == stamp { cacheLock.unlock(); return c.records }
+        cacheLock.unlock()
         let records = read(url: url)
+        cacheLock.lock()
         cache = (url.path, stamp, records)
+        cacheLock.unlock()
         return records
     }
 
     private static let cacheLock = NSLock()
+    /// Held by append and prune, for the reason `DecisionLedger.fileLock` gives.
+    static let fileLock = NSLock()
     private static var cache: (url: String, stamp: (TimeInterval, Int), records: [Record])?
 
-    /// Called once on launch. Rewrites the file only when something actually goes,
-    /// so the common case costs a read and nothing else.
+    /// Called on launch and every few hours after. Rewrites the file only when
+    /// something actually goes — an old session, or the earlier lines of one that
+    /// was written more than once — so the common case costs a read and nothing else.
     static func prune(url: URL = HistoryStore.fileURL, now: TimeInterval = Date().timeIntervalSince1970) {
+        fileLock.lock()
+        defer { fileLock.unlock() }
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
+        // Counted as lines, not as sessions: `read` collapses a session written on
+        // every turn into one record, and comparing collapsed counts meant a file of
+        // nothing but repeats was never compacted.
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: true).count
         let all = read(url: url)
         var kept = all.filter { now - $0.endedAt <= maxAge }
         if kept.count > maxRecords { kept = Array(kept.suffix(maxRecords)) }
-        guard kept.count != all.count else { return }
+        guard kept.count != lines else { return }
 
         let body = kept.compactMap { r -> String? in
             guard let d = try? JSONSerialization.data(withJSONObject: r.json, options: [.sortedKeys])

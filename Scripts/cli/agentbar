@@ -305,7 +305,11 @@ function pruneHistory() {
     const all = readHistory();
     let kept = all.filter((r) => now() - (r.endedAt || 0) <= HISTORY_MAX_AGE);
     if (kept.length > HISTORY_MAX) kept = kept.slice(-HISTORY_MAX);
-    if (kept.length === all.length) return;
+    // Lines, not sessions: readHistory collapses a session written every turn, and
+    // comparing collapsed counts never compacted a file of nothing but repeats.
+    let lines = 0;
+    try { lines = fs.readFileSync(historyFile, "utf8").split("\n").filter((l) => l.trim()).length; } catch {}
+    if (kept.length === lines) return;
     const t = historyFile + "." + process.pid + ".tmp";
     fs.writeFileSync(t, kept.length ? kept.map((r) => JSON.stringify(r)).join("\n") + "\n" : "");
     fs.renameSync(t, historyFile);

@@ -124,6 +124,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             HistoryStore.prune()
             DecisionLedger.prune()
         }
+        // And again every six hours: a menu bar app runs for weeks, and the Claude
+        // Code mod writes a ledger row per tool call, so the ceilings only held
+        // across a restart.
+        Timer.scheduledTimer(withTimeInterval: 6 * 3_600, repeats: true) { _ in
+            DispatchQueue.global(qos: .utility).async {
+                HistoryStore.prune()
+                DecisionLedger.prune()
+            }
+        }
         antigravityWatcher.start()
         coworkWatcher.start()
 

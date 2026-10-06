@@ -188,6 +188,20 @@ import Testing
         HistoryStore.prune(url: url, now: now)
         #expect(try Data(contentsOf: url) == before)
     }
+
+    /// A session written on every turn is many lines and one record. Counting
+    /// records meant a file of nothing but repeats was never compacted.
+    @Test func pruneCompactsRepeatsOfOneSession() throws {
+        let url = dir.appendingPathComponent("repeats.jsonl")
+        let line = { (s: String) in #"{"agent":"codex","sessionId":"a","state":"\#(s)","endedAt":100000}"# }
+        try ([line("thinking"), line("tool"), line("done")].joined(separator: "\n") + "\n")
+            .write(to: url, atomically: true, encoding: .utf8)
+        HistoryStore.prune(url: url, now: 100_001)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        #expect(text.split(separator: "\n").count == 1)
+        #expect(HistoryStore.read(url: url).first?.state == "done")
+    }
+
     // MARK: - Weight and repo change
 
     /// Both are optional, and "absent" has to survive the round trip as `nil` rather

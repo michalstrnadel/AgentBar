@@ -663,15 +663,24 @@ final class DecisionLedger {
         let stamp = ((attrs?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0,
                      (attrs?[.size] as? Int) ?? 0)
         cacheLock.lock()
-        defer { cacheLock.unlock() }
-        if let c = cache, c.url == url.path, c.stamp == stamp { return c.records }
+        if let c = cache, c.url == url.path, c.stamp == stamp { cacheLock.unlock(); return c.records }
+        cacheLock.unlock()
+        // Parsed outside the lock: an approval card on the main thread must not wait
+        // behind the ingest queue reading the same month of rows.
         let records = read(url: url)
+        cacheLock.lock()
         cache = (url.path, stamp, records)
+        cacheLock.unlock()
         return records
     }
 
     private static let cacheLock = NSLock()
     private static var cache: (url: String, stamp: (TimeInterval, Int), records: [Record])?
+
+    /// Held by every append and by prune. Prune reads the file and replaces it; an
+    /// append that landed between the two went to the file being replaced and was
+    /// gone — a rule's row included, which is the row rule 3 promises always exists.
+    static let fileLock = NSLock()
 
     /// Posted on the main queue after rows were appended, by anyone — a click, a
     /// rule, or Claude Code's own decisions arriving from `mods.d`. A view showing
@@ -693,6 +702,8 @@ final class DecisionLedger {
                                                  withIntermediateDirectories: true)
         // O_APPEND, like the history: the app and a CLI on a shared home must not be
         // able to truncate each other.
+        fileLock.lock()
+        defer { fileLock.unlock() }
         let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
         guard fd >= 0 else {
             NSLog("AgentBar: decisions.jsonl could not be opened (errno %d)", errno)
@@ -715,6 +726,8 @@ final class DecisionLedger {
 
     static func prune(url: URL = DecisionLedger.fileURL,
                       now: TimeInterval = Date().timeIntervalSince1970) {
+        fileLock.lock()
+        defer { fileLock.unlock() }
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
         let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
         // A line this version cannot read — a row from a newer AgentBar, a hand edit
