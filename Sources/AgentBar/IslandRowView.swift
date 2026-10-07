@@ -15,6 +15,9 @@ final class IslandRowView: NSView {
     var mascot: IslandMascotView { markView }
     private var tracking: NSTrackingArea?
     private var hovered = false { didSet { needsDisplay = true } }
+    /// A file dropped here goes to this session (`DropToAgent`). Set by the panel.
+    var onDrop: ((Session, NSPasteboard) -> Void)?
+    private let hint = DropHint()
 
     static let markBox: CGFloat = 20
 
@@ -44,6 +47,55 @@ final class IslandRowView: NSView {
         case .hero:    buildHero(mark: mark, chips: chips)
         case .compact: buildCompact(mark: mark, chips: chips)
         }
+        // Over everything else in the row, and hidden until a drag arrives.
+        hint.translatesAutoresizingMaskIntoConstraints = false
+        hint.isHidden = true
+        addSubview(hint)
+        NSLayoutConstraint.activate([
+            hint.leadingAnchor.constraint(equalTo: leadingAnchor),
+            hint.trailingAnchor.constraint(equalTo: trailingAnchor),
+            hint.topAnchor.constraint(equalTo: topAnchor),
+            hint.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        registerForDraggedTypes(DropToAgent.pasteboardTypes)
+    }
+
+    // MARK: - Dropping a file on it
+
+    private var dropColour: NSColor { WrapStyle.colour(for: session.agentID) }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        if let why = DropToAgent.refusal(for: session) {
+            hint.show("\(session.agent.name) \(why)", colour: NSColor.white.withAlphaComponent(0.6), refused: true)
+            return []
+        }
+        hint.show("Drop to hand it to \(session.agent.name)", colour: dropColour, refused: false)
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) { hint.isHidden = true }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        DropToAgent.refusal(for: session) == nil
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        guard DropToAgent.refusal(for: session) == nil, let onDrop else { return false }
+        onDrop(session, sender.draggingPasteboard)
+        return true
+    }
+
+    /// What happened to a drop, said on the row for a moment.
+    func report(_ outcome: DropToAgent.Outcome) {
+        switch outcome {
+        case .pasted:
+            hint.show("✓ In \(session.agent.name)'s prompt — add a word and press Return", colour: dropColour, refused: false)
+        case .copied(let app):
+            hint.show("Path copied — press ⌘V in \(app)", colour: dropColour, refused: false)
+        case .refused(let why):
+            hint.show("\(session.agent.name) \(why)", colour: NSColor.white.withAlphaComponent(0.6), refused: true)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in self?.hint.isHidden = true }
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
@@ -320,6 +372,14 @@ final class IslandRowView: NSView {
         } else if let term = TerminalApp.known.first(where: { $0.termProgram == s.termProgram }) {
             out.append(chip(term.name, tint: .white))
         }
+        if let quiet = QuietWatch.quietMinutes(s) {
+            let c = chip(QuietWatch.label(quiet), tint: IconRenderer.amberDot)
+            c.toolTip = "No word from \(agent.name) for \(quiet) minutes. A long command is quiet too — "
+                + "click the row to look."
+            c.setAccessibilityElement(true)
+            c.setAccessibilityLabel("Quiet for \(quiet) minutes")
+            out.append(c)
+        }
         if let e = s.elapsed {
             let l = NSTextField(labelWithString: e)
             l.font = .monospacedSystemFont(ofSize: 9, weight: .medium)
@@ -391,5 +451,54 @@ final class ChipBox: NSView {
     override func draw(_ dirtyRect: NSRect) {
         NSColor.white.withAlphaComponent(0.11).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+    }
+}
+
+/// The row's face while a file hovers over it: who it would go to, or why not.
+final class DropHint: NSView {
+    private let label = NSTextField(labelWithString: "")
+    private var colour = NSColor.white
+    private var refused = false
+
+    init() {
+        super.init(frame: .zero)
+        label.font = .systemFont(ofSize: 12, weight: .semibold)
+        label.alignment = .center
+        label.lineBreakMode = .byTruncatingTail
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    func show(_ text: String, colour: NSColor, refused: Bool) {
+        label.stringValue = text
+        label.textColor = refused ? IslandInk.quiet : .white
+        self.colour = colour
+        self.refused = refused
+        isHidden = false
+        needsDisplay = true
+        setAccessibilityLabel(text)
+    }
+
+    /// Drags pass through to the row underneath; this only draws.
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: 9, yRadius: 9)
+        NSColor(white: 0.06, alpha: 0.94).setFill()
+        path.fill()
+        (refused ? NSColor.white.withAlphaComponent(0.06) : colour.withAlphaComponent(0.28)).setFill()
+        path.fill()
+        guard !refused else { return }
+        colour.setStroke()
+        path.lineWidth = 1.5
+        let dashes: [CGFloat] = [5, 3]
+        path.setLineDash(dashes, count: 2, phase: 0)
+        path.stroke()
     }
 }

@@ -2,11 +2,10 @@ import Cocoa
 
 /// What each provider has left, as a short stack of meters in the menu.
 ///
-/// The question this answers is one question — *how much have I spent and how
-/// much is left* — so the row is the whole design and there is nothing else on
-/// it: who, which window, a bar, and what remains. No history, no forecast, no
-/// per-model breakdown; those are different questions and they belong to whoever
-/// wants to ask them.
+/// The question this answers is *how much have I spent and how much is left* —
+/// who, which window, a bar, and what remains. Since 1.44 also *will it last*:
+/// when `UsagePace` says a window runs out before it resets, a line under it says
+/// when. No history and no per-model breakdown; those are other questions.
 ///
 /// It lives in the **menu** and not on the island. The island's one dim usage line
 /// already says the same thing in a sentence, and the island's height is exactly
@@ -42,6 +41,8 @@ final class UsageMeterView: NSView {
         /// arrived as "~654k tok this 5h block…", losing the half that answers
         /// the question.
         var spans = false
+        /// Drawn in amber: a window about to run out.
+        var warn = false
     }
 
     private static let rowHeight: CGFloat = 17
@@ -95,6 +96,10 @@ final class UsageMeterView: NSView {
                                window: w.name,
                                used: w.expired() ? nil : w.usedPercent,
                                trailing: UsageCenter.short(w)))
+                if !w.expired(), let f = UsagePace.shared.forecast(provider: r.provider, window: w) {
+                    out.append(Row(provider: "", window: "", used: nil, trailing: UsagePace.sentence(f),
+                                   spans: true, warn: true))
+                }
             }
         }
         return out
@@ -121,8 +126,14 @@ final class UsageMeterView: NSView {
             // "3%" beside a bar that is almost entirely full reads as a
             // contradiction at a glance — the bar says what is gone, the number
             // says what is left. One word settles it.
-            return Row(provider: r.provider, window: "", used: w.usedPercent,
-                       trailing: "\(Int(w.remainingPercent.rounded()))% left")
+            let left = "\(Int(w.remainingPercent.rounded()))% left"
+            // The pace, only when it ends before the reset — and amber only when
+            // that is within the half hour.
+            if let f = UsagePace.shared.forecast(provider: r.provider, window: w) {
+                return Row(provider: r.provider, window: "", used: w.usedPercent,
+                           trailing: left + " · " + UsagePace.short(f), warn: UsagePace.urgent(f))
+            }
+            return Row(provider: r.provider, window: "", used: w.usedPercent, trailing: left)
         }
     }
 
@@ -218,6 +229,8 @@ final class UsageMeterView: NSView {
         case name(String)
         case meter(Double)
         case trailing(String)
+        /// A trailing number about to run out, drawn in amber.
+        case warning(String)
     }
 
     /// Where every piece lands, given the width the layout actually handed the
@@ -262,7 +275,7 @@ final class UsageMeterView: NSView {
             }
             let trailing = (row.trailing as NSString)
                 .size(withAttributes: [.font: compactDigits]).width
-            place(.trailing(row.trailing), wanting: trailing)
+            place(row.warn ? .warning(row.trailing) : .trailing(row.trailing), wanting: trailing)
             x += trailing + compactGap
         }
         return out
@@ -287,10 +300,11 @@ final class UsageMeterView: NSView {
                 drawMeter(in: NSRect(x: x, y: (bounds.height - Self.meterHeight) / 2,
                                      width: width, height: Self.meterHeight),
                           used: used, onDark: true)
-            case .trailing(let text):
+            case .trailing(let text), .warning(let text):
+                let warn: Bool = { if case .warning = piece { return true } else { return false } }()
                 (text as NSString).draw(in: box, withAttributes: [
                     .font: Self.compactDigits,
-                    .foregroundColor: NSColor.white.withAlphaComponent(0.55),
+                    .foregroundColor: warn ? IconRenderer.amberDot : IslandInk.quiet,
                     .paragraphStyle: Self.truncating,
                 ])
             }
@@ -322,7 +336,8 @@ final class UsageMeterView: NSView {
                     // A note is quieter than the thing it is about; a provider's
                     // own sentence is the answer and reads like one.
                     .foregroundColor: row.provider.isEmpty
-                        ? NSColor.tertiaryLabelColor : NSColor.secondaryLabelColor,
+                        ? (row.warn ? NSColor.systemOrange : NSColor.tertiaryLabelColor)
+                        : NSColor.secondaryLabelColor,
                     .paragraphStyle: Self.truncating,
                 ])
             return

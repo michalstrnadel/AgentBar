@@ -98,6 +98,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var hideIslandBox: NSSwitch!
     private var hideAwayBox: NSSwitch!
     private var personalityBox: NSSwitch!
+    private var screenshotBox: NSSwitch!
+    private var quietPopup: NSPopUpButton!
     private var modBandBox: NSSwitch!
     private var diagnostics: DiagnosticsView!
     private var configChangesButton: NSButton!
@@ -327,6 +329,17 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         hideIslandBox = SettingsChrome.toggle(target: self, action: #selector(toggleHideIsland))
         hideAwayBox = SettingsChrome.toggle(target: self, action: #selector(toggleHideAway))
         personalityBox = SettingsChrome.toggle(target: self, action: #selector(togglePersonality))
+        screenshotBox = SettingsChrome.toggle(target: self, action: #selector(toggleScreenshot))
+        quietPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+        quietPopup.controlSize = .small
+        for m in QuietWatch.choices {
+            quietPopup.addItem(withTitle: m == 0 ? "Never" : "\(m) min")
+            quietPopup.lastItem?.tag = m
+        }
+        quietPopup.target = self
+        quietPopup.action = #selector(quietChanged)
+        quietPopup.translatesAutoresizingMaskIntoConstraints = false
+        quietPopup.widthAnchor.constraint(equalToConstant: 84).isActive = true
         modBandBox = SettingsChrome.toggle(target: self, action: #selector(toggleModBand))
         autoUpdateBox = SettingsChrome.toggle(target: self, action: #selector(toggleAutoUpdate))
 
@@ -499,6 +512,20 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                        + "a row's mark pokes it instead of jumping to the "
                                        + "session. Never with Reduce Motion.",
                                        control: personalityBox),
+                ]),
+                SettingsChrome.card([
+                    SettingsChrome.row("Your latest screenshot in the island",
+                                       "A screenshot from the last three minutes waits in the "
+                                       + "open island's footer — drag it onto a session to hand it "
+                                       + "to that agent. macOS asks once to let AgentBar see the "
+                                       + "folder screenshots go to.",
+                                       control: screenshotBox),
+                    // Titled alone: a pop-up is wider than the switch the caption
+                    // column leaves room for, so the sentence goes under it.
+                    SettingsChrome.row("Flag a quiet session", control: quietPopup),
+                    SettingsChrome.noteRow(SettingsChrome.caption(
+                        "A working session with no word from its agent for this long says "
+                        + "“quiet 12m?”. A long command is quiet too, so it is a question, not an alarm.")),
                 ]),
                 SettingsChrome.card([
                     SettingsChrome.row("Install updates automatically",
@@ -722,6 +749,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         hideIslandBox.state = IslandVisibility.Prefs.hideWhenEmpty ? .on : .off
         hideAwayBox.state = IslandVisibility.Prefs.hideWhenAway ? .on : .off
         personalityBox.state = MascotPersonality.Prefs.enabled ? .on : .off
+        screenshotBox.state = ScreenshotShelf.enabled ? .on : .off
+        quietPopup.selectItem(withTag: QuietWatch.minutes)
         modBandBox.state = ModBandPrefs.isOn() ? .on : .off
         autoUpdateBox.state = UpdateChecker.shared.autoUpdate ? .on : .off
         claudeQuotaBox.state = ClaudeQuota.enabled ? .on : .off
@@ -1208,6 +1237,19 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         // follows what was measured.
         soundPackStatus.fittedHeight?.constant = SettingsChrome.measure(
             soundPackStatus, width: SettingsChrome.cardWidth - SettingsChrome.rowInset * 2)
+    }
+
+    @objc private func toggleScreenshot() {
+        ScreenshotShelf.enabled = screenshotBox.state == .on
+        // The first look at the folder, and so the permission dialog, follows the
+        // click that asked for it rather than the island's next opening.
+        if ScreenshotShelf.enabled { DispatchQueue.global(qos: .userInitiated).async { _ = ScreenshotShelf.latest() } }
+        onChange?()
+    }
+
+    @objc private func quietChanged() {
+        QuietWatch.minutes = quietPopup.selectedTag()
+        onChange?()
     }
 
     @objc private func toggleHideIsland() {

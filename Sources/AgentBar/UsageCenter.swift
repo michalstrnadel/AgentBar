@@ -100,6 +100,7 @@ final class UsageCenter {
             // asks for another pass rather than editing anything from under us.
             ClaudeQuota.shared.refreshIfDue { [weak self] in self?.refresh() }
             ClaudeWebQuota.shared.refreshIfDue { [weak self] in self?.refresh() }
+            UsagePace.shared.record(fresh)
             DispatchQueue.main.async {
                 let changed = fresh.map(Self.signature) != self.readings.map(Self.signature)
                 self.readings = fresh

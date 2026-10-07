@@ -54,6 +54,10 @@ final class SessionRowView: NSView {
         case .error:      detail = s.label.isEmpty ? "failed" : "failed — \(s.label)"
         default:          detail = s.label
         }
+        // A working row that has gone silent says so, ahead of its last label.
+        if let quiet = QuietWatch.quietMinutes(s) {
+            detail = QuietWatch.label(quiet) + (detail.isEmpty ? "" : " · " + detail)
+        }
         // Done rows say WHAT finished. 60 characters keeps the menu from
         // ballooning; the tooltip carries the full line.
         if detail.isEmpty, s.state == .done || s.state == .idle, !s.recap.isEmpty {

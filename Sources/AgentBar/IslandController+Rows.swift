@@ -16,6 +16,10 @@ extension IslandController {
                 self?.click(session)
             }
             personality.attach(row.mascot, session: s.id)
+            row.onDrop = { [weak row] session, pasteboard in
+                let paths = DropToAgent.paths(from: pasteboard)
+                DropToAgent.hand(paths, to: session) { row?.report($0) }
+            }
             row.translatesAutoresizingMaskIntoConstraints = false
             row.widthAnchor.constraint(equalToConstant: rowW).isActive = true
             out.append(row)

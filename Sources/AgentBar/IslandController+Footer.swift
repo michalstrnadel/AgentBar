@@ -91,6 +91,11 @@ extension IslandController {
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         views.append(spacer)
+        if let shot = ScreenshotShelf.current() {
+            let chip = ScreenshotChip(url: shot)
+            chip.onChoose = { [weak self] view in self?.chooseSessionForScreenshot(shot, from: view) }
+            views.append(chip)
+        }
         views.append(breakButton())
         views.append(dots)
         let row = NSStackView(views: views)
@@ -99,6 +104,34 @@ extension IslandController {
         row.widthAnchor.constraint(equalToConstant:
             Self.expandedWidth - IslandContentView.hPad * 2).isActive = true
         return row
+    }
+
+    /// The screenshot chip's click: every session that can take a file, as a menu.
+    private func chooseSessionForScreenshot(_ url: URL, from view: NSView) {
+        let menu = NSMenu()
+        let header = NSMenuItem(title: "Hand the screenshot to", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        let targets = sessions.filter { DropToAgent.refusal(for: $0) == nil }
+        for s in targets {
+            let item = NSMenuItem(title: s.project.isEmpty ? s.agent.name : "\(s.agent.name) — \(s.project)",
+                                  action: #selector(handScreenshot(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = (url, s)
+            item.image = IconRenderer.shared.sprite(for: s.agent).restingColor
+            menu.addItem(item)
+        }
+        if targets.isEmpty {
+            let none = NSMenuItem(title: "No session here can take a file", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            menu.addItem(none)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.height + 4), in: view)
+    }
+
+    @objc private func handScreenshot(_ sender: NSMenuItem) {
+        guard let (url, session) = sender.representedObject as? (URL, Session) else { return }
+        DropToAgent.hand([url.path], to: session) { _ in }
     }
 
     /// The provider of the last session that ended, so the quota line has

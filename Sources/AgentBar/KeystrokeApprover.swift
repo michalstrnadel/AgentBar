@@ -90,13 +90,30 @@ enum KeystrokeApprover {
         DispatchQueue.main.asyncAfter(deadline: .now() + keyStagger) { send(rest, to: target) }
     }
 
+    /// ⌘V into `target` once it is in front — the one key `DropToAgent` sends, and
+    /// only into a tab `TerminalFocus` verified. Never a Return. `done(false)` when
+    /// the app did not come forward or lost focus, so the caller can say ⌘V instead.
+    static func paste(into target: String, done: @escaping (Bool) -> Void) {
+        guard trusted else { return done(false) }
+        let deadline = Date().addingTimeInterval(activationDeadline)
+        func wait() {
+            if isFront(target) {
+                post(9, flags: .maskCommand)   // kVK_ANSI_V
+                return done(true)
+            }
+            guard Date() < deadline else { return done(false) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + pollInterval, execute: wait)
+        }
+        wait()
+    }
+
     /// Flags are cleared explicitly: a modifier the user happens to be holding
     /// would otherwise ride along and turn Return into Cmd+Return.
-    private static func post(_ key: CGKeyCode) {
+    private static func post(_ key: CGKeyCode, flags: CGEventFlags = []) {
         let src = CGEventSource(stateID: .combinedSessionState)
         for down in [true, false] {
             guard let event = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: down) else { continue }
-            event.flags = []
+            event.flags = flags
             event.post(tap: .cghidEventTap)
         }
     }
