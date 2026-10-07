@@ -3,6 +3,30 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.44.1 - 2026-10-07
+
+### Changed
+
+- **Your Day is one card now, not a story of nine slides.** A recap you open every
+  evening is read, not watched, and at five seconds a slide the story took 45
+  seconds to say what the card at its end said at a glance. The card carries it
+  all:
+  - who you were today as the headline, with the number that earned it;
+  - agent time, counting up;
+  - the day as bars in each hour's agent colour, with your peak of agents at
+    once marked on them (a week marks its best day);
+  - tiles for your top agent, what changed, your answers and where the work went.
+
+  It builds once in about two seconds when it opens and then holds still. A click
+  or Space builds it again. **Video** and **GIF** now save the card building
+  itself: a 6-second MP4, or a looping GIF a quarter of the old size, dithered so
+  the soft colours do not band. The slide player, its progress bar and its arrow
+  keys are gone.
+- A week's Orchestrator says which day its peak was on.
+- The README shows it all moving: the card building itself, a file handed to a
+  session with a quiet one beside it and the limit forecast in the footer, and a
+  new social preview with the card.
+
 ## 1.44.0 - 2026-10-07
 
 ### Added
