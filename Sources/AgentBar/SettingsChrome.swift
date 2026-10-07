@@ -121,7 +121,13 @@ enum SettingsChrome {
         var textHeight = titleHeight
         if let subtitle, !subtitle.isEmpty {
             let line = caption(subtitle)
-            textHeight += text.spacing + fit(line, to: captionWidth).constant
+            // `captionWidth` leaves room for a switch. A button is wider — "Open
+            // Rules", "Export…" — and a caption that kept the switch's width pushed
+            // the row, and with it the card and the page, past the window's edge.
+            let controlRoom = control.map { ceil($0.fittingSize.width) + Space.step * 2 } ?? 0
+            let width = min(captionWidth, cardWidth - rowInset * 2 - controlRoom)
+            line.preferredMaxLayoutWidth = width
+            textHeight += text.spacing + fit(line, to: width).constant
             text.addArrangedSubview(line)
         }
         text.setContentHuggingPriority(.defaultLow, for: .horizontal)

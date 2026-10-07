@@ -150,6 +150,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var exportButton: NSButton!
     private var rulesPageButton: NSButton!
     private var rulesView: RulesView!
+    private var decisionWeek: DecisionWeekView!
     private var notifySettingsButton: NSButton!
     private var notifyTestButton: NSButton!
 
@@ -431,9 +432,17 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         rulesPageButton = SettingsChrome.smallButton("Open Rules", target: self,
                                                      action: #selector(showRulesPage))
         rulesView = RulesView()
-        rulesView.onResize = { [weak self] in self?.refit() }
+        // A rule changed on the Rules page is a rule the week reads, so the week
+        // is redrawn with it.
+        rulesView.onResize = { [weak self] in
+            self?.decisionWeek?.reload()
+            self?.refit()
+        }
         rulesView.onNew = { [weak self] in self?.addRule() }
         rulesView.onEdit = { [weak self] rule in self?.addRule(RuleSheet.Prefill(rule)) }
+        decisionWeek = DecisionWeekView()
+        decisionWeek.onResize = { [weak self] in self?.refit() }
+        decisionWeek.onWriteRule = { [weak self] prefill in self?.addRule(prefill) }
 
         diagnostics = DiagnosticsView()
         diagnostics.onResize = { [weak self] in self?.refit() }
@@ -580,6 +589,9 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             ])
         case .approvals:
             add([
+                // On this page rather than Rules: it is the ledger read back, and
+                // the Rules page with four rules has no room left under it.
+                SettingsChrome.card([SettingsChrome.customRow(decisionWeek)]),
                 SettingsChrome.card([
                     SettingsChrome.row("Remember what I decided",
                                        "So a prompt you have answered before can say so: "
@@ -758,6 +770,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         rememberBox.state = DecisionLedger.enabled ? .on : .off
         rulesBox.state = RulesStore.enabled ? .on : .off
         rulesView.reload()
+        decisionWeek.reload()
         notifyApprovalsBox.state = Notifier.Prefs.approvals ? .on : .off
         notifyFailuresBox.state = Notifier.Prefs.failures ? .on : .off
         notifyQuietBox.state = Notifier.Prefs.quiet ? .on : .off

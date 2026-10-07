@@ -498,6 +498,10 @@ final class DecisionLedger {
         var days = 0
         var firstAt: TimeInterval = 0
         var lastAt: TimeInterval = 0
+        /// How long agents waited on the answers you gave that the rule would have
+        /// given too — the time it would have saved, had it been answering. Only
+        /// agreements: an answer it would have got wrong saved nobody anything.
+        var agreedWaited: TimeInterval = 0
         /// Your row, the most recent time you went the other way.
         var lastDisagreement: Record?
 
@@ -560,6 +564,7 @@ final class DecisionLedger {
             let did = a.decision == "deny" ? "deny" : "allow"
             if did == w.would {
                 out.agreed += 1
+                out.agreedWaited += a.waited
                 days.insert(calendar.dateComponents([.year, .month, .day],
                                                     from: Date(timeIntervalSince1970: w.ts)))
             } else {
