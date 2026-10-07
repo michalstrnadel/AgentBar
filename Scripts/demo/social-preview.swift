@@ -51,7 +51,7 @@ if let path = cardPath, let card = NSImage(contentsOfFile: path) {
     shadow.shadowBlurRadius = 70
     shadow.shadowOffset = NSSize(width: 0, height: -24)
     shadow.set()
-    color(0x0B0A12).setFill()
+    color(0xF7F5F0).setFill()
     clip.fill()
     NSGraphicsContext.restoreGraphicsState()
     NSGraphicsContext.saveGraphicsState()

@@ -321,25 +321,27 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
 ## Your Day
 
 <p align="center">
-  <img src="docs/assets/your-day.gif?v=2026-10-07b" width="300" alt="AgentBar's Your Day card building itself: 'Today you were The Orchestrator — 3 agents working at once at 9:24', 11h of agent time counting up, the day's hours rising as bars in each agent's colour with the peak marked, then tiles for the top agent, the code changed, your answers and the top project">
+  <img src="docs/assets/your-day.gif?v=2026-10-07c" width="300" alt="AgentBar's Your Day card building itself on plain paper: the date, 11h of agent time counting up, 'The Orchestrator. 3 agents working at once at 9:24.', the day's hours as bars in each agent's colour with the peak marked by a thin line, and a list: top agent Claude, changed +3,160 −968, your answers 25, top project">
   &nbsp;
-  <img src="docs/assets/your-day.png?v=2026-10-07b" width="300" alt="The same card for a week: 34h 24m of agent time, seven days as bars with the best day marked, and the same four tiles">
+  <img src="docs/assets/your-day.png?v=2026-10-07c" width="300" alt="The same card for a week: 34h 24m of agent time, seven days as bars with the best day marked, and the same list">
 </p>
 
 **Your Day…** — in the menu bar's menu and the island's ⋯ — puts your day with
 your agents on one card, the way a year-in-music recap does, built to be read in a
 glance and made to be shared. **This week** switches it to the last seven days.
 
-- **Who you were today** as the headline — The Orchestrator, The Marathoner, The
-  Night Owl, The Delegator, The Quick Draw… — with the number that earned it.
-- **Agent time**, and the day as bars, hour by hour, in the colour of the agent
-  that had each hour, with **your peak** — the most agents at once — marked on
-  them. A week marks its best day instead.
-- **Your top agent** and its share, **what changed in your repos**, **your
-  answers** (how many your rules gave, how long the agents waited on you) and
-  **where the work went**.
+- **Agent time** first, as the one big number, and **who you were today** under it
+  as a sentence — The Orchestrator, The Marathoner, The Night Owl, The Delegator,
+  The Quick Draw… — with the number that earned it.
+- **The day as bars**, hour by hour, in the colour of the agent that had each
+  hour, with **your peak** — the most agents at once — marked by a thin line. A
+  week marks its best day instead.
+- Then a plain list: **your top agent** and its share, **what changed in your
+  repos**, **your answers** (how many your rules gave, how long the agents waited
+  on you) and **where the work went**. Flat paper and ink — the agents' colours
+  appear on their bars and nowhere else.
 - **Honest numbers, as everywhere in AgentBar**: a figure measured on some sessions
-  says so ("in 9 of 21 sessions"), and a fact with nothing behind it gets no tile
+  says so ("9 of 21 sessions"), and a fact with nothing behind it gets no row
   rather than a zero. Lines are *what changed in the repo* while the agents ran,
   not a claim about who wrote them.
 - **Share it**: copy the card (⌘C), save it as a story (1080 × 1920) or square PNG,
