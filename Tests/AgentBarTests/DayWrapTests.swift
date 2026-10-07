@@ -144,3 +144,12 @@ import Testing
         #expect(w.agentSeconds == 7200)
     }
 }
+
+@Suite struct DayWrapWeekWordsTests {
+    @Test func aWeeksPeakSaysWhichDay() {
+        let week = WrapDemo.wrap(.week)
+        #expect(week.persona.title == "The Orchestrator")
+        #expect(week.persona.reason.contains(" on "))
+        #expect(!WrapDemo.wrap(.today).persona.reason.contains(" on "))
+    }
+}

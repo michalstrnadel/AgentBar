@@ -2,46 +2,47 @@ import AppKit
 import Testing
 @testable import AgentBar
 
-/// The recap's pictures: every slide draws something, the same moment draws the
-/// same pixels, and a slide with nothing behind it is left out.
+/// The recap's picture: one card that builds and then holds, the same moment
+/// draws the same pixels, and a fact with nothing behind it gets no tile.
 @MainActor
 @Suite struct WrapRendererTests {
     private let wrap = WrapDemo.wrap(.today)
 
     private func pixels(_ rep: NSBitmapImageRep) -> Data { Data(bytes: rep.bitmapData!, count: rep.bytesPerRow * rep.pixelsHigh) }
 
-    @Test func aFullDayHasEverySlideAndEndsOnTheCard() {
-        let slides = WrapRenderer.slides(for: wrap)
-        #expect(slides.first == .cover)
-        #expect(slides.last == .card)
-        #expect(slides.contains(.time) && slides.contains(.agent) && slides.contains(.code))
-        #expect(!slides.contains(.bestDay))   // a day has no best day
-        #expect(WrapRenderer.slides(for: WrapDemo.wrap(.week)).contains(.bestDay))
-    }
-
-    @Test func anEmptyDayIsJustTheCover() {
-        let empty = DayWrap.make(.today, history: [], ledger: [])
-        #expect(WrapRenderer.slides(for: empty) == [.cover])
-    }
-
-    @Test func everySlideDrawsAndTheSameMomentDrawsTheSamePicture() throws {
-        let size = CGSize(width: 270, height: 480)
-        let week = WrapDemo.wrap(.week)
-        for slide in WrapRenderer.slides(for: week) {
-            let a = try #require(WrapRenderer.bitmap(slide, at: 1.2, wrap: week, pixels: size))
-            let b = try #require(WrapRenderer.bitmap(slide, at: 1.2, wrap: week, pixels: size))
-            #expect(pixels(a) == pixels(b), "\(slide) is not deterministic")
-            // Not one flat colour: words and shapes were drawn on the background.
-            var seen = Set<String>()
-            for x in stride(from: 0, to: 270, by: 9) {
-                for y in stride(from: 0, to: 480, by: 9) {
-                    if let c = a.colorAt(x: x, y: y) {
-                        seen.insert("\(Int(c.redComponent * 8))\(Int(c.greenComponent * 8))\(Int(c.blueComponent * 8))")
-                    }
+    private func colours(_ rep: NSBitmapImageRep) -> Int {
+        var seen = Set<String>()
+        for x in stride(from: 0, to: rep.pixelsWide, by: 9) {
+            for y in stride(from: 0, to: rep.pixelsHigh, by: 9) {
+                if let c = rep.colorAt(x: x, y: y) {
+                    seen.insert("\(Int(c.redComponent * 8))\(Int(c.greenComponent * 8))\(Int(c.blueComponent * 8))")
                 }
             }
-            #expect(seen.count >= 3, "\(slide) drew nothing")
         }
+        return seen.count
+    }
+
+    @Test func theSameMomentDrawsTheSamePicture() throws {
+        let size = CGSize(width: 270, height: 480)
+        for range in DayWrap.Range.allCases {
+            let w = WrapDemo.wrap(range)
+            for t in [0.3, 1.2, 2.0] {
+                let a = try #require(WrapRenderer.bitmap(at: t, wrap: w, pixels: size))
+                let b = try #require(WrapRenderer.bitmap(at: t, wrap: w, pixels: size))
+                #expect(pixels(a) == pixels(b), "\(range) at \(t) is not deterministic")
+            }
+        }
+    }
+
+    @Test func theBuildEndsOnTheStillCard() throws {
+        let size = CGSize(width: 270, height: 480)
+        let end = try #require(WrapRenderer.bitmap(at: WrapRenderer.buildSeconds, wrap: wrap, pixels: size))
+        let still = try #require(WrapRenderer.bitmap(at: 0, wrap: wrap, pixels: size, still: true))
+        #expect(pixels(end) == pixels(still))
+        // And it is built up, not there from the first frame.
+        let start = try #require(WrapRenderer.bitmap(at: 0.05, wrap: wrap, pixels: size))
+        #expect(pixels(start) != pixels(still))
+        #expect(colours(still) > colours(start))
     }
 
     @Test func theCardRendersInBothShapes() throws {
@@ -50,6 +51,39 @@ import Testing
         #expect(story.pixelsWide == 1080 && story.pixelsHigh == 1920)
         #expect(square.pixelsWide == 1080 && square.pixelsHigh == 1080)
         #expect(WrapExport.png(story)?.isEmpty == false)
+        #expect(colours(story) >= 6)
+        #expect(colours(square) >= 6)
+    }
+
+    @Test func anEmptyDayStillDrawsACard() throws {
+        let empty = DayWrap.make(.today, history: [], ledger: [])
+        #expect(WrapRenderer.tileFacts(empty).isEmpty)
+        let rep = try #require(WrapExport.card(empty, shape: .story))
+        #expect(colours(rep) >= 3)
+    }
+
+    @Test func tilesAreOnlyTheFactsThatExist() {
+        let facts = WrapRenderer.tileFacts(wrap).map(\.caption)
+        #expect(Array(facts.prefix(4)) == ["Top agent", "Code", "You", "Top project"])
+        var bare = wrap
+        bare.changeMeasured = 0
+        bare.waits = DayWrap.Waits()
+        let left = WrapRenderer.tileFacts(bare).map(\.caption)
+        #expect(!left.contains("Code") && !left.contains("You"))
+        #expect(left.first == "Top agent")
+    }
+
+    @Test func aSharedCardNamesNoProject() {
+        let shared = WrapRenderer.tileFacts(wrap.shareSafe())
+        let project = shared.first { $0.caption == "Top project" }
+        #expect(project?.value == "Project A")
+        #expect(project?.detail.contains("AgentBar") == false)
+    }
+
+    @Test func voiceOverReadsTheCard() {
+        let spoken = WrapCardView.spoken(wrap)
+        #expect(spoken.contains(wrap.persona.title))
+        #expect(spoken.contains("Top agent: Claude"))
     }
 
     @Test func aGIFIsWritten() throws {

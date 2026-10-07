@@ -3,46 +3,22 @@ import AVFoundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// The recap leaving the app: a card as PNG (portrait or square), the whole story
-/// as an MP4 or a GIF. Every frame comes from `WrapRenderer`, so what is shared is
-/// exactly what played.
+/// The card leaving the app: a PNG (portrait or square), or the card building
+/// itself as a short MP4 or a looping GIF. Every frame comes from `WrapRenderer`,
+/// so what is shared is exactly what was on screen.
 enum WrapExport {
     enum Shape { case story, square
         var pixels: CGSize { self == .story ? CGSize(width: 1080, height: 1920) : CGSize(width: 1080, height: 1080) }
     }
 
-    /// Crossfade between slides, in seconds. Short: a cut on a beat with the edge
-    /// taken off, not a dissolve anyone notices.
-    static let fade: Double = 0.3
-
-    /// The story at `t` seconds: the slide that is playing, with the next one fading
-    /// in over its last moments.
-    static func drawStory(at t: Double, slides: [WrapSlide], wrap: DayWrap, size: CGSize,
-                          in ctx: CGContext, still: Bool = false) {
-        guard !slides.isEmpty else { return }
-        let d = WrapRenderer.slideSeconds
-        let i = min(slides.count - 1, max(0, Int(t / d)))
-        let s = t - Double(i) * d
-        WrapRenderer.draw(slides[i], at: s, global: t, wrap: wrap, size: size, in: ctx, still: still)
-        if i + 1 < slides.count, s > d - fade {
-            let a = WrapStyle.easeInOut((s - (d - fade)) / fade)
-            ctx.saveGState()
-            ctx.setAlpha(CGFloat(a))
-            ctx.beginTransparencyLayer(auxiliaryInfo: nil)
-            WrapRenderer.draw(slides[i + 1], at: 0, global: t, wrap: wrap, size: size, in: ctx)
-            ctx.endTransparencyLayer()
-            ctx.restoreGState()
-        }
-    }
-
-    static func duration(of slides: [WrapSlide]) -> Double {
-        Double(slides.count) * WrapRenderer.slideSeconds
-    }
+    /// How long a moving export runs: the build, then the finished card held long
+    /// enough to read before it loops.
+    static let movingSeconds: Double = 6
 
     // MARK: - Still
 
     static func card(_ wrap: DayWrap, shape: Shape) -> NSBitmapImageRep? {
-        WrapRenderer.bitmap(.card, at: 0, wrap: wrap, pixels: shape.pixels, still: true)
+        WrapRenderer.bitmap(at: 0, wrap: wrap, pixels: shape.pixels, still: true)
     }
 
     static func png(_ rep: NSBitmapImageRep) -> Data? {
@@ -51,12 +27,11 @@ enum WrapExport {
 
     // MARK: - Moving
 
-    /// The whole story as an H.264 MP4, 1080 × 1920 at 30 fps. `progress` is called
-    /// on the calling queue with 0…1.
-    static func writeMP4(_ wrap: DayWrap, to url: URL, fps: Int = 30,
+    /// The card building, as an H.264 MP4 at 30 fps. `progress` is called on the
+    /// calling queue with 0…1.
+    static func writeMP4(_ wrap: DayWrap, to url: URL, shape: Shape = .story, fps: Int = 30,
                          progress: (Double) -> Void = { _ in }) throws {
-        let slides = WrapRenderer.slides(for: wrap)
-        let size = Shape.story.pixels
+        let size = shape.pixels
         try? FileManager.default.removeItem(at: url)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
@@ -78,7 +53,7 @@ enum WrapExport {
         guard writer.startWriting() else { throw writer.error ?? ExportError("the video writer did not start") }
         writer.startSession(atSourceTime: .zero)
 
-        let total = Int(duration(of: slides) * Double(fps))
+        let total = Int(movingSeconds * Double(fps))
         for n in 0..<total {
             while !input.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.002) }
             guard let pool = adaptor.pixelBufferPool else { throw ExportError("no pixel buffer pool") }
@@ -93,7 +68,7 @@ enum WrapExport {
                                    bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
                                        | CGBitmapInfo.byteOrder32Little.rawValue) {
                 drawFlipped(ctx, size: size) {
-                    drawStory(at: Double(n) / Double(fps), slides: slides, wrap: wrap, size: size, in: ctx)
+                    WrapRenderer.draw(at: Double(n) / Double(fps), wrap: wrap, size: size, in: ctx)
                 }
             }
             CVPixelBufferUnlockBaseAddress(pb, [])
@@ -108,32 +83,50 @@ enum WrapExport {
         progress(1)
     }
 
-    /// The story as a looping GIF, smaller and slower than the video: 540 × 960 at
-    /// 12 fps, three seconds a slide, so it stays a size a post will take.
-    static func writeGIF(_ wrap: DayWrap, to url: URL, progress: (Double) -> Void = { _ in }) throws {
-        let slides = WrapRenderer.slides(for: wrap)
-        let size = CGSize(width: 540, height: 960)
-        let fps = 12.0, perSlide = 3.0
-        let framesPerSlide = Int(perSlide * fps)
+    /// The card building, as a looping GIF: 540 × 960 at 15 fps — a size a post
+    /// will take. Past the build every frame is the same, so the hold is one frame
+    /// shown for as long, not dozens of copies.
+    static func writeGIF(_ wrap: DayWrap, to url: URL, shape: Shape = .story,
+                         progress: (Double) -> Void = { _ in }) throws {
+        let size = CGSize(width: shape.pixels.width / 2, height: shape.pixels.height / 2)
+        let fps = 15.0
+        let building = Int(WrapRenderer.buildSeconds * fps)
         guard let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString,
-                                                         slides.count * framesPerSlide, nil)
+                                                         building + 1, nil)
         else { throw ExportError("the GIF could not be created") }
         CGImageDestinationSetProperties(dest, [kCGImagePropertyGIFDictionary:
             [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
-        let frameProps = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1 / fps]] as CFDictionary
-        for (k, slide) in slides.enumerated() {
-            for n in 0..<framesPerSlide {
-                // The slide's own clock runs at the video's pace over its first
-                // `perSlide` seconds — every entrance plays, just less of the hold.
-                let s = Double(n) / fps * (WrapRenderer.slideSeconds / perSlide) * 0.85
-                guard let rep = WrapRenderer.bitmap(slide, at: s, global: Double(k) * perSlide + Double(n) / fps,
-                                                    wrap: wrap, pixels: size),
-                      let cg = rep.cgImage else { continue }
-                CGImageDestinationAddImage(dest, cg, frameProps)
-            }
-            progress(Double(k + 1) / Double(slides.count))
+        func frame(_ delay: Double) -> CFDictionary {
+            [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay,
+                                             kCGImagePropertyGIFUnclampedDelayTime: delay]] as CFDictionary
+        }
+        for n in 0...building {
+            let last = n == building
+            guard let rep = WrapRenderer.bitmap(at: Double(n) / fps, wrap: wrap, pixels: size, still: last)
+            else { continue }
+            dither(rep)
+            guard let cg = rep.cgImage else { continue }
+            CGImageDestinationAddImage(dest, cg, frame(last ? movingSeconds - WrapRenderer.buildSeconds : 1 / fps))
+            progress(Double(n + 1) / Double(building + 1))
         }
         guard CGImageDestinationFinalize(dest) else { throw ExportError("the GIF could not be written") }
+    }
+
+    /// A GIF has 256 colours, and the card's soft glows have thousands: quantised
+    /// as they are they come out as rings. A fixed 4 × 4 ordered pattern of ±3
+    /// levels breaks the rings up into a grain the eye reads as a gradient — and,
+    /// being fixed, it does not crawl from frame to frame the way noise would.
+    static func dither(_ rep: NSBitmapImageRep) {
+        guard let data = rep.bitmapData, rep.bitsPerSample == 8, rep.samplesPerPixel >= 3 else { return }
+        let bayer: [Int] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
+        let spp = rep.samplesPerPixel, row = rep.bytesPerRow
+        for y in 0..<rep.pixelsHigh {
+            for x in 0..<rep.pixelsWide {
+                let d = (bayer[(y & 3) * 4 + (x & 3)] - 8) * 3 / 8
+                let p = data + y * row + x * spp
+                for c in 0..<3 { p[c] = UInt8(clamping: Int(p[c]) + d) }
+            }
+        }
     }
 
     /// Runs `body` with `ctx` flipped (y down) and set as the current AppKit context.
@@ -155,8 +148,8 @@ enum WrapExport {
 
     // MARK: - Verification
 
-    /// Every slide as a still, both cards, and — with `frames` — a strip of moments
-    /// from each slide's animation, into `dir`. Offscreen: nothing opens.
+    /// The card in both shapes, its share-safe twin, a strip of moments from the
+    /// build, and the window, into `dir`. Offscreen: nothing opens.
     static func renderForVerification(to dir: URL, range: DayWrap.Range, demo: Bool, frames: Bool,
                                       video: Bool = false) -> Bool {
         let fm = FileManager.default
@@ -164,34 +157,33 @@ enum WrapExport {
         let wrap = demo ? WrapDemo.wrap(range)
             : DayWrap.make(range, history: HistoryStore.read(), ledger: DecisionLedger.read())
         var ok = true
-        let slides = WrapRenderer.slides(for: wrap)
-        for (i, slide) in slides.enumerated() {
-            guard let rep = WrapRenderer.bitmap(slide, at: 0, wrap: wrap, pixels: Shape.story.pixels, still: true),
-                  let data = png(rep) else { ok = false; continue }
-            ok = (try? data.write(to: dir.appendingPathComponent(String(format: "%02d-%@.png", i, slide.rawValue)))) != nil && ok
-            guard frames else { continue }
-            for t in [0.3, 0.8, 1.5, 3.0] {
-                if let rep = WrapRenderer.bitmap(slide, at: t, wrap: wrap, pixels: CGSize(width: 540, height: 960)),
-                   let data = png(rep) {
-                    try? data.write(to: dir.appendingPathComponent(String(format: "%02d-%@-%.1fs.png", i, slide.rawValue, t)))
-                }
+        func write(_ rep: NSBitmapImageRep?, _ name: String) {
+            guard let rep, let data = png(rep) else { ok = false; return }
+            ok = (try? data.write(to: dir.appendingPathComponent(name))) != nil && ok
+        }
+        for shape in [Shape.story, .square] {
+            let name = shape == .story ? "story" : "square"
+            write(card(wrap, shape: shape), "card-\(name).png")
+            write(card(wrap.shareSafe(), shape: shape), "card-\(name)-shared.png")
+        }
+        if frames {
+            for t in [0.2, 0.5, 0.9, 1.3, 1.8, 2.4] {
+                write(WrapRenderer.bitmap(at: t, wrap: wrap, pixels: CGSize(width: 540, height: 960)),
+                      String(format: "build-%.1fs.png", t))
             }
         }
         if video {
             do {
-                try writeMP4(wrap.shareSafe(), to: dir.appendingPathComponent("story.mp4"))
-                try writeGIF(wrap.shareSafe(), to: dir.appendingPathComponent("story.gif"))
+                // The made-up day's names are nobody's; a real day's leave as they would.
+                let moving = demo ? wrap : wrap.shareSafe()
+                try writeMP4(moving, to: dir.appendingPathComponent("card.mp4"))
+                try writeGIF(moving, to: dir.appendingPathComponent("card.gif"))
             } catch {
                 FileHandle.standardError.write(Data("video: \(error)\n".utf8))
                 ok = false
             }
         }
-        ok = WrapWindow.shared.renderForVerification(wrap, slide: 1, at: 2.5,
-                                                     to: dir.appendingPathComponent("window.png")) && ok
-        for shape in [Shape.story, .square] {
-            guard let rep = card(wrap.shareSafe(), shape: shape), let data = png(rep) else { ok = false; continue }
-            ok = (try? data.write(to: dir.appendingPathComponent("card-\(shape == .story ? "story" : "square")-shared.png"))) != nil && ok
-        }
+        ok = WrapWindow.shared.renderForVerification(wrap, to: dir.appendingPathComponent("window.png")) && ok
         return ok
     }
 }

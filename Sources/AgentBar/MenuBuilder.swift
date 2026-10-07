@@ -175,7 +175,7 @@ enum MenuBuilder {
                               keyEquivalent: "")
         item.target = WrapWindow.shared
         item.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
-        item.toolTip = "Your day with your agents, as a story — and a card to share"
+        item.toolTip = "Your day with your agents, on one card to keep or share"
         return item
     }
 

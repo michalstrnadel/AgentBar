@@ -262,7 +262,8 @@ struct DayWrap: Equatable {
         let day = w.range == .today ? "today" : "this week"
         if w.peak >= 3 {
             return Persona(title: "The Orchestrator",
-                           reason: "\(w.peak) agents working at once at \(clock(w.peakAt, calendar)).",
+                           reason: "\(w.peak) agents working at once at \(clock(w.peakAt, calendar))"
+                               + (w.range == .week ? " on \(weekday(w.peakAt, calendar))." : "."),
                            symbol: "square.stack.3d.up.fill")
         }
         if let l = w.longest, l.seconds >= 2 * 3_600 {
@@ -310,6 +311,15 @@ struct DayWrap: Equatable {
         let night = w.bins.enumerated().filter { $0.offset >= 22 || $0.offset < 5 }
             .reduce(0) { $0 + $1.element }
         return night / w.agentSeconds
+    }
+
+    static func weekday(_ t: TimeInterval, _ calendar: Calendar = .current) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US")
+        f.calendar = calendar
+        f.timeZone = calendar.timeZone
+        f.dateFormat = "EEEE"
+        return f.string(from: Date(timeIntervalSince1970: t))
     }
 
     static func clock(_ t: TimeInterval, _ calendar: Calendar = .current) -> String {

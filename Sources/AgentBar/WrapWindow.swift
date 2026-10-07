@@ -1,17 +1,17 @@
 import AppKit
 import UniformTypeIdentifiers
 
-/// Your Day: the recap, played as a story in a small window of its own.
+/// Your Day: the recap, as one card in a small window of its own.
 ///
 /// A window the person opens — from **Your Day…** in either menu or an
 /// `agentbar://day` link — and nothing else ever does: a recap nobody asked for
-/// would be a window unfolding on its own (CLAUDE.md rule 2). Its clock runs only
-/// while it is on screen, the way the games' does.
+/// would be a window unfolding on its own (CLAUDE.md rule 2). The card builds once
+/// when it opens and then holds still; its clock runs only for those two seconds.
 final class WrapWindow: NSObject, NSWindowDelegate {
     static let shared = WrapWindow()
 
     private var window: NSWindow?
-    private var player: WrapPlayerView!
+    private var player: WrapCardView!
     private var rangeControl: NSSegmentedControl!
     private var namesBox: NSButton!
     private var status: NSTextField!
@@ -27,7 +27,7 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(player)
-        player.play(from: 0)
+        player.build()
     }
 
     @objc func openFromMenu(_ sender: Any?) { show(.today) }
@@ -41,7 +41,7 @@ final class WrapWindow: NSObject, NSWindowDelegate {
     // MARK: - Build
 
     private func build() {
-        let size = WrapPlayerView.size
+        let size = WrapCardView.size
         let barHeight: CGFloat = 92
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: size.width, height: size.height + barHeight),
                          styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
@@ -56,7 +56,7 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         w.delegate = self
         w.center()
 
-        player = WrapPlayerView(frame: NSRect(origin: NSPoint(x: 0, y: barHeight), size: size))
+        player = WrapCardView(frame: NSRect(origin: NSPoint(x: 0, y: barHeight), size: size))
         player.autoresizingMask = [.width, .height]
 
         rangeControl = NSSegmentedControl(labels: ["Today", "This week"], trackingMode: .selectOne,
@@ -80,8 +80,8 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         exportButtons = [
             button("Copy", "doc.on.doc", #selector(copyCard), "Copy the card as an image (⌘C)"),
             button("Image", "photo", #selector(saveImage), "Save the card as a PNG — story or square"),
-            button("Video", "film", #selector(saveVideo), "Save the whole story as an MP4"),
-            button("GIF", "sparkles.rectangle.stack", #selector(saveGIF), "Save the whole story as a looping GIF"),
+            button("Video", "film", #selector(saveVideo), "Save the card building itself, as a 6-second MP4"),
+            button("GIF", "sparkles.rectangle.stack", #selector(saveGIF), "Save the card building itself, as a looping GIF"),
             button("Share", "square.and.arrow.up", #selector(share(_:)), "Share the card"),
         ]
         status = NSTextField(labelWithString: "")
@@ -116,12 +116,11 @@ final class WrapWindow: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) { player.stop() }
     func windowDidMiniaturize(_ notification: Notification) { player.stop() }
-    func windowDidDeminiaturize(_ notification: Notification) { player.resume() }
 
     @objc private func rangeChanged() {
         range = rangeControl.selectedSegment == 0 ? .today : .week
         reload()
-        player.play(from: 0)
+        player.build()
     }
 
     // MARK: - Export
@@ -226,12 +225,12 @@ final class WrapWindow: NSObject, NSWindowDelegate {
 
     private func say(_ s: String) { status.stringValue = s }
 
-    /// The window as it looks a few seconds into `slide`, drawn to a file without
-    /// putting it on screen.
-    func renderForVerification(_ wrap: DayWrap, slide: Int, at seconds: Double, to url: URL) -> Bool {
+    /// The window with its card finished, drawn to a file without putting it on
+    /// screen.
+    func renderForVerification(_ wrap: DayWrap, to url: URL) -> Bool {
         if window == nil { build() }
         player.load(wrap)
-        player.seek(Double(slide) * WrapRenderer.slideSeconds + seconds)
+        player.finish()
         guard let view = window?.contentView,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return false }
         view.wantsLayer = true
@@ -241,47 +240,59 @@ final class WrapWindow: NSObject, NSWindowDelegate {
     }
 }
 
-/// The story itself: the slides playing, the segmented progress line across the
-/// top, click or arrow to move, Space to pause.
-final class WrapPlayerView: NSView {
+/// The card: it builds when the window opens and then holds. A click — or
+/// Space — builds it again; Esc closes; ⌘C copies.
+final class WrapCardView: NSView {
     static let size = NSSize(width: 405, height: 720)
 
     private(set) var wrap = DayWrap(range: .today, start: 0, end: 0)
-    private var slides: [WrapSlide] = [.cover]
-    private var t: Double = 0
+    private var t: Double = WrapRenderer.buildSeconds
     private var timer: Timer?
     private var last: CFTimeInterval = 0
-    private(set) var paused = false
     var onCopy: (() -> Void)?
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
-    private var total: Double { WrapExport.duration(of: slides) }
-    private var index: Int { min(slides.count - 1, Int(t / WrapRenderer.slideSeconds)) }
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+    var isBuilding: Bool { timer != nil }
 
     func load(_ w: DayWrap) {
         wrap = w
-        slides = WrapRenderer.slides(for: w)
         setAccessibilityElement(true)
-        setAccessibilityRole(.group)
-        setAccessibilityLabel("\(w.range.title) with agents. \(w.persona.title). \(w.persona.reason)")
+        setAccessibilityRole(.image)
+        setAccessibilityLabel(Self.spoken(w))
         needsDisplay = true
     }
 
-    func play(from start: Double) {
-        t = start
-        paused = false
-        resume()
+    /// What VoiceOver reads: the card's facts as a sentence each.
+    static func spoken(_ w: DayWrap) -> String {
+        guard !w.isEmpty else { return "\(w.range.title) with agents. Nothing has finished yet." }
+        var parts = ["\(w.range.title) with agents. You were \(w.persona.title). \(w.persona.reason)"]
+        if w.timed > 0 { parts.append("\(HistoryDigest.duration(w.agentSeconds)) of agent time.") }
+        for t in WrapRenderer.tileFacts(w).prefix(4) {
+            parts.append("\(t.caption): \(t.value)\(t.second.map { " " + $0.0 } ?? ""), \(t.detail).")
+        }
+        return parts.joined(separator: " ")
     }
 
-    func resume() {
-        guard timer == nil, !paused else { return }
+    /// Builds the card from nothing — or, under Reduce Motion, shows it finished.
+    func build() {
+        stop()
+        guard !reduceMotion else { return finish() }
+        t = 0
         last = CACurrentMediaTime()
         let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+        needsDisplay = true
+    }
+
+    /// The finished card, at once.
+    func finish() {
+        stop()
+        t = WrapRenderer.buildSeconds
+        needsDisplay = true
     }
 
     func stop() {
@@ -289,77 +300,25 @@ final class WrapPlayerView: NSView {
         timer = nil
     }
 
-    /// Holds the story still at `seconds` — for pictures of the window.
-    func seek(_ seconds: Double) {
-        stop()
-        t = seconds
-        needsDisplay = true
-    }
-
     private func tick() {
         let now = CACurrentMediaTime()
-        let dt = min(0.1, now - last)
+        t += min(0.1, now - last)
         last = now
-        t += dt
-        // The card is the end: it holds rather than looping back to the cover.
-        if t >= total - 0.01 {
-            t = max(0, total - 0.01)
-            stop()
-        }
+        if t >= WrapRenderer.buildSeconds { return finish() }
         needsDisplay = true
     }
-
-    private func go(to i: Int) {
-        let i = max(0, min(slides.count - 1, i))
-        t = Double(i) * WrapRenderer.slideSeconds
-        if !paused { resume() }
-        needsDisplay = true
-    }
-
-    // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let size = bounds.size
-        if reduceMotion {
-            // Still slides that change on the cut: the words without the motion.
-            WrapRenderer.draw(slides[index], at: 0, wrap: wrap, size: size, in: ctx, still: true)
-        } else {
-            WrapExport.drawStory(at: t, slides: slides, wrap: wrap, size: size, in: ctx)
-        }
-        drawProgress(size)
+        let done = t >= WrapRenderer.buildSeconds
+        WrapRenderer.draw(at: t, wrap: wrap, size: bounds.size, in: ctx, still: done)
     }
 
-    /// One segment per slide, filling as it plays — the story's own clock.
-    private func drawProgress(_ size: CGSize) {
-        let n = slides.count
-        let gap: CGFloat = 4, inset: CGFloat = 12, h: CGFloat = 3
-        let top: CGFloat = 32 // under the traffic lights' row
-        let w = (size.width - 2 * inset - gap * CGFloat(n - 1)) / CGFloat(n)
-        for i in 0..<n {
-            let x = inset + CGFloat(i) * (w + gap)
-            let fill: Double = i < index ? 1 : i > index ? 0
-                : (t - Double(i) * WrapRenderer.slideSeconds) / WrapRenderer.slideSeconds
-            WrapStyle.pill(CGRect(x: x, y: top, width: w, height: h), NSColor.white.withAlphaComponent(0.28))
-            WrapStyle.pill(CGRect(x: x, y: top, width: w * CGFloat(WrapStyle.clamp(fill)), height: h),
-                           NSColor.white.withAlphaComponent(0.95))
-        }
-    }
-
-    // MARK: - Input
-
-    override func mouseUp(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        go(to: index + (p.x < bounds.width / 3 ? -1 : 1))
-    }
+    override func mouseUp(with event: NSEvent) { build() }
 
     override func keyDown(with event: NSEvent) {
         switch event.keyCode {
-        case 123: go(to: index - 1)                    // ←
-        case 124: go(to: index + 1)                    // →
-        case 49:                                       // Space
-            paused.toggle()
-            if paused { stop() } else { resume() }
+        case 49: build()                               // Space
         case 53: window?.performClose(nil)             // Esc
         default:
             if event.modifierFlags.contains(.command), event.charactersIgnoringModifiers == "c" { onCopy?() }
