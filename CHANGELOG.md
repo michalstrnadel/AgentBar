@@ -3,6 +3,48 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.45.0 - 2026-10-07
+
+### Added
+
+- **Carry a session on in another agent.** When a session's quota is half an
+  hour from running out, its island row says **out ~15:40 ↗**. Click it, or
+  right-click any session row, or use **Continue … Elsewhere** under the menu's
+  meter, and pick an agent. The launcher opens in the same project with that
+  agent and a one-line prompt: your last prompt, the agent's last update, and
+  "look at `git status` and `git diff` first". You read it, you press Return, and
+  the first session is left exactly as it was.
+- **Your week of decisions**, at the top of Settings ▸ Approvals: the five kinds
+  of request that held your agents up longest over the last seven days, how often
+  each was asked, how long they waited, and how you answered.
+  - A watching rule says what it would have answered and about how much waiting
+    that would have saved.
+  - An answering rule says what it took itself.
+  - A request you always answer the same way, with no rule yet, offers **Write a
+    rule…**: the usual sheet, prefilled, starting in watching mode. Nothing is
+    saved until you save it.
+- **Status bridges for Aider, goose, Cline and Amp** (#17, #18, #19, #20), each in
+  `Scripts/hooks/<agent>/` with a README naming the signal it uses:
+  - **Aider:** a wrapper around `aider`, using its notifications command and its
+    input history.
+  - **goose:** a goose plugin on its hooks.
+  - **Cline:** one hook script for both the VS Code extension and the CLI.
+  - **Amp:** an Amp plugin.
+
+  All four only report status through `agentbar report`. None of them answers,
+  approves or blocks anything, and an agent without AgentBar is unaffected. Kiro
+  is not covered: its hook payload is not documented well enough to build on
+  honestly.
+
+### Fixed
+
+- **The island no longer floats over Mission Control.** It stayed drawn over the
+  Spaces bar while the desktop zoomed out beneath it, still taking the hover and
+  playing its expand over the shrunken screen. Mission Control now hides it, as it
+  hides the menu bar.
+- A Settings row with a wide button (**Open Rules**, **Export…**) no longer lets
+  its caption run under the button.
+
 ## 1.44.3 - 2026-10-07
 
 ### Fixed
