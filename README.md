@@ -34,7 +34,7 @@ do, or a rule you wrote yourself, and every answer is written down.
 | **Settings ▸ Agents ▸ Show changes…** | Every write AgentBar made into an agent's settings, as a unified diff, with the copy it kept beside the file |
 | Flip an agent's switch off in **Settings ▸ Agents** | Shows what it will take out of that agent's settings, then removes only AgentBar's own entries — and leaves them out from then on |
 | `agentbar report --agent aider --name Aider --state tool --label Editing --pid $$` | Any tool you run joins the bar under its own name and mark — wrap it in a few lines, no Swift |
-| **Your Day…** in the menu or the island's ⋯ | Your day — or week — with your agents as a story: agent time, your top agent, what changed, how long they waited on you, who you were today; then a card to copy, post or save as video |
+| **Your Day…** in the menu or the island's ⋯ | Your day — or week — with your agents on one card: who you were today, agent time, the hours, your top agent, what changed, your answers; copy it, post it, or save it as a video |
 | Drag a screenshot or a file onto a session in the island | Its path lands in that agent's prompt — pasted into the right tab, never with Return |
 | Let a quota window run hot | The meter says when it runs out at this pace — "out ~15:40" — when that is before it resets |
 | `open agentbar://focus` from Shortcuts or Raycast | Jumps to the session waiting on you — and no link can approve or deny anything |
@@ -129,6 +129,11 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
 <p align="center">
   <img src="docs/assets/demo-island.gif?v=2026-09-23" width="640" alt="AgentBar as a Dynamic Island: the pill under the notch says approve?, opens on hover into the session panel with the mini-diff, one click on Allow, and the pill flashes ✓ Allowed">
   <br><sub><b>Dynamic Island mode</b> — pick either (or both) in the welcome window</sub>
+</p>
+
+<p align="center">
+  <img src="docs/assets/hand-a-file.gif?v=2026-10-07" width="720" alt="A screenshot dragged from the desktop onto a Claude session in the island: the row says 'Drop to hand it to Claude', then '✓ In Claude's prompt — add a word and press Return', and the escaped path appears in the terminal's prompt with no Return pressed. A Codex row says 'quiet 12m?', and the footer meter reads 'Claude 12% left · out ~15:03' in amber">
+  <br><sub><b>Hand a file to an agent</b> — and a session gone quiet, and when the limit runs out</sub>
 </p>
 
 - **Two surfaces, your pick** — the classic **menu bar** item, a **Dynamic Island**
@@ -316,27 +321,33 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
 ## Your Day
 
 <p align="center">
-  <img src="docs/assets/your-day.png?v=2026-10-07" width="900" alt="Five slides of AgentBar's Your Day recap: 11h of agent time with the day's hours as bars on lime; where the work went as a bar race on pink; 'They waited 2m on you' with answer tiles on blue; 'The Orchestrator' persona on violet; and the share card with every stat and the day's bars">
+  <img src="docs/assets/your-day.gif?v=2026-10-07b" width="300" alt="AgentBar's Your Day card building itself: 'Today you were The Orchestrator — 3 agents working at once at 9:24', 11h of agent time counting up, the day's hours rising as bars in each agent's colour with the peak marked, then tiles for the top agent, the code changed, your answers and the top project">
+  &nbsp;
+  <img src="docs/assets/your-day.png?v=2026-10-07b" width="300" alt="The same card for a week: 34h 24m of agent time, seven days as bars with the best day marked, and the same four tiles">
 </p>
 
-**Your Day…** — in the menu bar's menu and the island's ⋯ — plays your day with your
-agents as a story, the way a year-in-music recap does, and ends on a card made to be
-shared. **This week** switches it to the last seven days.
+**Your Day…** — in the menu bar's menu and the island's ⋯ — puts your day with
+your agents on one card, the way a year-in-music recap does, built to be read in a
+glance and made to be shared. **This week** switches it to the last seven days.
 
-- **Agent time** and the day as bars, hour by hour; **your top agent** and its share;
-  **where the work went** and the longest run; **what changed in your repos**;
-  **how long they waited on you** — your answers as dots on the day, your rules' in
-  lime; **your peak**, the most agents at once; and **who you were today**: The
-  Orchestrator, The Marathoner, The Night Owl, The Delegator, The Quick Draw…
+- **Who you were today** as the headline — The Orchestrator, The Marathoner, The
+  Night Owl, The Delegator, The Quick Draw… — with the number that earned it.
+- **Agent time**, and the day as bars, hour by hour, in the colour of the agent
+  that had each hour, with **your peak** — the most agents at once — marked on
+  them. A week marks its best day instead.
+- **Your top agent** and its share, **what changed in your repos**, **your
+  answers** (how many your rules gave, how long the agents waited on you) and
+  **where the work went**.
 - **Honest numbers, as everywhere in AgentBar**: a figure measured on some sessions
-  says so ("across 9 timed sessions"), and a slide with nothing behind it is left out
-  rather than padded with zeroes. Lines are *what changed in the repo* while the
-  agents ran, not a claim about who wrote them.
-- **Share it**: copy the card, save it as a story (1080 × 1920) or square PNG, the
-  whole story as an MP4 or a GIF, or hand it to the share sheet. **Project names and
-  tasks stay out of everything you export** unless you tick the box.
-- It never opens by itself. → ← or a click to move, Space to pause, Esc to close; the
-  clock runs only while it is on screen, and Reduce Motion gets still slides.
+  says so ("in 9 of 21 sessions"), and a fact with nothing behind it gets no tile
+  rather than a zero. Lines are *what changed in the repo* while the agents ran,
+  not a claim about who wrote them.
+- **Share it**: copy the card (⌘C), save it as a story (1080 × 1920) or square PNG,
+  save it building itself as a 6-second MP4 or a looping GIF, or hand it to the
+  share sheet. **Project names stay out of everything you export** unless you tick
+  the box.
+- It never opens by itself. It builds once when it opens, then holds still — a click
+  or Space builds it again, Esc closes — and Reduce Motion shows it finished.
 - `agentbar://day` and `agentbar://week` open it from Shortcuts or Raycast.
 
 ## Take a break

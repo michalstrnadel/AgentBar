@@ -7,16 +7,17 @@ recording permission.
 
 | Output | Generator | How it draws |
 |---|---|---|
-| `agentbar-tour.gif` / `.mp4` / `.jpg`, `deny-with-note.gif`, `rules-try-it.gif` | `feature-gifs.swift` via `make-gifs.sh` | **the app's own views**, compiled in |
+| `agentbar-tour.gif` / `.mp4` / `.jpg`, `deny-with-note.gif`, `rules-try-it.gif`, `hand-a-file.gif` | `feature-gifs.swift` via `make-gifs.sh` | **the app's own views**, compiled in |
 | `demo-claude-codex.gif` | `demo-gif.swift` | hand-drawn stage, mascot frames from the sprite sources |
 | `demo-island.gif` | `demo-island-gif.swift` | hand-drawn stage and island |
-| `social-preview.png` | `social-preview.swift` | the banner, from the 1024 icon master |
+| `social-preview.png` | `social-preview.swift` | the banner, from the 1024 icon master and the Your Day card (`--render-wrap … --demo`) |
 
 ## Feature GIFs: the generator to reach for
 
 ```bash
 Scripts/demo/make-gifs.sh              # writes into docs/assets
 Scripts/demo/make-gifs.sh /tmp/gifs    # or anywhere else, to look first
+Scripts/demo/make-gifs.sh /tmp/gifs hand-a-file   # one scene only, by its output name
 ```
 
 `make-gifs.sh` compiles `feature-gifs.swift` together with every file in
@@ -45,8 +46,17 @@ panel is 920 px wide on a 1200 px frame, the same scale the other demos use.
    `Stage.button("Title", in: view)` so the pointer lands on them, and push one
    `Stage.frame { … }` per frame. Cache snapshots by state; re-rendering an unchanged
    view every frame is most of the run time.
-4. Register it in `FeatureGIFs.main`, then `Scripts/demo/make-gifs.sh /tmp/gifs` and
-   look at a few frames before writing into `docs/assets`.
+4. Register it in `FeatureGIFs.main`'s `scenes`, then
+   `Scripts/demo/make-gifs.sh /tmp/gifs <name>` renders just that one; look at a few
+   frames before writing into `docs/assets`.
+
+`hand-a-file.gif` (`HandAFile`) drives the row's real drop face by calling
+`IslandRowView.draggingEntered` with a stand-in `NSDraggingInfo` and then
+`report(.pasted)`; its pasted path is `DropToAgent.text(for:)`. The quiet chip is a
+working session whose `ts` is 12½ minutes old, and the footer's amber
+*out ~HH:MM* is the real `UsagePace` fit, fed forty minutes of samples into
+`UsagePace.shared` (this process's, not the app's). The forecast is read against
+the real clock, so the scene's menu bar shows the time it was rendered.
 
 ### Outputs and encoding
 

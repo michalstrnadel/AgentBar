@@ -14,8 +14,13 @@
 //                        bar / island / both choice, and a walk through Settings.
 //                        Also written as agentbar-tour.mp4 (H.264) and a poster,
 //                        agentbar-tour.jpg.
+//   hand-a-file.gif    — 1.44 on the island: a screenshot dropped on a session
+//                        row lands, escaped, in its prompt with no Return; a
+//                        working session gone silent asks "quiet 12m?"; and the
+//                        footer's meter says when the limit runs out at this pace.
 //
-// Run: Scripts/demo/make-gifs.sh [out-dir]. How it works and how to add a GIF:
+// Run: Scripts/demo/make-gifs.sh [out-dir] [scene]. The optional scene (the
+// output's name without extension, e.g. `hand-a-file`) renders only that one. How it works and how to add a GIF:
 // Scripts/demo/README.md.
 import AppKit
 import AVFoundation
@@ -24,12 +29,21 @@ import UniformTypeIdentifiers
 @main
 enum FeatureGIFs {
     static func main() {
-        let out = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "."
+        let args = CommandLine.arguments
+        let out = URL(fileURLWithPath: args.count > 1 ? args[1] : ".")
+        let only = args.count > 2 ? args[2] : nil
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
-        DenyWithNote.write(to: URL(fileURLWithPath: out).appendingPathComponent("deny-with-note.gif"))
-        RulesTryIt.write(to: URL(fileURLWithPath: out).appendingPathComponent("rules-try-it.gif"))
-        Tour.write(to: URL(fileURLWithPath: out).appendingPathComponent("agentbar-tour"))
+        let scenes: [(String, () -> Void)] = [
+            ("deny-with-note", { DenyWithNote.write(to: out.appendingPathComponent("deny-with-note.gif")) }),
+            ("rules-try-it", { RulesTryIt.write(to: out.appendingPathComponent("rules-try-it.gif")) }),
+            ("agentbar-tour", { Tour.write(to: out.appendingPathComponent("agentbar-tour")) }),
+            ("hand-a-file", { HandAFile.write(to: out.appendingPathComponent("hand-a-file.gif")) }),
+        ]
+        guard only == nil || scenes.contains(where: { $0.0 == only }) else {
+            fatalError("no scene \(only!) — one of \(scenes.map(\.0).joined(separator: ", "))")
+        }
+        for (name, run) in scenes where only == nil || only == name { run() }
     }
 }
 
@@ -92,13 +106,14 @@ enum Stage {
     /// The open panel the way `IslandController` lays it out on a notched display:
     /// flush on top, ears allowed, and a frame one ear wider on each side so the rows
     /// keep the 460 pt they were laid out for.
-    static func openPanel(_ rows: [NSView]) -> IslandContentView {
+    static func openPanel(_ rows: [NSView], footer: NSView? = nil) -> IslandContentView {
         let content = IslandContentView(frame: NSRect(x: 0, y: 0, width: 460, height: 100))
         content.flushTop = true
         content.earWidth = IslandShape.earWidth
         content.collapsedHeight = pillHeight
         content.topInset = 10
         content.setRows(rows)
+        if let footer { content.setFooter(footer) }
         content.setFrameSize(NSSize(width: IslandShape.panelWidth(body: 460, ear: IslandShape.earWidth),
                                     height: content.contentHeight + 6))
         return content
@@ -142,7 +157,8 @@ enum Stage {
 
     static let barH: CGFloat = 48
 
-    static func menuBar(_ W: CGFloat, _ H: CGFloat, app: String, notch: Bool) {
+    static func menuBar(_ W: CGFloat, _ H: CGFloat, app: String, notch: Bool,
+                        clock time: String = "Wed 24 Sep   9:41") {
         let barY = H - barH
         rgb(0xF4F1EE, 0.72).setFill()
         NSRect(x: 0, y: barY, width: W, height: barH).fill()
@@ -156,7 +172,7 @@ enum Stage {
         for m in ["Shell", "Edit", "View", "Window"] {
             let t = text(m, 25, ink); t.draw(at: NSPoint(x: lx, y: barY + 10)); lx += t.size().width + 30
         }
-        let clock = text("Wed 24 Sep   9:41", 25, ink, weight: .medium)
+        let clock = text(time, 25, ink, weight: .medium)
         clock.draw(at: NSPoint(x: W - 24 - clock.size().width, y: barY + 10))
         symbol("wifi", midX: W - 24 - clock.size().width - 40, midY: barY + barH / 2, pt: 21, color: ink)
         if notch {
@@ -909,6 +925,284 @@ enum Tour {
         // The poster: the island open on the approval, the pointer on its way to Allow
         // and not yet covering it.
         Stage.writeJPEG(frames[o + 36], to: base.appendingPathExtension("jpg"))
+    }
+}
+
+// MARK: - GIF 4: hand a file to an agent, quiet sessions, will it last
+
+enum HandAFile {
+    static let W: CGFloat = 1200, H: CGFloat = 1000
+
+    /// A drag in progress, for `draggingEntered` to be called the way AppKit calls
+    /// it. The row asks the session, not the drag, whether it can take a file, so
+    /// nothing here is read; it only has to exist.
+    final class Drag: NSObject, NSDraggingInfo {
+        let draggingPasteboard = NSPasteboard(name: NSPasteboard.Name("agentbar-gifs-drag"))
+        var draggingDestinationWindow: NSWindow? { nil }
+        var draggingSourceOperationMask: NSDragOperation { .copy }
+        var draggingLocation: NSPoint { .zero }
+        var draggedImageLocation: NSPoint { .zero }
+        var draggedImage: NSImage? { nil }
+        var draggingSource: Any? { nil }
+        var draggingSequenceNumber: Int { 1 }
+        func slideDraggedImage(to screenPoint: NSPoint) {}
+        var draggingFormation: NSDraggingFormation = .default
+        var animatesToDestination = false
+        var numberOfValidItemsForDrop = 1
+        func enumerateDraggingItems(options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?,
+                                    classes classArray: [AnyClass],
+                                    searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+                                    using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+        var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+        func resetSpringLoading() {}
+    }
+
+    static func write(to url: URL) {
+        NSApp.appearance = NSAppearance(named: .aqua)
+        let now = Date()
+        let t = Int(now.timeIntervalSince1970)
+        // The clock and the forecast agree: the forecast is read against the real
+        // time, so the menu bar shows it too, and the screenshot was taken a minute ago.
+        let clockFmt = DateFormatter(); clockFmt.timeStyle = .short; clockFmt.dateStyle = .none
+        let dayFmt = DateFormatter(); dayFmt.locale = Locale(identifier: "en_US"); dayFmt.dateFormat = "EEE d MMM"
+        let clock = dayFmt.string(from: now) + "   " + clockFmt.string(from: now)
+        let shotFmt = DateFormatter(); shotFmt.dateFormat = "HH.mm"
+        let shotName = "Screenshot \(shotFmt.string(from: now.addingTimeInterval(-60))).png"
+        let shotPath = "/Users/you/Desktop/" + shotName
+        guard let typed = DropToAgent.text(for: [shotPath]) else { fatalError("the path would not paste") }
+
+        func session(_ id: String, _ o: [String: Any]) -> Session {
+            var o = o
+            o["sessionId"] = id; o["pid"] = 1; o["started"] = true
+            if o["ts"] == nil { o["ts"] = t }
+            o["cwd"] = "/tmp/agentbar-demo-\(id)"
+            return Session(fileURL: Stage.tmp(id, o))!
+        }
+        let claude = session("hand-claude", ["agent": "claude", "state": "done", "label": "",
+            "project": "webshop", "started_at": t - 1500, "prompt": "make the checkout button match the mockup",
+            "recap": "Restyled the checkout button", "model": "claude-opus-5", "term_program": "iTerm.app"])
+        // Working, and no hook has written for twelve and a half minutes: QuietWatch's flag.
+        let codex = session("hand-codex", ["agent": "codex", "state": "tool", "label": "Running tests",
+            "project": "api", "started_at": t - 2400, "ts": t - 750, "prompt": "fix the flaky orders test"])
+        let gemini = session("hand-gemini", ["agent": "gemini", "state": "thinking", "label": "Thinking",
+            "project": "docs", "started_at": t - 300, "prompt": "document the refunds endpoint"])
+        guard QuietWatch.quietMinutes(codex) != nil, QuietWatch.quietMinutes(claude) == nil else {
+            fatalError("the quiet chip would not show — quietWatchMinutes set in this process's defaults?")
+        }
+
+        // The quota line, the way UsageCenter hands it over, and the last forty
+        // minutes of Claude's 5-hour window fed to the real pace fit: 64 % → 88 %,
+        // so at this pace it is gone in under half an hour, before its reset — the
+        // one case the island colours amber.
+        let reset = now.addingTimeInterval(2 * 3600 + 10 * 60)
+        func claudeReading(_ used: Double) -> UsageCenter.Reading {
+            UsageCenter.Reading(provider: "Claude", text: "\(Int(100 - used))% left · resets later",
+                                windows: [UsageWindow(name: "5h", usedPercent: used, resetsAt: reset)])
+        }
+        for i in 0...8 {
+            let ago = Double(8 - i) * 5 * 60
+            UsagePace.shared.record([claudeReading(64 + Double(i) * 3)], now: now.timeIntervalSince1970 - ago)
+        }
+        let codexReading = UsageCenter.Reading(provider: "Codex", text: "59% left",
+            windows: [UsageWindow(name: "5h", usedPercent: 41, resetsAt: now.addingTimeInterval(3 * 3600))])
+        let readings = [claudeReading(88), codexReading]
+        guard let f = UsagePace.shared.forecast(provider: "Claude", window: readings[0].windows[0]),
+              UsagePace.urgent(f) else { fatalError("the forecast would not show") }
+
+        /// The footer `IslandController.footerRow` builds: the meter line, a spacer,
+        /// the break button and ⋯ — the meter is the real view, the two buttons are
+        /// the same symbols it uses.
+        func footer() -> NSView {
+            let meters = UsageMeterView(readings: readings, style: .islandFooter)!
+            meters.translatesAutoresizingMaskIntoConstraints = false
+            meters.heightAnchor.constraint(equalToConstant: meters.frame.height).isActive = true
+            meters.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+            let spacer = NSView()
+            spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            let game = NSButton(image: NSImage(systemSymbolName: "gamecontroller", accessibilityDescription: nil)!,
+                                target: nil, action: nil)
+            game.isBordered = false
+            game.symbolConfiguration = .init(pointSize: 12, weight: .semibold)
+            game.contentTintColor = NSColor.white.withAlphaComponent(0.55)
+            let dots = NSButton(title: "⋯", target: nil, action: nil)
+            dots.isBordered = false
+            dots.font = .systemFont(ofSize: 15, weight: .semibold)
+            dots.contentTintColor = NSColor.white.withAlphaComponent(0.55)
+            let row = NSStackView(views: [meters, spacer, game, dots])
+            row.orientation = .horizontal
+            row.translatesAutoresizingMaskIntoConstraints = false
+            row.widthAnchor.constraint(equalToConstant: 460 - IslandContentView.hPad * 2).isActive = true
+            return row
+        }
+
+        let rowW: CGFloat = 460 - IslandContentView.hPad * 2
+        func row(_ s: Session, _ style: IslandRowView.Style) -> IslandRowView {
+            let r = IslandRowView(session: s, mark: IconRenderer.shared.sprite(for: s.agent).restingColor,
+                                  style: style, onClick: { _ in })
+            r.translatesAutoresizingMaskIntoConstraints = false
+            r.widthAnchor.constraint(equalToConstant: rowW).isActive = true
+            return r
+        }
+        let hero = row(claude, .hero)
+        let codexRow = row(codex, .compact)
+        let content = Stage.openPanel([hero, codexRow, row(gemini, .compact)], footer: footer())
+        let restImg = Stage.snapshot(content)
+        let heroAt = Stage.rect(of: hero, in: content)
+        let codexAt = Stage.rect(of: codexRow, in: content)
+        // The real hover face and the real outcome, through the row's own entry points.
+        _ = hero.draggingEntered(Drag())
+        let hoverImg = Stage.snapshot(content)
+        hero.draggingExited(nil)
+        hero.report(.pasted)
+        let pastedImg = Stage.snapshot(content)
+
+        let topY = H - Stage.barH
+        let panelRect = NSRect(x: (W - restImg.size.width) / 2, y: topY - restImg.size.height,
+                               width: restImg.size.width, height: restImg.size.height)
+        func onCanvas(_ r: NSRect) -> NSRect {
+            NSRect(x: panelRect.minX + r.minX * 2, y: panelRect.minY + r.minY * 2,
+                   width: r.width * 2, height: r.height * 2)
+        }
+        let heroRect = onCanvas(heroAt), codexRect = onCanvas(codexAt)
+        let shadow = NSShadow(); shadow.shadowBlurRadius = 22
+        shadow.shadowOffset = NSSize(width: 0, height: -8)
+        shadow.shadowColor = NSColor.black.withAlphaComponent(0.35)
+
+        func island(_ img: NSImage) {
+            let outline = Stage.island(panelRect, ear: IslandShape.earWidth)
+            NSGraphicsContext.saveGraphicsState(); shadow.set()
+            Stage.fill(outline, .black)
+            NSGraphicsContext.restoreGraphicsState()
+            NSGraphicsContext.saveGraphicsState(); Stage.clip(outline)
+            img.draw(in: panelRect)
+            NSGraphicsContext.restoreGraphicsState()
+        }
+
+        // The screenshot on the desktop: a thumbnail of a checkout mockup and its name.
+        let iconSize = NSSize(width: 150, height: 104)
+        func thumbnail(at c: NSPoint, alpha: CGFloat, label: Bool) {
+            let r = NSRect(x: c.x - iconSize.width / 2, y: c.y - iconSize.height / 2,
+                           width: iconSize.width, height: iconSize.height)
+            let cg = NSGraphicsContext.current!.cgContext
+            cg.saveGState(); cg.setAlpha(alpha); cg.beginTransparencyLayer(auxiliaryInfo: nil)
+            NSGraphicsContext.saveGraphicsState()
+            let sh = NSShadow(); sh.shadowBlurRadius = 10; sh.shadowOffset = NSSize(width: 0, height: -3)
+            sh.shadowColor = NSColor.black.withAlphaComponent(0.3); sh.set()
+            NSColor.white.setFill(); Stage.rounded(r, 6).fill()
+            NSGraphicsContext.restoreGraphicsState()
+            let inner = r.insetBy(dx: 5, dy: 5)
+            Stage.rgb(0xF5F5F7).setFill(); Stage.rounded(inner, 3).fill()
+            Stage.rgb(0xDADDE3).setFill(); NSRect(x: inner.minX, y: inner.maxY - 14, width: inner.width, height: 14).fill()
+            for (i, w) in [0.62, 0.48, 0.55].enumerated() {
+                Stage.rgb(0xC4C8D0).setFill()
+                Stage.rounded(NSRect(x: inner.minX + 10, y: inner.maxY - 30 - CGFloat(i) * 13,
+                                     width: inner.width * CGFloat(w), height: 6), 3).fill()
+            }
+            Stage.rgb(0x5B6CFF).setFill()
+            Stage.rounded(NSRect(x: inner.midX - 32, y: inner.minY + 9, width: 64, height: 16), 5).fill()
+            cg.endTransparencyLayer(); cg.restoreGState()
+            guard label else { return }
+            let name = Stage.text(shotName, 19, .white, weight: .medium)
+            let lr = NSRect(x: c.x - name.size().width / 2 - 8, y: r.minY - 36, width: name.size().width + 16, height: 28)
+            Stage.rgb(0x000000, 0.28).setFill(); Stage.rounded(lr, 7).fill()
+            name.draw(at: NSPoint(x: lr.minX + 8, y: lr.midY - name.size().height / 2))
+        }
+
+        // The terminal Claude runs in: its last turn, and the prompt the path lands in.
+        let term = NSRect(x: 40, y: 120, width: 760, height: 300)
+        func terminal(pasted: Bool, blink: Bool) {
+            NSGraphicsContext.saveGraphicsState()
+            let sh = NSShadow(); sh.shadowBlurRadius = 24; sh.shadowOffset = NSSize(width: 0, height: -8)
+            sh.shadowColor = NSColor.black.withAlphaComponent(0.35); sh.set()
+            Stage.rgb(0x1E1E22, 0.97).setFill()
+            Stage.rounded(term, 18).fill()
+            NSGraphicsContext.restoreGraphicsState()
+            for (i, c) in [0xFF5F57, 0xFEBC2E, 0x28C840].enumerated() {
+                Stage.rgb(UInt32(c)).setFill()
+                NSBezierPath(ovalIn: NSRect(x: term.minX + 22 + CGFloat(i) * 26, y: term.maxY - 32,
+                                            width: 16, height: 16)).fill()
+            }
+            let title = Stage.text("webshop — claude", 19, Stage.rgb(0xB0B0B0), weight: .medium)
+            title.draw(at: NSPoint(x: term.midX - title.size().width / 2, y: term.maxY - 36))
+            var y = term.maxY - 82
+            for (s, c) in [("> make the checkout button match the mockup", Stage.rgb(0x9A9A9A)),
+                           ("⏺ Restyled the checkout button.", Stage.rgb(0xE8E8E8)),
+                           ("  ⎿  src/checkout/Button.tsx  +12 −4", Stage.rgb(0x9A9A9A))] {
+                Stage.text(s, 20, c, mono: true).draw(at: NSPoint(x: term.minX + 26, y: y))
+                y -= 32
+            }
+            // The input box, as Claude Code draws it.
+            let box = NSRect(x: term.minX + 20, y: term.minY + 26, width: term.width - 40, height: 56)
+            Stage.rgb(0x6B6B70).setStroke()
+            let p = Stage.rounded(box, 10); p.lineWidth = 1.5; p.stroke()
+            let line = Stage.text("> " + (pasted ? typed : ""), 20, Stage.rgb(0xF2F2F2), mono: true)
+            line.draw(at: NSPoint(x: box.minX + 16, y: box.midY - line.size().height / 2))
+            if blink {
+                Stage.rgb(0xE8E8E8).setFill()
+                NSRect(x: box.minX + 16 + line.size().width, y: box.midY - 12, width: 11, height: 24).fill()
+            }
+        }
+
+        func caption(_ s: String) {
+            let tx = Stage.text(s, 29, .white, weight: .semibold)
+            let r = NSRect(x: (W - tx.size().width) / 2 - 20, y: 34, width: tx.size().width + 40, height: 58)
+            Stage.rgb(0x000000, 0.38).setFill(); Stage.rounded(r, 16).fill()
+            tx.draw(at: NSPoint(x: r.minX + 20, y: r.midY - tx.size().height / 2))
+        }
+
+        let iconHome = NSPoint(x: 1000, y: 290)
+        let grab = NSPoint(x: iconHome.x + 10, y: iconHome.y - 6)   // where the hand holds it
+        // Low on the row's right, clear of the hint's centred words.
+        let dropPt = NSPoint(x: heroRect.maxX - 90, y: heroRect.minY + 34)
+        // Where the quiet chip and the forecast sit, for the pointer to rest by.
+        // The pointer's tip sits just under each, so it never covers the words.
+        let quietPt = NSPoint(x: codexRect.maxX - 130, y: codexRect.minY + 2)
+        let footerPt = NSPoint(x: panelRect.minX + 330, y: panelRect.minY + 12)
+
+        var frames: [CGImage] = []
+        for f in 0..<168 {
+            frames.append(Stage.frame(W, H) {
+                Stage.wallpaper(W, H)
+                let pasted = f >= 70
+                terminal(pasted: pasted, blink: (f / 6) % 2 == 0)
+                Stage.menuBar(W, H, app: "iTerm2", notch: true, clock: clock)
+                caption(f < 112 ? "Drop a file on a session · its path lands in the prompt, no Return"
+                                : "Gone quiet? It asks, not guesses · and says when the limit runs out")
+                var cur: NSPoint
+                var pressed = false
+                var carried: NSPoint? = nil
+                switch f {
+                case 0..<14:                          // the island open, the file on the desktop
+                    island(restImg)
+                    cur = Stage.lerp(NSPoint(x: 760, y: 560), grab, Stage.smooth(CGFloat(f) / 12))
+                case 14..<46:                         // picked up, carried to Claude's row
+                    let u = Stage.smooth(CGFloat(f - 16) / 26)
+                    cur = Stage.lerp(grab, dropPt, u)
+                    pressed = true
+                    carried = cur
+                    island(f >= 42 ? hoverImg : restImg)
+                case 46..<68:                         // over the row: who it goes to
+                    island(hoverImg)
+                    cur = dropPt; pressed = true; carried = cur
+                case 68..<112:                        // dropped: in the prompt, Return is yours
+                    island(pastedImg)
+                    cur = dropPt
+                case 112..<140:                       // the quiet session
+                    island(restImg)
+                    cur = Stage.lerp(dropPt, quietPt, Stage.smooth(CGFloat(f - 112) / 12))
+                default:                              // and the pace
+                    island(restImg)
+                    cur = Stage.lerp(quietPt, footerPt, Stage.smooth(CGFloat(f - 140) / 10))
+                }
+                thumbnail(at: iconHome, alpha: carried == nil ? 1 : 0.35, label: true)
+                if let c = carried {
+                    thumbnail(at: NSPoint(x: c.x - (grab.x - iconHome.x), y: c.y - (grab.y - iconHome.y)),
+                              alpha: 0.8, label: false)
+                }
+                Stage.cursor(at: cur, pressed: pressed)
+            })
+        }
+        Stage.writeGIF(frames, delay: 0.085, to: url)
     }
 }
 
