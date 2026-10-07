@@ -3,6 +3,25 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.44.2 - 2026-10-07
+
+### Changed
+
+- **Your Day, redrawn plainly.** 1.44.1's card had glowing blobs on a dark ground,
+  a neon headline, a giant faint symbol and glass tiles: the look of every
+  generated recap, not of something you would put your name to. The card is now
+  paper and ink:
+  - the date and the range in a header over a hairline;
+  - agent time as the one big number, and who you were as a sentence under it;
+  - the hours as bars in each agent's colour, with a legend, and the peak (or a
+    week's best day) marked by a thin line and a few words;
+  - the rest as a list, with the label on the left, the value on the right and a
+    hairline between rows.
+
+  Colour appears only where it carries something: on the bars, and on the lines
+  added and removed. The window is light to match, and the GIF is about half the
+  size again.
+
 ## 1.44.1 - 2026-10-07
 
 ### Changed
