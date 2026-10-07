@@ -37,6 +37,7 @@ do, or a rule you wrote yourself, and every answer is written down.
 | **Your Day…** in the menu or the island's ⋯ | Your day — or week — with your agents on one card: who you were today, agent time, the hours, your top agent, what changed, your answers; copy it, post it, or save it as a video |
 | Drag a screenshot or a file onto a session in the island | Its path lands in that agent's prompt — pasted into the right tab, never with Return |
 | Let a quota window run hot | The meter says when it runs out at this pace — "out ~15:40" — when that is before it resets |
+| Right-click a session in the island | **Continue in** another agent: the launcher opens in the same project with a prompt that says where the work got to — Return is still yours |
 | `open agentbar://focus` from Shortcuts or Raycast | Jumps to the session waiting on you — and no link can approve or deny anything |
 
 **What it covers.** Agents: Claude Code and Claude Cowork, Codex, Cursor CLI, Gemini
@@ -197,6 +198,15 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   actually done. Nothing in the file applies while any of it is wrong, and
   Diagnostics says so — because a rule that silently stopped working looks exactly
   like AgentBar working normally.
+- **Your week of decisions** — the top of **Settings ▸ Approvals** lists the five
+  prompts that held your agents up longest over the last seven days: how often you
+  were asked, how long they waited (*“14× · 7m waited”*, or *“at least”* when an
+  older hook left a wait unrecorded), and how you answered. Beside each one is the
+  rule you already wrote for it — and while it is watching, what it would have done:
+  *“would have answered 9 of 9, about 4m”*. A prompt with no rule that you answered
+  the same way five times offers **Write a rule…**, which opens the ordinary rule
+  sheet filled in; the rule starts out watching and is saved only when you press
+  **Add rule**. Only your own answers in AgentBar are counted.
 - **How long they waited on you** — the other half of the day's account, under
   **Today**: *“18 answered · 3 by your rules · they waited 34m on you”*. Nothing else
   on the machine is standing in the right place to measure it, and the two counts stay
@@ -259,6 +269,12 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   when: "out ~15:40" on the island (amber inside the last half hour), "At this pace:
   limit ~15:40 (+18 %/h)" in the menu. A forecast that changes nothing says nothing,
   and none of it ever notifies.
+- **Carry it on elsewhere** — when a session's quota is half an hour from running out,
+  its row says **out ~15:40 ↗**; click it (or right-click any session row, or use
+  **Continue … Elsewhere** in the menu) and pick another agent. The launcher opens
+  in the same project with that agent and a prompt that says where the work got to —
+  your last prompt, the agent's last update, and "look at `git diff` first". You read
+  it, you press Return; the first session is left exactly as it was.
 - **Hand a file to an agent** — drag files, an image from the browser, or a
   screenshot thumbnail up to the notch and drop it on a session: its path goes into
   that agent's prompt, escaped the way Terminal escapes a dragged file. It is pasted
@@ -595,7 +611,7 @@ launchd agent has to be booted out separately, which is what the `cloud/install.
 | OpenCode | working / approval / done / failed | yes | prompt chevron | plugin in `~/.config/opencode/plugins/` (auto-installed if OpenCode is installed); observe-only |
 | Google Antigravity | working / done | yes | pixel rainbow arch + dot-matrix | hooks in `~/.gemini/antigravity{,-cli}/hooks.json` (auto-wired); desktop 2.3.x only honors per-workspace `.agents/hooks.json`, and only `PostToolUse` fires — quiet sessions decay to done |
 | Devin (cloud) | working / blocked / finished / suspended | yes | D letterform | no local process at all — rows come from the [cloud poller](Scripts/cloud/), clicking opens the exact thread in Devin Desktop (or the web) |
-| Your own agent | idle / working / question / done / failed | yes | generic letter mark + its name | anything else: wrap it with `agentbar report --agent <id> --name <Name> --state …` or write the [file protocol](docs/protocol.md#bring-your-own-agent) directly. No approvals — a report has no hook waiting on the answer |
+| Your own agent | idle / working / question / done / failed | yes | generic letter mark + its name | anything else: wrap it with `agentbar report --agent <id> --name <Name> --state …` or write the [file protocol](docs/protocol.md#bring-your-own-agent) directly. Ready-made, wired by hand: [Aider](Scripts/hooks/aider/) (a wrapper on its notification command), [goose](Scripts/hooks/goose/) (a hooks plugin), [Cline](Scripts/hooks/cline/) (its task hooks, extension and CLI), [Amp](Scripts/hooks/amp/) (a plugin). No approvals — a report has no hook waiting on the answer |
 
 Hook readiness: Claude Code, Codex (`config.toml`), Cursor (`hooks.json`), Gemini
 (`settings.json`), Antigravity (`hooks.json`), Qwen Code (`settings.json`),
