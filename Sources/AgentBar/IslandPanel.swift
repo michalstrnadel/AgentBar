@@ -17,12 +17,18 @@ final class IslandPanel: NSPanel {
         // .fullScreenAuxiliary matters as much as .canJoinAllSpaces: without it the
         // panel is missing exactly where people spend their day — a fullscreen editor
         // or terminal — and an island you can't see is not an island.
-        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+        // .transient, not .stationary: Mission Control hides it. Stationary kept it
+        // drawn over the Spaces bar while the desktop zoomed out beneath it, still
+        // taking the hover and playing its expand over the shrunken screen.
+        collectionBehavior = Self.behavior
         hidesOnDeactivate = false
         isMovableByWindowBackground = false
         ignoresMouseEvents = false
         becomesKeyOnlyIfNeeded = true
     }
+
+    static let behavior: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient,
+                                                         .ignoresCycle]
 
     /// Key only while a note is being typed next to Deny — the one moment the
     /// island needs the keyboard, and one the user started with a click. The panel
