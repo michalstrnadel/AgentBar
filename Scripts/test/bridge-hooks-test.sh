@@ -1,5 +1,6 @@
 #!/bin/bash
-# Tests the non-Claude hook bridges (cursor, gemini, antigravity, codex) against
+# Tests the non-Claude hook bridges (cursor, gemini, antigravity, codex, and the
+# report bridges for aider, goose, cline, amp) against
 # a throwaway HOME: stale-sweep safety, launch-guard behaviour, and protocol
 # compliance of what they write. Env knobs the bridges honor for tests:
 #   AGENTBAR_FORCE_APP  "1"/"0" overrides the app/watcher liveness check
@@ -415,6 +416,163 @@ RC="$(cd "$HOME/cwd" && printf '{"hook_event_name":"BeforeAgent","session_id":"a
   | AGENTBAR_HOME=rel/root AGENTBAR_FORCE_APP=1 "$NODE" "$OLDPWD/Scripts/hooks/gemini/gemini.js"; echo $?)"
 check "AGENTBAR_HOME relative: hook exits 0"       '[ "$RC" = 0 ]'
 check "AGENTBAR_HOME relative: falls back to default" '[ -f "$HOME/.agentbar/state.d/ah-rel.json" ] && [ ! -e "$HOME/cwd/rel" ]'
+
+# --- report bridges: aider, goose, cline, amp (docs/protocol.md "Bring your own agent")
+# These four call `agentbar report` instead of writing state.d themselves. AGENTBAR_CLI
+# pins the CLI under test; a fake `open` stays first in PATH so nothing in here can
+# start a real AgentBar (`report` launches nothing, and this checks that it stays so).
+CLI_ABS="$PWD/Scripts/cli/agentbar"
+SD() { echo "$HOME/.agentbar/state.d/$1.json"; }
+field() { "$NODE" -e 'try{const v=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))[process.argv[2]];process.stdout.write(v===undefined?"":String(v))}catch{}' "$1" "$2"; }
+
+# A stand-in for an agent that runs its hooks the way goose and Cline do: a
+# long-lived parent that starts `sh -c <command>` with the payload on stdin.
+# Prints the parent's pid, then whatever the hook wrote to stdout.
+fake_host() {
+  python3 -c 'import os,subprocess,sys
+r=subprocess.run(["sh","-c",sys.argv[1]],input=sys.argv[2].encode(),stdout=subprocess.PIPE)
+sys.stdout.write(str(os.getpid())+"\n"+r.stdout.decode()+"\nrc="+str(r.returncode))' "$1" "$2"
+}
+
+# aider: a fake aider that plays one turn — a prompt goes into the input history,
+# then the notification command fires — and snapshots the row at each step.
+fresh_home
+export FAKEOPEN_MARK="$HOME/open-called"
+AIDERBIN="$TESTROOT/fakeaider"; mkdir -p "$AIDERBIN" "$HOME/proj"
+cat > "$AIDERBIN/aider" <<'AIDER'
+#!/bin/bash
+notify=""; prev=""
+for a in "$@"; do [ "$prev" = "--notifications-command" ] && notify="$a"; prev="$a"; done
+printf '%s\n' "$@" > "$HOME/aider-args"
+ROW="$HOME/.agentbar/state.d/aider-$PPID.json"
+echo "$PPID" > "$HOME/aider-wrapper-pid"
+cp "$ROW" "$HOME/at-start.json" 2>/dev/null
+printf '\n# 2026-10-07 10:00:00\n+fix the login bug\n' >> .aider.input.history
+for i in 1 2 3 4 5 6 7 8 9 10; do grep -q '"thinking"' "$ROW" 2>/dev/null && break; sleep 0.2; done
+cp "$ROW" "$HOME/at-work.json" 2>/dev/null
+sh -c "$notify"
+cp "$ROW" "$HOME/at-done.json" 2>/dev/null
+exit 3
+AIDER
+chmod +x "$AIDERBIN/aider"
+( cd "$HOME/proj" && PATH="$FAKEBIN:$AIDERBIN:$PATH" AGENTBAR_CLI="$CLI_ABS" AGENTBAR_AIDER_POLL=0.2 \
+    bash "$OLDPWD/Scripts/hooks/aider/agentbar-aider" --model sonnet app.py ); RC=$?
+WPID="$(cat "$HOME/aider-wrapper-pid" 2>/dev/null)"
+check "aider: start is idle"                  '[ "$(field "$HOME/at-start.json" state)" = idle ]'
+check "aider: row is agent aider, named Aider" '[ "$(field "$HOME/at-start.json" agent)" = aider ] && [ "$(field "$HOME/at-start.json" agent_name)" = Aider ]'
+check "aider: row carries the wrapper pid"    '[ -n "$WPID" ] && [ "$(field "$HOME/at-start.json" pid)" = "$WPID" ]'
+check "aider: a history line is thinking"     '[ "$(field "$HOME/at-work.json" state)" = thinking ] && [ "$(field "$HOME/at-work.json" prompt)" = "fix the login bug" ]'
+check "aider: the notification is done"       '[ "$(field "$HOME/at-done.json" state)" = done ]'
+check "aider: exit removes the row"           '[ -z "$(ls "$HOME/.agentbar/state.d")" ]'
+check "aider: exit code passes through"       '[ "$RC" = 3 ]'
+check "aider: user args pass through"         'grep -qx -- "--model" "$HOME/aider-args" && grep -qx "app.py" "$HOME/aider-args"'
+check "aider: notifications switched on"      'grep -qx -- "--notifications" "$HOME/aider-args"'
+check "aider: nothing launched"               '[ ! -e "$FAKEOPEN_MARK" ]'
+
+# A one-shot --message run starts as thinking on that task.
+fresh_home
+export FAKEOPEN_MARK="$HOME/open-called"
+mkdir -p "$HOME/proj"
+( cd "$HOME/proj" && PATH="$FAKEBIN:$AIDERBIN:$PATH" AGENTBAR_CLI="$CLI_ABS" \
+    bash "$OLDPWD/Scripts/hooks/aider/agentbar-aider" -m "add a README" ) >/dev/null
+check "aider -m: starts thinking on the task" '[ "$(field "$HOME/at-start.json" state)" = thinking ] && [ "$(field "$HOME/at-start.json" prompt)" = "add a README" ]'
+
+# No CLI anywhere: Aider still runs, untouched, and nothing is written.
+fresh_home
+mkdir -p "$TESTROOT/lonely" "$HOME/proj"
+cp Scripts/hooks/aider/agentbar-aider "$TESTROOT/lonely/"
+RC="$(cd "$HOME/proj" && PATH="$AIDERBIN:/usr/bin:/bin" bash "$TESTROOT/lonely/agentbar-aider" x >/dev/null 2>&1; echo $?)"
+check "aider without a CLI: still runs aider" '[ "$RC" = 3 ] && [ -f "$HOME/aider-args" ] && ! grep -qx -- "--notifications" "$HOME/aider-args"'
+check "aider without a CLI: writes nothing"   '[ -z "$(ls "$HOME/.agentbar/state.d")" ]'
+unset FAKEOPEN_MARK
+
+# goose: the plugin's hooks.json command, run the way goose runs it.
+fresh_home
+GOOSE_CMD="AGENTBAR_CLI='$CLI_ABS' PATH='$FAKEBIN':\"\$PATH\" node '$PWD/Scripts/hooks/goose/agentbar.js'"
+OUT="$(fake_host "$GOOSE_CMD" '{"event":"SessionStart","session_id":"g1","matcher_context":""}')"
+HPID="$(echo "$OUT" | head -1)"
+check "goose: SessionStart writes idle"       '[ "$(field "$(SD goose-g1)" state)" = idle ] && [ "$(field "$(SD goose-g1)" agent)" = goose ]'
+check "goose: pid is goose, not its sh -c"    '[ "$(field "$(SD goose-g1)" pid)" = "$HPID" ]'
+check "goose: prints nothing (allow)"         '[ "$(echo "$OUT" | sed -n 2p)" = "" ] && echo "$OUT" | grep -q "^rc=0$"'
+fake_host "$GOOSE_CMD" '{"event":"UserPromptSubmit","session_id":"g1","matcher_context":"x","message":"rename the module"}' >/dev/null
+check "goose: prompt is thinking"             '[ "$(field "$(SD goose-g1)" state)" = thinking ] && [ "$(field "$(SD goose-g1)" prompt)" = "rename the module" ]'
+OUT="$(fake_host "$GOOSE_CMD" '{"event":"PreToolUse","session_id":"g1","matcher_context":"developer__shell","tool_name":"developer__shell","tool_input":{"command":"ls -la"},"working_dir":"/tmp/gproj"}')"
+check "goose: PreToolUse is a labelled tool"  '[ "$(field "$(SD goose-g1)" state)" = tool ] && [ "$(field "$(SD goose-g1)" label)" = "shell: ls -la" ]'
+check "goose: working_dir is the row cwd"     '[ "$(field "$(SD goose-g1)" cwd)" = /tmp/gproj ] && [ "$(field "$(SD goose-g1)" project)" = gproj ]'
+check "goose: PreToolUse prints nothing"      '[ "$(echo "$OUT" | sed -n 2p)" = "" ] && echo "$OUT" | grep -q "^rc=0$"'
+fake_host "$GOOSE_CMD" '{"event":"Stop","session_id":"g1","matcher_context":"","last_assistant_message":"Renamed it."}' >/dev/null
+check "goose: Stop is done with the recap"    '[ "$(field "$(SD goose-g1)" state)" = done ] && [ "$(field "$(SD goose-g1)" recap)" = "Renamed it." ]'
+fake_host "$GOOSE_CMD" '{"event":"SessionEnd","session_id":"g1","matcher_context":""}' >/dev/null
+check "goose: SessionEnd removes the row"     '[ ! -e "$(SD goose-g1)" ]'
+for bad in 'not json' '[]' '{}' '{"event":"PreToolUse"}' '{"event":"Nope","session_id":"g2"}'; do
+  OUT="$(fake_host "$GOOSE_CMD" "$bad")"
+  check "goose: survives $bad"                '[ "$(echo "$OUT" | sed -n 2p)" = "" ] && echo "$OUT" | grep -q "^rc=0$" && [ -z "$(ls "$HOME/.agentbar/state.d")" ]'
+done
+check "goose: hooks.json is valid and names the script" \
+  '"$NODE" -e "const h=require(\"./Scripts/hooks/goose/hooks/hooks.json\").hooks;process.exit(h.PreToolUse[0].hooks[0].command.includes(\"agentbar.js\")&&!h.PreToolUse[0].hooks[0].on_failure?0:1)"'
+
+# cline: the VS Code extension's dialect, then the CLI's.
+fresh_home
+CLINE_CMD="AGENTBAR_CLI='$CLI_ABS' PATH='$FAKEBIN':\"\$PATH\" '$PWD/Scripts/hooks/cline/agentbar.js'"
+OUT="$(fake_host "$CLINE_CMD" '{"clineVersion":"3.40.0","hookName":"TaskStart","taskId":"c1","workspaceRoots":["/tmp/cproj"],"taskStart":{"taskMetadata":{"taskId":"c1","initialTask":"write the tests"}}}')"
+HPID="$(echo "$OUT" | head -1)"
+check "cline: TaskStart is thinking on the task" '[ "$(field "$(SD cline-c1)" state)" = thinking ] && [ "$(field "$(SD cline-c1)" prompt)" = "write the tests" ]'
+check "cline: workspace root is the row cwd" '[ "$(field "$(SD cline-c1)" cwd)" = /tmp/cproj ] && [ "$(field "$(SD cline-c1)" agent_name)" = Cline ]'
+check "cline: pid is the host, not sh -c"    '[ "$(field "$(SD cline-c1)" pid)" = "$HPID" ]'
+check "cline: answers only cancel:false"     '[ "$(echo "$OUT" | sed -n 2p)" = "{\"cancel\":false}" ] && echo "$OUT" | grep -q "^rc=0$"'
+OUT="$(fake_host "$CLINE_CMD" '{"hookName":"PreToolUse","taskId":"c1","workspaceRoots":["/tmp/cproj"],"preToolUse":{"toolName":"execute_command","parameters":{"command":"npm test"}}}')"
+check "cline: PreToolUse is a labelled tool" '[ "$(field "$(SD cline-c1)" state)" = tool ] && [ "$(field "$(SD cline-c1)" label)" = "execute_command: npm test" ]'
+check "cline: PreToolUse never cancels"      '[ "$(echo "$OUT" | sed -n 2p)" = "{\"cancel\":false}" ]'
+fake_host "$CLINE_CMD" '{"hookName":"TaskComplete","taskId":"c1","taskComplete":{"taskMetadata":{}}}' >/dev/null
+check "cline: TaskComplete is done"          '[ "$(field "$(SD cline-c1)" state)" = done ]'
+fake_host "$CLINE_CMD" '{"hookName":"Notification","taskId":"c1","notification":{"event":"user_attention","message":"Which file?","waitingForUserInput":true}}' >/dev/null
+check "cline: waiting Notification is question" '[ "$(field "$(SD cline-c1)" state)" = question ]'
+fake_host "$CLINE_CMD" '{"hookName":"tool_call","taskId":"c2","workspaceRoots":["/tmp/cproj"],"tool_call":{"id":"t","name":"run_commands","input":{"commands":["git status"]}}}' >/dev/null
+check "cline CLI: tool_call is a labelled tool" '[ "$(field "$(SD cline-c2)" state)" = tool ] && [ "$(field "$(SD cline-c2)" label)" = "run_commands: git status" ]'
+fake_host "$CLINE_CMD" '{"hookName":"agent_error","taskId":"c2","error":{"message":"rate limited"}}' >/dev/null
+check "cline CLI: agent_error is error"      '[ "$(field "$(SD cline-c2)" state)" = error ] && [ "$(field "$(SD cline-c2)" label)" = "rate limited" ]'
+fake_host "$CLINE_CMD" '{"hookName":"session_shutdown","taskId":"c2"}' >/dev/null
+check "cline CLI: session_shutdown removes the row" '[ ! -e "$(SD cline-c2)" ]'
+rm -f "$(SD cline-c1)"
+for bad in 'not json' '[]' '{}' '{"hookName":"PreToolUse"}' '{"hookName":"TaskStart","taskId":null}'; do
+  OUT="$(fake_host "$CLINE_CMD" "$bad")"
+  check "cline: survives $bad"               '[ "$(echo "$OUT" | sed -n 2p)" = "{\"cancel\":false}" ] && echo "$OUT" | grep -q "^rc=0$" && [ -z "$(ls "$HOME/.agentbar/state.d")" ]'
+done
+
+# amp: load the plugin with a stand-in for Amp's PluginAPI and fire its events.
+fresh_home
+mkdir -p "$HOME/aproj"
+cat > "$TESTROOT/amp-driver.mjs" <<'DRIVER'
+import { pathToFileURL } from "node:url";
+const [plugin, cwd, ...events] = process.argv.slice(2);
+const handlers = {};
+const amp = { on: (e, f) => { handlers[e] = f; }, $: async () => ({ exitCode: 0, stdout: cwd + "\n", stderr: "" }) };
+(await import(pathToFileURL(plugin))).default(amp);
+console.log(JSON.stringify({ self: process.pid, events: Object.keys(handlers) }));
+for (const e of events) { const [name, json] = e.split(/=(.*)/s); handlers[name](JSON.parse(json)); }
+DRIVER
+amp_run() {  # under a non-shell parent, as Amp's plugin host would be
+  python3 -c 'import os,subprocess,sys
+subprocess.run(sys.argv[1:]); print(os.getpid())' env AGENTBAR_CLI="$CLI_ABS" PATH="$FAKEBIN:$PATH" \
+    "$NODE" "$TESTROOT/amp-driver.mjs" "$PWD/Scripts/hooks/amp/agentbar.js" "$HOME/aproj" "$@"
+}
+OUT="$(amp_run 'session.start={"thread":{"id":"T-1"}}' 'agent.start={"thread":{"id":"T-1"},"message":"bump deps","id":1}' \
+  'tool.result={"thread":{"id":"T-1"},"toolUseID":"u","tool":"Bash","input":{},"status":"done"}')"
+check "amp: listens to no deciding event"    'echo "$OUT" | head -1 | grep -q "session.start" && ! echo "$OUT" | grep -q "tool.call"'
+check "amp: tool.result labels the tool"     '[ "$(field "$(SD amp-T-1)" state)" = tool ] && [ "$(field "$(SD amp-T-1)" label)" = Bash ]'
+check "amp: the prompt is kept"              '[ "$(field "$(SD amp-T-1)" prompt)" = "bump deps" ] && [ "$(field "$(SD amp-T-1)" agent_name)" = Amp ]'
+check "amp: cwd is what amp.\$ pwd says"      '[ "$(field "$(SD amp-T-1)" cwd)" = "$HOME/aproj" ]'
+check "amp: pid is the plugin host parent"   '[ "$(field "$(SD amp-T-1)" pid)" = "$(echo "$OUT" | tail -1)" ]'
+amp_run 'agent.end={"thread":{"id":"T-1"},"message":"","id":1,"status":"done","messages":[]}' >/dev/null
+check "amp: agent.end done is done"          '[ "$(field "$(SD amp-T-1)" state)" = done ]'
+amp_run 'agent.end={"thread":{"id":"T-1"},"status":"error"}' >/dev/null
+check "amp: agent.end error is error"        '[ "$(field "$(SD amp-T-1)" state)" = error ]'
+amp_run 'agent.end={"thread":{}}' 'tool.result={}' >/dev/null; RC=$?
+check "amp: events without a thread are ignored" '[ "$RC" = 0 ] && [ "$(ls "$HOME/.agentbar/state.d")" = amp-T-1.json ]'
+# Started straight from a shell, the plugin is in Amp's own process: its own pid.
+OUT="$(AGENTBAR_CLI="$CLI_ABS" "$NODE" "$TESTROOT/amp-driver.mjs" "$PWD/Scripts/hooks/amp/agentbar.js" "$HOME/aproj" \
+  'session.start={"thread":{"id":"T-2"}}')"
+check "amp: under a shell, its own pid"      '[ "$(field "$(SD amp-T-2)" pid)" = "$("$NODE" -e "console.log(JSON.parse(process.argv[1]).self)" "$(echo "$OUT" | head -1)")" ]'
 
 echo "---"
 echo "$pass passed, $fail failed"

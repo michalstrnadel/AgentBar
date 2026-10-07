@@ -737,6 +737,15 @@ liveness pruning removes the row if the wrapper is killed before it reports `end
 `<agent>-<basename of cwd>`, stable across one-shot calls from the same
 directory; pass `--session` to keep two runs in one directory apart.
 
+Four of these ship in `Scripts/hooks/`, each with a README naming the vendor
+signal it reads: `aider/` (a wrapper on Aider's `--notifications-command` and its
+input history), `goose/` (a goose hooks plugin), `cline/` (Cline's task hooks, both
+the extension's and the CLI's payloads) and `amp/` (an Amp plugin). None answers
+anything: where a bridge sits on an event that takes a decision (goose's and
+Cline's `PreToolUse`), it gives only the agent's own documented "carry on", and
+Amp's deciding `tool.call` is not listened to at all. Each passes a `--pid` that
+lives as long as the agent.
+
 A writer that would rather not shell out writes the file itself:
 `~/.agentbar/state.d/<sessionId>.json`, written to a temp file in the same folder
 and renamed over the target:

@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# agentbar-aider: run Aider and show it in AgentBar while it runs. Use it in place
+# of `aider` (same arguments). Status only, through `agentbar report`; it answers
+# nothing and never changes how Aider behaves beyond the two flags below.
+#
+#   start                         -> idle (Aider opens at its prompt), or thinking
+#                                    when --message/--message-file runs one task
+#   a line lands in Aider's input  -> thinking  (its --input-history-file grows)
+#   --notifications-command fires  -> done      (Aider waits for you again)
+#   Aider exits                    -> end       (the row goes)
+#
+# The row carries this wrapper's pid, so it goes with the wrapper if anything
+# kills both before `end` is reported. See README.md for what this cannot see.
+set -u
+
+AIDER="${AGENTBAR_AIDER_BIN:-aider}"
+
+# The CLI: $AGENTBAR_CLI, then `agentbar` on PATH, then the one in this checkout.
+resolve_cli() {
+  if [ -n "${AGENTBAR_CLI:-}" ] && [ -x "$AGENTBAR_CLI" ]; then echo "$AGENTBAR_CLI"; return; fi
+  if command -v agentbar >/dev/null 2>&1; then command -v agentbar; return; fi
+  local src="$0" dir
+  while [ -L "$src" ]; do
+    dir="$(cd -P "$(dirname "$src")" && pwd)"; src="$(readlink "$src")"
+    case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+  done
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  [ -x "$dir/../../cli/agentbar" ] && echo "$dir/../../cli/agentbar"
+}
+CLI="$(resolve_cli)"
+# No CLI, no bar — but Aider still runs, exactly as asked.
+[ -n "$CLI" ] || exec "$AIDER" "$@"
+
+SESSION="aider-$$"
+r() { "$CLI" report --agent aider --name Aider --session "$SESSION" --pid $$ "$@" >/dev/null 2>&1 || true; }
+
+# What the arguments say: a one-shot task, and where the input history lives.
+oneshot=""; hist=""
+prev=""
+for a in "$@"; do
+  case "$prev" in
+    -m|--message|--msg) oneshot="$a" ;;
+    -f|--message-file) oneshot="${oneshot:-$(basename "$a")}" ;;
+    --input-history-file) hist="$a" ;;
+  esac
+  case "$a" in
+    --message=*|--msg=*) oneshot="${a#*=}" ;;
+    --message-file=*) oneshot="${oneshot:-$(basename "${a#*=}")}" ;;
+    --input-history-file=*) hist="${a#*=}" ;;
+  esac
+  prev="$a"
+done
+# Aider's own default: the git root, else the working directory.
+if [ -z "$hist" ]; then
+  hist="${AIDER_INPUT_HISTORY_FILE:-}"
+fi
+if [ -z "$hist" ]; then
+  root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  hist="${root:-.}/.aider.input.history"
+fi
+case "$hist" in /*) ;; *) hist="$PWD/$hist" ;; esac
+
+# A marker the notification touches: the input history being newer than it means
+# a line went in after Aider last waited, i.e. it is working on something.
+MARK="$(mktemp "${TMPDIR:-/tmp}/agentbar-aider.XXXXXX")" || MARK=""
+
+if [ -n "$oneshot" ]; then r --state thinking --prompt "$oneshot"
+else r --state idle --label "Waiting for your prompt"; fi
+
+# The notification command runs in Aider's own `sh -c`: everything it needs comes
+# through the environment, so nothing from here is ever spliced into a command line.
+export AGENTBAR_AIDER_CLI="$CLI" AGENTBAR_AIDER_SESSION="$SESSION" \
+       AGENTBAR_AIDER_PID="$$" AGENTBAR_AIDER_MARK="$MARK"
+NOTIFY='{ [ -z "$AGENTBAR_AIDER_MARK" ] || touch "$AGENTBAR_AIDER_MARK"; "$AGENTBAR_AIDER_CLI" report --agent aider --name Aider --session "$AGENTBAR_AIDER_SESSION" --pid "$AGENTBAR_AIDER_PID" --state done --label "Waiting for you"; } >/dev/null 2>&1; true'
+
+watcher=""
+if [ -n "$MARK" ] && [ -z "$oneshot" ]; then
+  (
+    while kill -0 $$ 2>/dev/null; do
+      # find, not [ -nt ]: macOS's bash 3.2 compares whole seconds, and a prompt
+      # typed in the second Aider finished would never count as newer.
+      if [ -n "$(find "$hist" -newer "$MARK" 2>/dev/null)" ]; then
+        # prompt_toolkit's history: each entry's lines start with "+".
+        line="$(grep '^+' "$hist" 2>/dev/null | tail -n 1 | cut -c2-)"
+        r --state thinking --prompt "$line"
+        # Seen: report each new line once, not once a second until Aider answers.
+        touch "$MARK"
+      fi
+      sleep "${AGENTBAR_AIDER_POLL:-1}"
+    done
+  ) &
+  watcher=$!
+fi
+
+# Ctrl-C belongs to Aider (it interrupts a reply); the wrapper only has to outlive
+# it long enough to report the end. A handler, not '' — an ignored signal would be
+# inherited by Aider and break its own Ctrl-C.
+trap ':' INT
+"$AIDER" --notifications --notifications-command "$NOTIFY" "$@"
+code=$?
+trap - INT
+
+# wait, so bash reaps it quietly instead of printing "Terminated" into your terminal.
+[ -z "$watcher" ] || { kill "$watcher" 2>/dev/null; wait "$watcher" 2>/dev/null; }
+[ -z "$MARK" ] || rm -f "$MARK"
+r --state end
+exit "$code"

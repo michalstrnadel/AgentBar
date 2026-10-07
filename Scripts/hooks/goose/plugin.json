@@ -1,0 +1,5 @@
+{
+  "name": "agentbar",
+  "version": "0.1.0",
+  "description": "Shows goose sessions in AgentBar: working, tool, waiting, gone. Status only; decides nothing."
+}
