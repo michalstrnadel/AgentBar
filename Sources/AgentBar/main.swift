@@ -194,7 +194,8 @@ if let i = CommandLine.arguments.firstIndex(of: "--render-wrap"),
     let range: DayWrap.Range = args.contains("week") ? .week : .today
     exit(WrapExport.renderForVerification(to: URL(fileURLWithPath: args[i + 1]), range: range,
                                           demo: args.contains("--demo"),
-                                          frames: args.contains("--frames")) ? 0 : 1)
+                                          frames: args.contains("--frames"),
+                                          video: args.contains("--video")) ? 0 : 1)
 }
 
 // Silent verification of the synthesized cues (offline render, writes WAVs and

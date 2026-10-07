@@ -81,6 +81,7 @@ enum MenuBuilder {
                              action: #selector(StatusItemController.openPastProject(_:)))
         today.submenu?.delegate = controller // hold live refresh while it is open
         menu.addItem(today)
+        menu.addItem(yourDayRow())
         menu.addItem(.separator())
 
         // Start a task, rather than an agent: the launcher, reachable without the
@@ -167,6 +168,17 @@ enum MenuBuilder {
     /// Takes its target rather than assuming the status item: in island-only mode
     /// there is no menu bar item at all, and a digest only one of the two surfaces
     /// can reach is half a feature. The island's overflow menu uses the same row.
+    /// The recap, one click from the Today row on both surfaces. Its own target, so
+    /// neither the status item nor the island needs a selector for it.
+    static func yourDayRow() -> NSMenuItem {
+        let item = NSMenuItem(title: "Your Day…", action: #selector(WrapWindow.openFromMenu(_:)),
+                              keyEquivalent: "")
+        item.target = WrapWindow.shared
+        item.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
+        item.toolTip = "Your day with your agents, as a story — and a card to share"
+        return item
+    }
+
     static func todayRow(target: AnyObject?, action: Selector?) -> NSMenuItem {
         let (summary, entries) = HistoryDigest.today(HistoryStore.read())
         let item = NSMenuItem(title: "Today", action: nil, keyEquivalent: "")

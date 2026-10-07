@@ -22,6 +22,7 @@ extension IslandController {
         // has to be reachable from it — otherwise the feature exists for menu bar
         // users and nobody else.
         menu.addItem(MenuBuilder.todayRow(target: self, action: #selector(openPastProject(_:))))
+        menu.addItem(MenuBuilder.yourDayRow())
         // The launcher, for the same reason: without this row an Island-only user
         // reached it only by a chord that is off by default, or by a link.
         let newTask = NSMenuItem(title: "New Task…", action: #selector(openLauncher(_:)),

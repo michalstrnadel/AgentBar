@@ -40,6 +40,8 @@ enum URLCommands {
         /// Settings, on a page when one is named.
         case settings(page: SettingsWindow.Page?)
         case welcome
+        /// The recap: `agentbar://day` or `agentbar://week`. Opens it, nothing more.
+        case recap(DayWrap.Range)
     }
 
     /// What a link may put in the launcher. Every field is optional: a link that
@@ -131,6 +133,10 @@ enum URLCommands {
                 return .settings(page: page)
             default: return nil
             }
+
+        case "day", "week":
+            guard path.isEmpty else { return nil }
+            return .recap(host == "day" ? .today : .week)
 
         // The window the menu calls Appearance, by either name.
         case "welcome", "appearance":
@@ -311,6 +317,8 @@ enum URLCommands {
             SettingsWindow.shared.show(page: page)
         case .welcome:
             WelcomeWindow.shared.show()
+        case .recap(let range):
+            WrapWindow.shared.show(range)
         }
     }
 }

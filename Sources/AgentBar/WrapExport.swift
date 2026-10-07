@@ -62,7 +62,7 @@ enum WrapExport {
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: Int(size.width), AVVideoHeightKey: Int(size.height),
-            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 10_000_000,
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 6_000_000,
                                               AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel],
             AVVideoColorPropertiesKey: [AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
                                         AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
@@ -157,7 +157,8 @@ enum WrapExport {
 
     /// Every slide as a still, both cards, and — with `frames` — a strip of moments
     /// from each slide's animation, into `dir`. Offscreen: nothing opens.
-    static func renderForVerification(to dir: URL, range: DayWrap.Range, demo: Bool, frames: Bool) -> Bool {
+    static func renderForVerification(to dir: URL, range: DayWrap.Range, demo: Bool, frames: Bool,
+                                      video: Bool = false) -> Bool {
         let fm = FileManager.default
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         let wrap = demo ? WrapDemo.wrap(range)
@@ -176,6 +177,17 @@ enum WrapExport {
                 }
             }
         }
+        if video {
+            do {
+                try writeMP4(wrap.shareSafe(), to: dir.appendingPathComponent("story.mp4"))
+                try writeGIF(wrap.shareSafe(), to: dir.appendingPathComponent("story.gif"))
+            } catch {
+                FileHandle.standardError.write(Data("video: \(error)\n".utf8))
+                ok = false
+            }
+        }
+        ok = WrapWindow.shared.renderForVerification(wrap, slide: 1, at: 2.5,
+                                                     to: dir.appendingPathComponent("window.png")) && ok
         for shape in [Shape.story, .square] {
             guard let rep = card(wrap.shareSafe(), shape: shape), let data = png(rep) else { ok = false; continue }
             ok = (try? data.write(to: dir.appendingPathComponent("card-\(shape == .story ? "story" : "square")-shared.png"))) != nil && ok
