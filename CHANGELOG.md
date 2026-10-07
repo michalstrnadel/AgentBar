@@ -3,6 +3,37 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.47.0 - 2026-10-07
+
+### Fixed
+
+- **Your Day's agent time is the time agents were working, not the time their
+  windows were open.** Three Claude Code windows open since morning added up to
+  "52h of agent time" in one day. It now comes from two sources:
+  - **Claude Code's own transcript**, where every prompt and every step is
+    stamped. A turn runs from your prompt to its last step, and a silence of
+    more than five minutes inside a turn is waiting, not work.
+  - **What AgentBar saw**, for every other agent: the stretches a session spent
+    in thinking or tool. These are now written to `history.jsonl` as `spans`.
+
+  A session with neither is counted but gets no time. The peak, the bars and the
+  longest run come from the same stretches.
+
+### Added
+
+- **You, through the day.** Under the agents' bars, a dot marks every hour you
+  typed prompts or answered requests, bigger the more you did.
+- **More on the card:** your prompts and when you sent the most, the longest
+  run, and the busiest hour.
+
+### Changed
+
+- **The Your Day window's controls are two buttons.** **Copy** puts the card on
+  the clipboard. **Share** holds Share…, Save Image, Save Square Image, Save
+  Video, Save GIF and **Include Project Names** (still off by default). Today and
+  This Week sit beside them. The recap loads off the main thread, because a
+  week of transcripts can be megabytes.
+
 ## 1.46.0 - 2026-10-07
 
 ### Added
