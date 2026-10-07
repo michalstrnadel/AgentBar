@@ -184,6 +184,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+// The recap, every slide as a still and the share cards, drawn to files. `--demo`
+// draws the made-up day in `WrapDemo`; otherwise this Mac's own history.
+// `--frames` also writes mid-animation frames, for checking the motion.
+if let i = CommandLine.arguments.firstIndex(of: "--render-wrap"),
+   CommandLine.arguments.indices.contains(i + 1) {
+    _ = NSApplication.shared
+    let args = CommandLine.arguments
+    let range: DayWrap.Range = args.contains("week") ? .week : .today
+    exit(WrapExport.renderForVerification(to: URL(fileURLWithPath: args[i + 1]), range: range,
+                                          demo: args.contains("--demo"),
+                                          frames: args.contains("--frames")) ? 0 : 1)
+}
+
 // Silent verification of the synthesized cues (offline render, writes WAVs and
 // asserts audibility/headroom). MUST run before the kill-other-copies loop below,
 // or checking the sounds would terminate the user's live AgentBar.

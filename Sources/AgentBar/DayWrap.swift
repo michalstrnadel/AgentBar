@@ -83,6 +83,15 @@ struct DayWrap: Equatable {
     var changeMeasured = 0
 
     var waits = Waits()
+    /// Every decision in the range, as a moment on the day: when, how long it had
+    /// waited, and whether a rule made it. Drawn as dots on a line.
+    var moments: [Moment] = []
+
+    struct Moment: Equatable {
+        let ts: TimeInterval
+        let waited: TimeInterval
+        let byRule: Bool
+    }
     /// The most sessions running at once, and the first moment it happened.
     var peak = 0
     var peakAt: TimeInterval = 0
@@ -231,6 +240,11 @@ struct DayWrap: Equatable {
         w.waits.answered = mine.count
         w.waits.waited = mine.reduce(0) { $0 + $1.waited }
         w.waits.byRules = DecisionLedger.byRules(in: inRange, since: start, until: end)
+        w.moments = inRange.compactMap { r in
+            if r.isPersonal { return Moment(ts: r.ts, waited: r.waited, byRule: false) }
+            if r.via == "rule", r.decision != "watch" { return Moment(ts: r.ts, waited: 0, byRule: true) }
+            return nil
+        }
         let waits = mine.map(\.waited).filter { $0 > 0 }.sorted()
         w.waits.fastest = waits.first
         if !waits.isEmpty { w.waits.median = waits[waits.count / 2] }
