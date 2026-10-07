@@ -3,6 +3,26 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.46.0 - 2026-10-07
+
+### Added
+
+- **Allow all alike.** When the same request waits in several sessions — three
+  agents asking for the same `npm test` in the same folder — the island card and
+  the menu's inline strip offer **Allow all 3**.
+  - "The same" is strict: the same tool, the whole same input byte for byte, and
+    the same directory.
+  - Only the requests on screen when you click are answered; one that arrives a
+    moment later is not.
+  - Each one is written to the approval history as your own answer.
+  - Plans and questions never batch.
+- **Try an approval.** The welcome window has a button that puts one made-up
+  request where a real one would wait: at the notch, or in the menu bar. You
+  answer it the way you would answer a real one, before any agent is wired. It is
+  on screen only: nothing runs, no file is written, and it never reaches the
+  history, the approval record, a notification or a rule. It goes away by itself
+  after three minutes, as a real request times out.
+
 ## 1.45.1 - 2026-10-07
 
 ### Fixed
