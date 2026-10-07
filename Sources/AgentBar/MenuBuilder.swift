@@ -169,18 +169,6 @@ enum MenuBuilder {
                               action: appMenuAction, submenuDelegate: controller)
     }
 
-    /// What finished today, as one line with the sessions behind it.
-    ///
-    /// The menu answers "what is happening"; this is the only place AgentBar answers
-    /// "what happened", and it stays a menu row rather than becoming a window —
-    /// rule 2 allows exactly two surfaces, and a dashboard is not one of them.
-    ///
-    /// Read fresh on every open. A digest recomputed when someone asks for it is
-    /// cheap; a digest kept in sync all day is a store nobody needed.
-    ///
-    /// Takes its target rather than assuming the status item: in island-only mode
-    /// there is no menu bar item at all, and a digest only one of the two surfaces
-    /// can reach is half a feature. The island's overflow menu uses the same row.
     /// The recap, one click from the Today row on both surfaces. Its own target, so
     /// neither the status item nor the island needs a selector for it.
     static func yourDayRow() -> NSMenuItem {
@@ -192,6 +180,18 @@ enum MenuBuilder {
         return item
     }
 
+    /// What finished today, as one line with the sessions behind it.
+    ///
+    /// The menu answers "what is happening"; this row answers "what happened" in a
+    /// line, and Your Day (`WrapWindow`) is the one window that answers it at
+    /// length, opened only on request.
+    ///
+    /// Read fresh on every open. A digest recomputed when someone asks for it is
+    /// cheap; a digest kept in sync all day is a store nobody needed.
+    ///
+    /// Takes its target rather than assuming the status item: in island-only mode
+    /// there is no menu bar item at all, and a digest only one of the two surfaces
+    /// can reach is half a feature. The island's overflow menu uses the same row.
     static func todayRow(target: AnyObject?, action: Selector?) -> NSMenuItem {
         let (summary, entries) = HistoryDigest.today(HistoryStore.read())
         let item = NSMenuItem(title: "Today", action: nil, keyEquivalent: "")

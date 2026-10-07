@@ -1,7 +1,7 @@
 import Foundation
 
 /// A made-up day, for pictures of the recap: the README, the promo film, and the
-/// offscreen render that checks every slide. Never shown in the app — a recap of
+/// offscreen render that checks the card. Never shown in the app — a recap of
 /// somebody else's day is exactly the invented number `DayWrap` refuses to show.
 enum WrapDemo {
     static func wrap(_ range: DayWrap.Range, now: TimeInterval = Date().timeIntervalSince1970,

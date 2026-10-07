@@ -5,7 +5,7 @@ import AppKit
 /// A recap you open every evening is read, not watched, so it is one card with
 /// everything on it rather than a story of slides — the card is the point, and a
 /// story was a longer way to the same numbers. It builds once (the words rise,
-/// the time counts up, the hours grow, the tiles land) and then holds still.
+/// the time counts up, the hours grow, the rows land) and then holds still.
 ///
 /// **One deterministic function** — `draw(at:wrap:size:in:still:)` — is the window,
 /// the PNG, the GIF and the MP4. Nothing here keeps state between frames: the card
@@ -249,8 +249,9 @@ enum WrapRenderer {
         var second: (String, NSColor)? = nil
     }
 
-    /// The facts that exist, in the order they are worth: the top agent, the
-    /// code, you, the projects; then the plainer ones if room is left.
+    /// The facts that exist, in the order they are worth: the top agent, the code,
+    /// your answers and prompts, the longest run and the busiest hour, then the
+    /// projects, the agents and what failed.
     static func tileFacts(_ w: DayWrap) -> [Tile] {
         var out: [Tile] = []
         if let top = w.topAgent {

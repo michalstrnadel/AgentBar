@@ -1,7 +1,7 @@
 import AppKit
 
-/// The recap's look: palettes, type, motion, and the few drawing primitives every
-/// slide is made of. Kept apart from `WrapRenderer` so the slides read as layout,
+/// The recap's look: palettes, type, motion, and the few drawing primitives the
+/// card is made of. Kept apart from `WrapRenderer` so the card reads as layout,
 /// and so one change to the type or the easing reaches all of them.
 ///
 /// Everything draws into a **flipped** context (y grows downward) in a canvas whose
@@ -51,7 +51,7 @@ enum WrapStyle {
 
     static func clamp(_ x: Double) -> Double { min(1, max(0, x)) }
     static func easeOut(_ x: Double) -> Double { let p = 1 - clamp(x); return 1 - p * p * p }
-    /// 0…1 for an element that starts `delay` seconds into the slide and takes `dur`.
+    /// 0…1 for an element that starts `delay` seconds into the build and takes `dur`.
     static func appear(_ seconds: Double, _ delay: Double, _ dur: Double = 0.7) -> Double {
         clamp((seconds - delay) / dur)
     }

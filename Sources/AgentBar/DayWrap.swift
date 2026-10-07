@@ -1,13 +1,13 @@
 import Foundation
 
-/// Your day — or week — with your agents, as a handful of facts worth a slide each.
+/// Your day — or week — with your agents, as a handful of facts on one card.
 ///
 /// The recap's model, and only that: pure functions over records already loaded
 /// from `history.jsonl` and `decisions.jsonl`, so every number on the cards can be
 /// tested and none of them is computed in a view. It follows `HistoryDigest`'s
 /// rules, because a recap is the place a number is most likely to be quoted:
 /// a figure measured on some sessions says so ("across 4"), a fact with nothing
-/// behind it leaves its slide out, and nothing is ever estimated to fill a gap.
+/// behind it gets no row, and nothing is ever estimated to fill a gap.
 struct DayWrap: Equatable {
     enum Range: String, Equatable, CaseIterable {
         case today, week
@@ -92,7 +92,8 @@ struct DayWrap: Equatable {
 
     var waits = Waits()
     /// Every decision in the range, as a moment on the day: when, how long it had
-    /// waited, and whether a rule made it. Drawn as dots on a line.
+    /// waited, and whether a rule made it. Not drawn; the card's "you" dots come
+    /// from `youBins`.
     var moments: [Moment] = []
 
     struct Moment: Equatable {

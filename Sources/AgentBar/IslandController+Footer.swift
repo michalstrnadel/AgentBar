@@ -62,7 +62,7 @@ extension IslandController {
         dots.isBordered = false
         dots.font = .systemFont(ofSize: 15, weight: .semibold)
         dots.contentTintColor = NSColor.white.withAlphaComponent(0.55)
-        dots.toolTip = "AgentBar menu — Today, New task, Take a break, Settings, updates, Quit"
+        dots.toolTip = "AgentBar menu — Today, Your Day, New task, Take a break, Settings, updates, Quit"
         dots.setAccessibilityLabel("AgentBar menu")
 
         var views: [NSView] = []

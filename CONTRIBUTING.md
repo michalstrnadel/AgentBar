@@ -202,13 +202,19 @@ all, and CI has no access to the certificate. So CI builds and verifies the
 universal bundle, and it is signed locally.
 
 1. Bump `VERSION` in `Scripts/build.sh`, date the `CHANGELOG.md` section.
-2. Commit as `chore: release X.Y.Z — …` and push. Wait for CI to go green.
+2. Commit as `chore: release X.Y.Z — …`, run `gh workflow enable ci.yml`, push, and
+   wait for **that commit's** push run to finish with conclusion `success`
+   (`gh run list --workflow ci.yml --commit "$(git rev-parse HEAD)"`). A failed run
+   is not a release — 1.45.0 went out from one and could never be attested: fix it
+   and push again. Run `gh workflow disable ci.yml` once the release is out.
 3. Download the bundle CI built and verified, then sign it here:
    ```bash
    # The selector release-provenance.yml uses: the successful push run of this
    # commit, never just the newest run of any event or branch.
    RID=$(gh run list --workflow ci.yml --commit "$(git rev-parse HEAD)" --event push \
      --status success --limit 1 --json databaseId -q '.[0].databaseId')
+   # An empty RID makes `gh run download` take any run's artifact — stop instead.
+   [ -n "$RID" ] || { echo "no successful push run of ci.yml for this commit — do not release"; exit 1; }
    gh run download "$RID" -n AgentBar-app-universal -D /tmp/rel
    cd /tmp/rel && ditto -xk AgentBar.app.zip .
    codesign --force --deep -s "AgentBar Local Signing" AgentBar.app

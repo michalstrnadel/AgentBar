@@ -156,7 +156,8 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   in Notification Center, a Focus is on — macOS files banners rather than showing
   them, which is working as designed.
 - **What happened today, with its weight** — sessions that finished, how long they
-  took, what they cost and what moved in the repo: *"12 sessions · 3h 40m · 4.1M
+  actually worked (not how long their windows were open), what they cost and what
+  moved in the repo: *"12 sessions · 3h 40m · 4.1M
   tokens"*, and per row *"AgentBar · 34m · 1.2M · 7 files +210 −80"*. Token counts
   come from each agent's own local files (Claude's transcript, Codex's rollout,
   Copilot's session store); the agents that publish nothing simply show nothing,
@@ -208,6 +209,8 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   the same way five times offers **Write a rule…**, which opens the ordinary rule
   sheet filled in; the rule starts out watching and is saved only when you press
   **Add rule**. Only your own answers in AgentBar are counted.
+
+  <img src="docs/assets/week-of-decisions.png" width="560" alt="Settings ▸ Approvals, Your week of decisions: since 1 Oct, asked 49×, 25m waited, your rules answered 5 more. git push 14× · 7m waited, allowed 14, no rule yet, with a Write a rule… button; rm 6× denied, its deny rule is off; npm test 11×, a watching allow rule would have answered 9 of 9, about 4m; edit Sources/*.swift 11×; curl 3×">
 - **How long they waited on you** — the other half of the day's account, under
   **Today**: *“18 answered · 3 by your rules · they waited 34m on you”*. Nothing else
   on the machine is standing in the right place to measure it, and the two counts stay
@@ -343,9 +346,9 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
 ## Your Day
 
 <p align="center">
-  <img src="docs/assets/your-day.gif?v=2026-10-07d" width="300" alt="AgentBar's Your Day card building itself on plain paper: the date, 11h of agent time counting up, 'The Orchestrator. 3 agents working at once at 9:24.', the day's hours as bars in each agent's colour with the peak marked by a thin line, and a list: top agent Claude, changed +3,160 −968, your answers 25, top project">
+  <img src="docs/assets/your-day.gif?v=2026-10-07d" width="300" alt="AgentBar's Your Day card building itself on plain paper: the date, 9h 1m of agent time counting up across 9 sessions, 'The Orchestrator. 3 agents working at once at 9:24.', the day's hours as bars in each agent's colour with the peak marked by a thin line, a row of dots for your prompts and answers under them, and a list: top agent Claude, changed +3,160 −968, your answers 25, your prompts 27">
   &nbsp;
-  <img src="docs/assets/your-day.png?v=2026-10-07d" width="300" alt="The same card for a week: 34h 24m of agent time, seven days as bars with the best day marked, and the same list">
+  <img src="docs/assets/your-day.png?v=2026-10-07d" width="300" alt="The same card for a week: 28h 12m of agent time across 21 sessions, seven days as bars with the best day, Wednesday, marked, a dot per day for you, and the list: top agent, changed, your answers, your prompts">
 </p>
 
 **Your Day…** — in the menu bar's menu and the island's ⋯ — puts your day with
@@ -741,9 +744,9 @@ the notch:
 - **The day along the bottom** *(off by default)* — **Appearance… ▸ Today, along the
   bottom** has two switches you can take separately. **The day's total** is one line:
   *"12 sessions · 3h 40m · 4.1M tokens"*. **A bar per session** draws today's finished
-  sessions oldest-first, wider the longer each ran, in the agent's colour, red for
+  sessions oldest-first, wider the longer each worked, in the agent's colour, red for
   what failed and half-lit for one nobody could time — point at a bar for its project,
-  duration, tokens and what changed in its repo. Both are off until you ask, because
+  working time, tokens and what changed in its repo. Both are off until you ask, because
   the strip costs height and a day spent in a single agent draws one long bar that
   does not earn it.
 - **A mascot with a little life in it** *(on for a new install)* — on the island only,
@@ -774,7 +777,7 @@ the notch:
 In Island-only mode the menu bar item is hidden, so the panel's **⋯** button carries
 everything the menu bar's own menu ends with — Icon Color, Sounds, Appearance,
 Diagnostics, Settings, updates, Send Feedback and Quit — and starts with Today,
-New Task… and Take a break. Both menus are drawn from one list, so
+Your Day…, New Task… and Take a break. Both menus are drawn from one list, so
 neither can lose a row the other has.
 
 ### Appearance
