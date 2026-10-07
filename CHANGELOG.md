@@ -3,6 +3,17 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.45.1 - 2026-10-07
+
+### Fixed
+
+- **1.45.0's release could not be attested.** One check of the new Amp bridge
+  failed on Linux CI, and 1.45.0 was published anyway, so its download has no
+  provenance attestation. 1.45.1 is the same release from a green run and is
+  attested. The bridge itself also changed: on Linux it now asks `/proc` which
+  program its parent runs, because a shell running a script is named after the
+  script there and was not recognised as a shell.
+
 ## 1.45.0 - 2026-10-07
 
 ### Added
