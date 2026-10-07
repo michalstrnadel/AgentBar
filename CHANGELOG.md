@@ -3,6 +3,22 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.44.3 - 2026-10-07
+
+### Fixed
+
+- **The welcome window no longer opens when an agent starts AgentBar.** With
+  **Show this window on launch** ticked, every launch showed the window, including
+  the ones nobody made by hand: a hook starting AgentBar for a session (Claude
+  Code's after every `/compact` among them) and an update's relaunch. Those
+  launches now say so (`--background`) and open no window. A first run still
+  shows it however it started, and a launch you make shows it as you asked.
+- **Hooks start the installed AgentBar, not whichever copy LaunchServices
+  prefers.** By bundle ID alone it could pick an old dev build lying in a
+  checkout, which started as a second instance and stopped the real one. The
+  hooks now name `/Applications/AgentBar.app` (or `~/Applications`) when it is
+  there.
+
 ## 1.44.2 - 2026-10-07
 
 ### Changed
