@@ -3,6 +3,26 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.47.1 - 2026-10-07
+
+### Fixed
+
+- **Today counts working time too.** The island's day line and bars, the menu's
+  Today row and `agentbar history` used how long each session's window was open,
+  the same mistake Your Day made before 1.47.0. They now total the stretches a
+  session spent working (`spans`). A line from before those were kept shows as
+  untimed: a half-lit bar, and "across N" in the total.
+- **`agentbar` no longer erases the app's working time.** The CLI writes history
+  lines too, and the last line for a session wins. Its lines now carry the newest
+  `spans` the file holds, read fresh on every pass, so a long `agentbar watch`
+  cannot write back the ones it read at start.
+
+### Changed
+
+- The README shows the week of decisions, and its Your Day pictures and text
+  match the current card. `CONTRIBUTING.md`'s release steps now refuse to download
+  an artifact unless that commit's CI run succeeded.
+
 ## 1.47.0 - 2026-10-07
 
 ### Fixed
