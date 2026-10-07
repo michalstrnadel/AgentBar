@@ -41,6 +41,10 @@ final class LauncherPanel: NSObject, NSWindowDelegate {
     /// first Return only arms the panel — and only once it has been on screen long
     /// enough to be read. Editing the prompt arms it too: then it is your prompt.
     private var armed = true
+    /// The agent a handoff came from (`Handoff`): the prompt was written by
+    /// AgentBar from that session, so the hint says so — but it came from a click
+    /// the person made, so one Return starts it, as for anything they chose.
+    private var handedFrom: String?
     private var shownAt = Date.distantPast
 
     // MARK: - Showing
@@ -61,7 +65,7 @@ final class LauncherPanel: NSObject, NSWindowDelegate {
     /// on screen and selected rather than implied. An agent id this machine cannot
     /// start is dropped and the usual first agent stays chosen — a link naming
     /// something that is not installed is not a reason to show nothing.
-    func show(prefill: URLCommands.Prefill?) {
+    func show(prefill: URLCommands.Prefill?, handedFrom: String? = nil) {
         projects = Launcher.recentProjects(sessions: Self.sessions(),
                                            history: HistoryStore.cached())
         agents = Launcher.launchableAgents()
@@ -94,8 +98,9 @@ final class LauncherPanel: NSObject, NSWindowDelegate {
         // link-filled prompt opened again from the menu or the hotkey is still one
         // the person did not write, and still owes its second Return.
         if prefill != nil || !keepTyped {
-            fromLink = prefill != nil
+            fromLink = prefill != nil && handedFrom == nil
             armed = !fromLink
+            self.handedFrom = keepTyped ? nil : handedFrom
         }
         shownAt = Date()
         if panel == nil { build() }
@@ -249,6 +254,8 @@ final class LauncherPanel: NSObject, NSWindowDelegate {
         if fromLink {
             text = armed ? "From a link · " + text
                          : "From a link — read it, then ⏎ twice · " + text
+        } else if let from = handedFrom {
+            text = "Carrying on from \(from) — read it first · " + text
         }
         // The keys, once there is more than one thing to choose between.
         let keys = [projects.count > 1 ? "↑↓ project" : nil, agents.count > 1 ? "⇥ agent" : nil]

@@ -380,6 +380,11 @@ final class IslandRowView: NSView {
             c.setAccessibilityLabel("Quiet for \(quiet) minutes")
             out.append(c)
         }
+        // The quota this session draws on runs out within half an hour: say when,
+        // and make the chip the way to carry the work over (`Handoff`).
+        if let f = Handoff.runningOut(s, readings: UsageCenter.shared.readings), Handoff.canHandOff(s) {
+            out.append(HandoffChip(session: s, forecast: f))
+        }
         if let e = s.elapsed {
             let l = NSTextField(labelWithString: e)
             l.font = .monospacedSystemFont(ofSize: 9, weight: .medium)
@@ -411,6 +416,13 @@ final class IslandRowView: NSView {
     override func mouseEntered(with event: NSEvent) { hovered = true }
     override func mouseExited(with event: NSEvent) { hovered = false }
     override func mouseUp(with event: NSEvent) { onClick(session) }
+
+    /// Right-click or control-click: carry this session's work over to another
+    /// agent. A row has nothing else to offer that a click does not already do.
+    override func menu(for event: NSEvent) -> NSMenu? {
+        HandoffMenu.shared.menu(for: session,
+                                runningOut: Handoff.runningOut(session, readings: UsageCenter.shared.readings))
+    }
 
     override func accessibilityPerformPress() -> Bool {
         onClick(session)
@@ -451,6 +463,46 @@ final class ChipBox: NSView {
     override func draw(_ dirtyRect: NSRect) {
         NSColor.white.withAlphaComponent(0.11).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
+    }
+}
+
+/// "out ~15:40 ↗" on a session whose quota is nearly gone: a click opens Continue
+/// in ▸, the row's own right-click menu, so the way out is where the warning is.
+final class HandoffChip: NSView {
+    private let session: Session
+    private let forecast: UsagePace.Forecast
+
+    init(session: Session, forecast: UsagePace.Forecast) {
+        self.session = session
+        self.forecast = forecast
+        super.init(frame: .zero)
+        let label = NSTextField(labelWithString: UsagePace.short(forecast) + " ↗")
+        label.font = .monospacedSystemFont(ofSize: 9, weight: .semibold)
+        label.textColor = IconRenderer.legibleOnDark(IconRenderer.amberDot)
+        let box = ChipBox(label: label)
+        box.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(box)
+        NSLayoutConstraint.activate([
+            box.leadingAnchor.constraint(equalTo: leadingAnchor), box.trailingAnchor.constraint(equalTo: trailingAnchor),
+            box.topAnchor.constraint(equalTo: topAnchor), box.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+        toolTip = "\(session.agent.name)'s limit runs out ~\(UsageCenter.when(forecast.runsOutAt)) at this pace. "
+            + "Click to carry on in another agent."
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel("Limit runs out at \(UsageCenter.when(forecast.runsOutAt)). Continue in another agent")
+    }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    // Taken here, not passed to the row: a click on the chip is not a jump.
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) { pop() }
+    override func accessibilityPerformPress() -> Bool { pop(); return true }
+
+    private func pop() {
+        guard let menu = HandoffMenu.shared.menu(for: session, runningOut: forecast) else { return }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -4), in: self)   // under it: not flipped
     }
 }
 

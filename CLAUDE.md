@@ -44,7 +44,8 @@ open "build/AgentBar.app"
    last section falls off the screen.
    `LauncherPanel` is the third surface and the only one summoned by a keystroke.
    It earns that by the same test the banners do: it takes no space until asked,
-   it appears only on a deliberate keypress, a menu click, or an `agentbar://new-task`
+   it appears only on a deliberate keypress, a menu click (**Continue in…**, the
+   `Handoff` of a session to another agent, is one), or an `agentbar://new-task`
    link (Shortcuts, Raycast — see `URLCommands`; a link only fills it in, Return is
    still yours), and it closes the instant it loses focus. No link may approve,
    deny, answer, defer, write a rule or change a setting: any web page can open one.

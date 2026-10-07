@@ -77,6 +77,18 @@ enum MenuBuilder {
             item.view = meters
             menu.addItem(item)
         }
+        // A session whose quota runs out within half an hour gets the way out right
+        // under the meter that says so: carry it on in another agent (`Handoff`).
+        for s in sessions {
+            guard let f = Handoff.runningOut(s, readings: UsageCenter.shared.readings),
+                  let sub = HandoffMenu.shared.menu(for: s, runningOut: f) else { continue }
+            let item = NSMenuItem(title: "Continue \(s.project.isEmpty ? s.agent.name : s.project) Elsewhere", action: nil, keyEquivalent: "")
+            item.image = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: nil)
+            item.toolTip = "\(s.agent.name) runs out ~\(UsageCenter.when(f.runsOutAt)) at this pace"
+            sub.delegate = controller
+            item.submenu = sub
+            menu.addItem(item)
+        }
         let today = todayRow(target: controller,
                              action: #selector(StatusItemController.openPastProject(_:)))
         today.submenu?.delegate = controller // hold live refresh while it is open

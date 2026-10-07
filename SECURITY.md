@@ -200,6 +200,16 @@ the CodeQL and SBOM results beside it, are for. The comparison itself is
 `Scripts/dev/verify-release.sh`, and it can be run by hand on a CI artifact and a
 release asset.
 
+## Carrying a session over to another agent
+
+**Continue in…** (`Handoff`) opens the launcher filled in: the session's folder,
+the agent you picked, and a one-line prompt. That prompt quotes the person's own
+last prompt and the agent's last recap — the recap is the agent's words, so it is
+quoted, cut to one short line, and lands only in the launcher's field, which the
+person reads before pressing Return. Nothing starts without that Return, the
+first session is not stopped or told anything, and no link can trigger it: it
+exists only behind a click on a row, its chip, or a menu.
+
 ## Handing a file to an agent
 
 Dropping a file on a session in the island (`DropToAgent`) is the only place
