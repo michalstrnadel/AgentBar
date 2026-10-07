@@ -124,7 +124,8 @@ private func session(_ fields: [String: Any]) throws -> Session {
         let now: TimeInterval = 1_000_000
         let s = samples(from: 40, perMinute: 0.5, minutes: 20, now: now)   // 30 %/h, at 50 %
         let f = try #require(UsagePace.forecast(s, used: 50, resetsAt: Date(timeIntervalSince1970: now + 4 * 3600), now: now))
-        #expect(abs(f.runsOutAt.timeIntervalSince1970 - (now + 100 * 60)) < 1)
+        let expected: TimeInterval = now + 6_000          // 50 % left at 30 %/h: 100 minutes
+        #expect(abs(f.runsOutAt.timeIntervalSince1970 - expected) < 1)
         #expect(abs(f.perHour - 30) < 0.01)
     }
 
@@ -153,7 +154,8 @@ private func session(_ fields: [String: Any]) throws -> Session {
                 now: 1_000_000 + Double(m) * 60)
         }
         let w = UsageWindow(name: "5h", usedPercent: 59, resetsAt: reset)
-        #expect(pace.forecast(provider: "Codex", window: w, now: 1_000_000 + 19 * 60) != nil)
+        let later: TimeInterval = 1_001_140
+        #expect(pace.forecast(provider: "Codex", window: w, now: later) != nil)
         pace.record([UsageCenter.Reading(provider: "Codex", text: "",
             windows: [UsageWindow(name: "5h", usedPercent: 2, resetsAt: reset.addingTimeInterval(5 * 3600))])],
             now: 1_000_000 + 20 * 60)

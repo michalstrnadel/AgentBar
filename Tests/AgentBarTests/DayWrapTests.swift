@@ -46,14 +46,14 @@ import Testing
         ]
         let w = DayWrap.make(.today, history: h, ledger: [], now: at(18), calendar: calendar)
         #expect(w.sessions == 4)
-        #expect(w.agentSeconds == 2 * 3600 + 1800 + 1800 + 3600)
-        #expect(w.busySeconds == 3 * 3600)              // 9–11 and 14–15
+        #expect(w.agentSeconds == 14_400)            // 2h + 30m + 30m + 1h
+        #expect(w.busySeconds == 10_800)              // 9–11 and 14–15
         #expect(w.peak == 3)
         #expect(w.peakAt == at(10, 15))
         #expect(w.topAgent?.id == "claude")
         #expect(w.projects.first?.name == "AgentBar")
         #expect(w.bins.count == 24)
-        #expect(w.bins[10] == 3600 + 1800 + 1800)
+        #expect(w.bins[10] == 7_200)
         #expect(w.binAgents[10] == "claude")
         #expect(w.persona.title == "The Orchestrator")
         #expect(w.persona.reason.contains("10:15"))
@@ -63,7 +63,7 @@ import Testing
     @Test func aSessionThatStartedYesterdayIsClipped() {
         let h = [record("claude", "X", from: at(23, day: 6), to: at(1))]
         let w = DayWrap.make(.today, history: h, ledger: [], now: at(18), calendar: calendar)
-        #expect(w.agentSeconds == 3600)
+        #expect(w.agentSeconds == 3_600)
     }
 
     @Test func anUntimedSessionCountsButAddsNoTime() {
@@ -103,7 +103,7 @@ import Testing
                  record("codex", "B", from: at(11), to: at(11, 10))]
         let w = DayWrap.make(.today, history: h, ledger: [], now: at(18), calendar: calendar)
         #expect(w.longest?.task == "refactor the ledger")
-        #expect(w.longest?.seconds == 2.5 * 3600)
+        #expect(w.longest?.seconds == 9_000)
         #expect(w.persona.title == "The Marathoner")
     }
 
