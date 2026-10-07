@@ -6,6 +6,17 @@ const fs = require("fs"), os = require("os"), path = require("path"), cp = requi
 
 const AGENT = "gemini";
 const BUNDLE_ID = "com.michalstrnadel.agentbar";
+
+// How a hook starts the app when it is not running. The installed copy by PATH
+// when there is one: by bundle ID alone LaunchServices may pick a dev build or a
+// leftover copy (seen: an old build/AgentBar.app), which starts as a second
+// instance and stops the real one. `--background` tells the app nobody opened it
+// by hand, so it puts no window up (WelcomeWindow.showsOnLaunch).
+const launchArgs = () => {
+  const installed = ["/Applications/AgentBar.app", path.join(os.homedir(), "Applications", "AgentBar.app")]
+    .find((p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } });
+  return [...(installed ? ["-g", "-a", installed] : ["-g", "-b", BUNDLE_ID]), "--args", "--background"];
+};
 const EXEC = "AgentBar";
 // The state root (docs/protocol.md, "Where state lives"): AGENTBAR_HOME when it is
 // an absolute path, ~/.agentbar otherwise. A relative value is ignored, not refused:
@@ -138,6 +149,6 @@ function run() {
   // may resolve the bundle ID to the OTHER copy and start a second instance —
   // which then terminates the one already running (see lifecycle.js).
   if (state === "idle" && process.platform === "darwin" && !appUp)
-    cp.spawn("open", ["-g", "-b", BUNDLE_ID], { stdio: "ignore", detached: true }).unref();
+    cp.spawn("open", launchArgs(), { stdio: "ignore", detached: true }).unref();
   process.exit(0);
 }

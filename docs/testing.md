@@ -80,10 +80,14 @@ Xcode and never sees this.
 | `AGENTBAR_AGENT=<id>` | `lifecycle.js`, `update.js` | The agent id the row is written under (how Qwen Code and Copilot CLI reuse the Claude scripts). |
 | `NODE=<path>` | every suite | Which `node` to run the scripts with. |
 
-The launch path spawns `open -g -b <bundle id>` on macOS only. Tests put a fake
-`open` first in `PATH` that touches `$FAKEOPEN_MARK`, so a suite can never start
-a real AgentBar — and the positive assertion ("launches when down") is guarded
-with `[ "$(uname)" != "Darwin" ] ||` because on Linux the spawn never happens.
+The launch path spawns `open -g -a /Applications/AgentBar.app --args --background`
+on macOS only (by bundle ID, `-b`, when no installed copy exists): by path, so
+LaunchServices cannot pick a dev build instead, and `--background` so the app
+puts no window up for a launch nobody made by hand. Tests put a fake `open` first
+in `PATH` that writes its arguments to `$FAKEOPEN_MARK`, so a suite can never
+start a real AgentBar and can check what it was asked — and the positive
+assertions ("launches when down", "launch is --background") are guarded with
+`[ "$(uname)" != "Darwin" ] ||` because on Linux the spawn never happens.
 
 ## CI
 

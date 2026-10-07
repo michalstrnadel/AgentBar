@@ -422,7 +422,7 @@ check "activity: cleared on new prompt" '! grep -q "\"activity\"" "$ACT"'
 # can't launch a real AgentBar out of nowhere)
 fresh_home
 FAKEBIN="$HOME/fakebin"; mkdir -p "$FAKEBIN"
-printf '#!/bin/sh\ntouch "$FAKEOPEN_MARK"\nexit 0\n' > "$FAKEBIN/open"; chmod +x "$FAKEBIN/open"
+printf '#!/bin/sh\necho "$@" > "$FAKEOPEN_MARK"\nexit 0\n' > "$FAKEBIN/open"; chmod +x "$FAKEBIN/open"
 export FAKEOPEN_MARK="$HOME/open-called"
 printf '{"session_id":"lcsess","cwd":"/tmp/proj"}' | PATH="$FAKEBIN:$PATH" AGENTBAR_FORCE_APP=0 "$NODE" Scripts/hooks/claude/lifecycle.js start
 check "lifecycle: started_at seeded" 'grep -q "\"started_at\":" "$HOME/.agentbar/state.d/lcsess.json"'
@@ -433,6 +433,11 @@ check "lifecycle: still started:false" 'grep -q "\"started\":false" "$HOME/.agen
 # The launch is a detached spawn, so give the fake `open` a beat to land.
 sleep 1
 check "lifecycle: launches when down"  '[ "$(uname)" != "Darwin" ] || [ -e "$FAKEOPEN_MARK" ]'
+# A launch nobody made by hand says so — the app then opens no window (the
+# welcome window used to appear after a /compact) — and names the installed copy
+# by path when there is one, never a dev build LaunchServices might prefer.
+check "lifecycle: launch is --background" '[ "$(uname)" != "Darwin" ] || grep -q -- "--args --background" "$FAKEOPEN_MARK"'
+check "lifecycle: launch names /Applications" '[ "$(uname)" != "Darwin" ] || [ ! -d /Applications/AgentBar.app ] || grep -q -- "-a /Applications/AgentBar.app" "$FAKEOPEN_MARK"'
 rm -f "$FAKEOPEN_MARK"
 printf '{"session_id":"lcsess","cwd":"/tmp/proj"}' | PATH="$FAKEBIN:$PATH" AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/claude/lifecycle.js start
 sleep 1

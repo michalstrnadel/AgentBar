@@ -10,6 +10,17 @@ import { spawn, execSync } from "node:child_process";
 
 const AGENT = "opencode";
 const BUNDLE_ID = "com.michalstrnadel.agentbar";
+
+// How a hook starts the app when it is not running. The installed copy by PATH
+// when there is one: by bundle ID alone LaunchServices may pick a dev build or a
+// leftover copy (seen: an old build/AgentBar.app), which starts as a second
+// instance and stops the real one. `--background` tells the app nobody opened it
+// by hand, so it puts no window up (WelcomeWindow.showsOnLaunch).
+const launchArgs = () => {
+  const installed = ["/Applications/AgentBar.app", path.join(os.homedir(), "Applications", "AgentBar.app")]
+    .find((p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } });
+  return [...(installed ? ["-g", "-a", installed] : ["-g", "-b", BUNDLE_ID]), "--args", "--background"];
+};
 // The state root (docs/protocol.md, "Where state lives"): AGENTBAR_HOME when it is
 // an absolute path, ~/.agentbar otherwise. A relative value is ignored, not refused:
 // a hook must never fail its host.
@@ -117,7 +128,7 @@ export const AgentBar = async ({ directory }) => {
     if (launched || process.platform !== "darwin") return;
     launched = true;
     if (running()) return;
-    try { spawn("open", ["-g", "-b", BUNDLE_ID], { stdio: "ignore", detached: true }).unref(); }
+    try { spawn("open", launchArgs(), { stdio: "ignore", detached: true }).unref(); }
     catch {}
   };
   // Subagent child sessions ride inside their parent's work — a row per child

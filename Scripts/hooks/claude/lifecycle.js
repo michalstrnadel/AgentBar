@@ -10,6 +10,17 @@ const path = require("path");
 const cp = require("child_process");
 
 const BUNDLE_ID = "com.michalstrnadel.agentbar";
+
+// How a hook starts the app when it is not running. The installed copy by PATH
+// when there is one: by bundle ID alone LaunchServices may pick a dev build or a
+// leftover copy (seen: an old build/AgentBar.app), which starts as a second
+// instance and stops the real one. `--background` tells the app nobody opened it
+// by hand, so it puts no window up (WelcomeWindow.showsOnLaunch).
+const launchArgs = () => {
+  const installed = ["/Applications/AgentBar.app", path.join(os.homedir(), "Applications", "AgentBar.app")]
+    .find((p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } });
+  return [...(installed ? ["-g", "-a", installed] : ["-g", "-b", BUNDLE_ID]), "--args", "--background"];
+};
 const EXEC = "AgentBar";
 const AGENT = String(process.env.AGENTBAR_AGENT || "claude").replace(/[^a-z]/g, "") || "claude";
 // The state root (docs/protocol.md, "Where state lives"): AGENTBAR_HOME when it is
@@ -190,7 +201,7 @@ function run() {
     // OTHER copy and start a second instance — which then terminates the one
     // already running. "Make sure it's up" must never mean "start another".
     if (process.platform === "darwin" && !appUp)
-      cp.spawn("open", ["-g", "-b", BUNDLE_ID], { stdio: "ignore", detached: true }).unref();
+      cp.spawn("open", launchArgs(), { stdio: "ignore", detached: true }).unref();
   } else if (event === "end") {
     // Removing the file drops the session; also what recovers a frozen icon after force-quit.
     try { fs.rmSync(statePath, { force: true }); } catch (e) { warn("state remove " + statePath, e); }

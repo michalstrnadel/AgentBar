@@ -38,7 +38,7 @@ utf16_clean() {
 
 # A fake `open` first in PATH, so launch tests can't start a real AgentBar.
 FAKEBIN="$TESTROOT/fakebin"; mkdir -p "$FAKEBIN"
-printf '#!/bin/sh\ntouch "$FAKEOPEN_MARK"\nexit 0\n' > "$FAKEBIN/open"; chmod +x "$FAKEBIN/open"
+printf '#!/bin/sh\necho "$@" > "$FAKEOPEN_MARK"\nexit 0\n' > "$FAKEBIN/open"; chmod +x "$FAKEBIN/open"
 
 # --- cursor bridge -----------------------------------------------------------
 
@@ -83,6 +83,7 @@ printf '{"hook_event_name":"sessionStart","conversation_id":"cur3"}' \
   | PATH="$FAKEBIN:$PATH" AGENTBAR_FORCE_APP=0 "$NODE" Scripts/hooks/cursor/cursor.js
 sleep 1
 check "cursor: launches when down"      '[ "$(uname)" != "Darwin" ] || [ -e "$FAKEOPEN_MARK" ]'
+check "cursor: launch is --background"  '[ "$(uname)" != "Darwin" ] || grep -q -- "--args --background" "$FAKEOPEN_MARK"'
 unset FAKEOPEN_MARK
 
 # --- gemini bridge -----------------------------------------------------------

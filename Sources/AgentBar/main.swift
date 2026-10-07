@@ -141,7 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         IslandScreen.onChange = { [weak self] in self?.applyPresentation() }
         applyPresentation()
 
-        if WelcomeWindow.showOnLaunch {
+        if WelcomeWindow.showsOnLaunch() {
             WelcomeWindow.shared.show(firstRun: true)
             WelcomeWindow.markShownOnce()
         }

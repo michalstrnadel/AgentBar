@@ -94,4 +94,15 @@ import Testing
         #expect(try version(current) == "old")
         #expect(exists(staging))
     }
+
+    /// Nobody clicked the relaunch, so it is marked as a background launch and
+    /// opens no window — the bundle is still `$2`, as `open` would be handed it.
+    @Test func theRelaunchSaysItIsInTheBackground() throws {
+        let current = try bundle("AgentBar.app", version: "new")
+        let backup = try bundle("backup.app", version: "old")
+        let staging = try bundle("staging", version: "staged")
+        #expect(try relaunch(current: current, staging: staging, backup: backup,
+                             launcherScript: #"[[ "$1" == -n && "$3" == --args && "$4" == --background ]]"#) == 0)
+        #expect(!exists(backup))
+    }
 }

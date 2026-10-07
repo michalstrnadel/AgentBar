@@ -19,6 +19,24 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         set { UserDefaults.standard.set(newValue, forKey: showKey) }
     }
 
+    /// What a launch nobody made by hand passes: a hook starting AgentBar for an
+    /// agent's session (Claude Code's after every `/compact` too, when the app had
+    /// gone), or an update relaunching it. `showOnLaunch` is about the person
+    /// opening AgentBar; an agent starting must not put a window over their work —
+    /// that is a window unfolding on its own (rule 2).
+    static let backgroundLaunchArgument = "--background"
+
+    /// Whether this launch shows the window: a first run always does, however it
+    /// started — that is the one time it is the point — and after that only a
+    /// launch the person made, when they asked for it on every launch.
+    static func showsOnLaunch(arguments: [String] = CommandLine.arguments,
+                              defaults: UserDefaults = .standard) -> Bool {
+        let firstRun = defaults.object(forKey: showKey) == nil && !defaults.bool(forKey: shownKey)
+        if firstRun { return true }
+        if arguments.contains(backgroundLaunchArgument) { return false }
+        return defaults.object(forKey: showKey) as? Bool ?? !defaults.bool(forKey: shownKey)
+    }
+
     static func markShownOnce() { UserDefaults.standard.set(true, forKey: shownKey) }
 
     /// An install that has run before has seen this window already. Called before
