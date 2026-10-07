@@ -33,9 +33,16 @@ final class ClaudeLiveQuota {
     private var lastSignature = ""
     private var pending = false
     private let refreshUsage: () -> Void
+    /// How the redraw is put off: the main queue's clock in the app, a hand a test
+    /// holds — a test that waited on the real main queue failed whenever another
+    /// suite kept that queue busy for longer than it waited.
+    private let later: (TimeInterval, @escaping () -> Void) -> Void
 
-    init(refreshUsage: @escaping () -> Void = { UsageCenter.shared.refresh() }) {
+    init(refreshUsage: @escaping () -> Void = { UsageCenter.shared.refresh() },
+         later: @escaping (TimeInterval, @escaping () -> Void) -> Void = { delay, work in
+             DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work) }) {
         self.refreshUsage = refreshUsage
+        self.later = later
     }
 
     /// Every sidecar's latest report, from `SessionStore`'s pass (main queue).
@@ -55,7 +62,7 @@ final class ClaudeLiveQuota {
         if schedule { pending = true }
         lock.unlock()
         guard schedule else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.debounce) { [weak self] in
+        later(Self.debounce) { [weak self] in
             guard let self else { return }
             self.lock.lock(); self.pending = false; self.lock.unlock()
             self.refreshUsage()

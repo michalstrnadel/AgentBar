@@ -103,26 +103,30 @@ struct ClaudeLiveQuotaTests {
         var value: Int { lock.lock(); defer { lock.unlock() }; return n }
     }
 
-    @Test func aBurstOfWritesRedrawsOnce() async throws {
+    @Test func aBurstOfWritesRedrawsOnce() {
         let calls = Counter()
-        let quota = ClaudeLiveQuota(refreshUsage: { calls.bump() })
+        var scheduled: [() -> Void] = []
+        let quota = ClaudeLiveQuota(refreshUsage: { calls.bump() }, later: { delay, work in
+            #expect(delay == ClaudeLiveQuota.debounce)
+            scheduled.append(work)
+        })
         let now = Date()
         let r = ModReport(sessionId: "a", ts: now.timeIntervalSince1970, rateLimits: [
             .init(kind: "five_hour", percentUsed: 10, resetsAt: now.addingTimeInterval(3_600))])
-        await MainActor.run {
-            quota.update([r], now: now)
-            var moved = r
-            moved.rateLimits[0].percentUsed = 11
-            quota.update([moved], now: now)
-            quota.update([moved], now: now)
-        }
-        // The redraw is a main-queue hop a second later; in a full run the main
-        // queue is busy with other suites, so wait for it to land rather than for a
-        // fixed time, then a little longer to see that no second one follows.
-        let deadline = Date().addingTimeInterval(15)
-        while calls.value == 0, Date() < deadline { try await Task.sleep(nanoseconds: 100_000_000) }
-        try await Task.sleep(nanoseconds: 1_200_000_000)
+        quota.update([r], now: now)
+        var moved = r
+        moved.rateLimits[0].percentUsed = 11
+        quota.update([moved], now: now)
+        quota.update([moved], now: now)
+        // Three writes, one redraw put off — and nothing drawn until it comes due.
+        #expect(scheduled.count == 1)
+        #expect(calls.value == 0)
+        scheduled.forEach { $0() }
         #expect(calls.value == 1)
         #expect(quota.latest(now: now)?.windows.first?.usedPercent == 11)
+        // Once it has run, the next change schedules again.
+        moved.rateLimits[0].percentUsed = 12
+        quota.update([moved], now: now)
+        #expect(scheduled.count == 2)
     }
 }
