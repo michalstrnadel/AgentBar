@@ -199,3 +199,23 @@ can read that code. It does not say the code is safe; that is what reading it, a
 the CodeQL and SBOM results beside it, are for. The comparison itself is
 `Scripts/dev/verify-release.sh`, and it can be run by hand on a CI artifact and a
 release asset.
+
+## Handing a file to an agent
+
+Dropping a file on a session in the island (`DropToAgent`) is the only place
+AgentBar puts text into a terminal. Here is what it can and cannot do:
+
+- **Only the paths.** The text is the dropped files' paths, escaped the way Terminal
+  escapes a dragged file. A path containing a line break is dropped from the text,
+  so nothing pasted can act as a Return. An image that arrives as pixels is first
+  written to `~/.agentbar/drops/` (0700, pruned after a week), and that new file's
+  path is what gets pasted.
+- **Only where verified.** The paste is a single ⌘V. It is posted only after
+  `TerminalFocus` has verified that the session's own tab is in front (iTerm2,
+  Terminal, WezTerm, tmux), and only with the Accessibility permission.
+  `KeystrokeApprover` uses the same guard. In any other host, the text goes to
+  the clipboard and nothing is typed.
+- **Never Return.** The agent receives a path in its prompt, not an instruction.
+  The person still writes the instruction and submits it.
+- **Only on a drop.** No link, rule or timer reaches this code. The clipboard it
+  borrowed is restored about a second later.

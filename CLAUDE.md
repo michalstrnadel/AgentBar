@@ -35,8 +35,10 @@ open "build/AgentBar.app"
    user was away**. That last one is a rule, not a preference — 1.17.0 fired on every
    `done`, Claude Code enters `done` after every turn, and a fifty-turn conversation
    posted fifty banners. An agent finishing is not news. See `Notifier`.
-   Windows are the exception, not the pattern: only `WelcomeWindow`
-   and `SettingsWindow`, both small, both opened by the user. Settings is a
+   Windows are the exception, not the pattern: only `WelcomeWindow`,
+   `SettingsWindow` and `WrapWindow` (Your Day), all small, all opened by the user —
+   Your Day from a menu row or an `agentbar://day|week` link, never on a schedule:
+   a recap nobody asked for is a window unfolding on its own. Settings is a
    sidebar of pages (`SettingsChrome` is its furniture), not a scroll: a new
    preference joins a page or earns one, and never lengthens a column until the
    last section falls off the screen.
@@ -64,6 +66,13 @@ open "build/AgentBar.app"
    that request in them. Closed, paused or yielded, its clock does not run.
    `RuleSheet` is a sheet on Settings, not a fourth surface: it is modal to a window
    the user already opened and it closes when it is answered.
+   **Hand a file to an agent** (`DropToAgent`) is the one place AgentBar puts text
+   into a terminal, and it is fenced the way keystroke approval is: only on a drop
+   the person made, only the dropped paths (escaped, no line breaks), pasted only
+   into a tab `TerminalFocus` verified, and **never a Return** — anywhere else it
+   copies and says ⌘V. The screenshot chip (`ScreenshotShelf`) lives only inside an
+   island that is already open, and is off until switched on, because reading the
+   screenshot folder is what macOS asks permission for.
 3. **AgentBar answers nothing by itself — only what the user wrote down.** For six
    releases the rule was absolute: every decision came from a click, and
    `DecisionLedger` said so in three places. Since 1.28.0 one thing answers without a

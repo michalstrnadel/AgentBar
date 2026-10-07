@@ -34,6 +34,9 @@ do, or a rule you wrote yourself, and every answer is written down.
 | **Settings ▸ Agents ▸ Show changes…** | Every write AgentBar made into an agent's settings, as a unified diff, with the copy it kept beside the file |
 | Flip an agent's switch off in **Settings ▸ Agents** | Shows what it will take out of that agent's settings, then removes only AgentBar's own entries — and leaves them out from then on |
 | `agentbar report --agent aider --name Aider --state tool --label Editing --pid $$` | Any tool you run joins the bar under its own name and mark — wrap it in a few lines, no Swift |
+| **Your Day…** in the menu or the island's ⋯ | Your day — or week — with your agents as a story: agent time, your top agent, what changed, how long they waited on you, who you were today; then a card to copy, post or save as video |
+| Drag a screenshot or a file onto a session in the island | Its path lands in that agent's prompt — pasted into the right tab, never with Return |
+| Let a quota window run hot | The meter says when it runs out at this pace — "out ~15:40" — when that is before it resets |
 | `open agentbar://focus` from Shortcuts or Raycast | Jumps to the session waiting on you — and no link can approve or deny anything |
 
 **What it covers.** Agents: Claude Code and Claude Cowork, Codex, Cursor CLI, Gemini
@@ -246,6 +249,22 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   current 5-hour block. A window past its reset says so rather than repeating the old
   number, everything is hidden the moment it goes stale, and `agentbar usage` says the
   same in a terminal.
+- **Will it last?** — AgentBar fits a line through the last 45 minutes of each quota
+  window and, only when it says the window runs out **before it resets**, tells you
+  when: "out ~15:40" on the island (amber inside the last half hour), "At this pace:
+  limit ~15:40 (+18 %/h)" in the menu. A forecast that changes nothing says nothing,
+  and none of it ever notifies.
+- **Hand a file to an agent** — drag files, an image from the browser, or a
+  screenshot thumbnail up to the notch and drop it on a session: its path goes into
+  that agent's prompt, escaped the way Terminal escapes a dragged file. It is pasted
+  only into a tab AgentBar has verified is that session's own (iTerm2, Terminal,
+  WezTerm, tmux), and **Return is never pressed** — you add the words. In any other
+  terminal the path is copied and the row says ⌘V. Switch on **Your latest screenshot
+  in the island** (Settings ▸ General) and a screenshot from the last three minutes
+  waits in the open island's footer, a drag away from any session.
+- **A quiet session asks** — a working session with no word from its agent for ten
+  minutes (or 20, 30, never — Settings ▸ General) says **quiet 12m?** on its row. A
+  question, not an alarm: a long test run is quiet too. One click jumps to it.
 - **A failure looks like one** — a turn that errors out shows red and named
   instead of a green "Done", and never plays the finish chime.
 - **Precise jump-back** — clicking a session row selects the exact terminal tab
@@ -293,6 +312,32 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
 - **Nothing else** — no dock icon, no countdown timers, no sounds unless you ask
   for them, nothing that unfolds over your screen on its own. One process, tiny
   footprint.
+
+## Your Day
+
+<p align="center">
+  <img src="docs/assets/your-day.png?v=2026-10-07" width="900" alt="Five slides of AgentBar's Your Day recap: 11h of agent time with the day's hours as bars on lime; where the work went as a bar race on pink; 'They waited 2m on you' with answer tiles on blue; 'The Orchestrator' persona on violet; and the share card with every stat and the day's bars">
+</p>
+
+**Your Day…** — in the menu bar's menu and the island's ⋯ — plays your day with your
+agents as a story, the way a year-in-music recap does, and ends on a card made to be
+shared. **This week** switches it to the last seven days.
+
+- **Agent time** and the day as bars, hour by hour; **your top agent** and its share;
+  **where the work went** and the longest run; **what changed in your repos**;
+  **how long they waited on you** — your answers as dots on the day, your rules' in
+  lime; **your peak**, the most agents at once; and **who you were today**: The
+  Orchestrator, The Marathoner, The Night Owl, The Delegator, The Quick Draw…
+- **Honest numbers, as everywhere in AgentBar**: a figure measured on some sessions
+  says so ("across 9 timed sessions"), and a slide with nothing behind it is left out
+  rather than padded with zeroes. Lines are *what changed in the repo* while the
+  agents ran, not a claim about who wrote them.
+- **Share it**: copy the card, save it as a story (1080 × 1920) or square PNG, the
+  whole story as an MP4 or a GIF, or hand it to the share sheet. **Project names and
+  tasks stay out of everything you export** unless you tick the box.
+- It never opens by itself. → ← or a click to move, Space to pause, Esc to close; the
+  clock runs only while it is on screen, and Reduce Motion gets still slides.
+- `agentbar://day` and `agentbar://week` open it from Shortcuts or Raycast.
 
 ## Take a break
 

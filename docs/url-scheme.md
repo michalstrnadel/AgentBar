@@ -45,6 +45,7 @@ may be allowed to do:
 | `agentbar://new-task?cwd=<path>&agent=<id>&prompt=<text>` | Opens the launcher with that project, agent and prompt chosen. Every parameter is optional. Return twice to start (once if you edit the prompt). |
 | `agentbar://settings` | Opens Settings. |
 | `agentbar://settings/<page>` | Opens Settings on a page: `general`, `agents`, `notifications`, `shortcuts`, `usage`, `approvals`, `rules`, `claude-code`, `diagnostics`, `whats-new`. |
+| `agentbar://day`, `agentbar://week` | Opens Your Day — the recap of today, or the last seven days. Nothing is exported or shared. |
 | `agentbar://appearance` (or `agentbar://welcome`) | Opens the Appearance window — the one a new install greets you with. |
 
 Details that matter:

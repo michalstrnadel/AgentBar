@@ -3,9 +3,45 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 1.44.0 - 2026-10-07
 
-From a full audit — security, engineering, UX and the paths that failed in silence.
+### Added
+
+- **Your Day — your day with your agents, as a story.** **Your Day…** in the menu
+  and the island's ⋯ plays the day (or, with **This week**, the last seven) the way a
+  year-in-music recap does:
+  - agent time, with the day as bars;
+  - your top agent and its share;
+  - where the work went, and the longest run;
+  - what changed in your repos;
+  - how long the agents waited on you, with every answer a dot on the day;
+  - your peak of agents at once;
+  - who you were today: The Orchestrator, The Marathoner, The Night Owl, The
+    Delegator, The Quick Draw, and others.
+
+  It ends on a card you can share. Copy it, save it as a story or square PNG, save
+  the whole story as an MP4 or a GIF, or hand it to the share sheet. Project names
+  and tasks stay out of every export unless you tick the box.
+
+  The numbers follow AgentBar's usual rules: a partial figure says it is partial,
+  and a slide with nothing behind it is left out. Your Day never opens by itself,
+  and `agentbar://day` and `agentbar://week` open it on request.
+- **Hand a file to an agent.** Drag files, an image or a screenshot thumbnail onto
+  a session in the island, and their paths go into that agent's prompt.
+  - AgentBar pastes them only into a tab it has verified (iTerm2, Terminal,
+    WezTerm, tmux) and never presses Return. Anywhere else the paths are copied
+    and the row says ⌘V.
+  - **Your latest screenshot in the island** (Settings ▸ General, off by
+    default) keeps a screenshot from the last three minutes in the open
+    island's footer, so you can drag it straight onto a session.
+- **Will it last?** When a quota window's recent pace runs it out before it
+  resets, the meter says when: "out ~15:40" on the island, turning amber in the
+  last half hour, and "At this pace: limit ~15:40 (+18 %/h)" in the menu.
+- **Quiet sessions ask.** A working session with no word from its agent for ten
+  minutes says **quiet 12m?** on its row. You can change the threshold to 20 or 30
+  minutes, or turn it off, in Settings ▸ General.
+
+From a full audit — security, engineering, UX and the paths that failed in silence:
 
 ### Security
 
