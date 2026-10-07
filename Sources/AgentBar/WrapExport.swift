@@ -112,10 +112,10 @@ enum WrapExport {
         guard CGImageDestinationFinalize(dest) else { throw ExportError("the GIF could not be written") }
     }
 
-    /// A GIF has 256 colours, and the card's soft glows have thousands: quantised
-    /// as they are they come out as rings. A fixed 4 × 4 ordered pattern of ±3
-    /// levels breaks the rings up into a grain the eye reads as a gradient — and,
-    /// being fixed, it does not crawl from frame to frame the way noise would.
+    /// A GIF has 256 colours, and a fading element passes through more than that:
+    /// quantised as they are, its edges come out as steps. A fixed 4 × 4 ordered
+    /// pattern of ±3 levels breaks the steps up into a grain the eye reads as a
+    /// fade — and, being fixed, it does not crawl from frame to frame as noise would.
     static func dither(_ rep: NSBitmapImageRep) {
         guard let data = rep.bitmapData, rep.bitsPerSample == 8, rep.samplesPerPixel >= 3 else { return }
         let bayer: [Int] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]

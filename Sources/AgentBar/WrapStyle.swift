@@ -15,15 +15,15 @@ enum WrapStyle {
                 blue: CGFloat(v & 0xff) / 255, alpha: a)
     }
 
-    static let night = hex(0x0B0A12)
-    static let cream = hex(0xF6F1E7)
-    static let lime = hex(0xC6F432)
-    static let pink = hex(0xFF5FA2)
-    static let blue = hex(0x3B5BFF)
-    static let violet = hex(0x7B61FF)
-    static let orange = hex(0xFF8A3D)
-    static let green = hex(0x3BE477)
-    static let red = hex(0xFF5A5F)
+    // The card: paper, ink, and nothing that glows.
+    static let paper = hex(0xF7F5F0)
+    static let ink = hex(0x1D1D1F)
+    static let secondary = hex(0x6E6E73)
+    static let tertiary = hex(0xA1A1A6)
+    static let hairline = hex(0xE2DED6)
+    static let added = hex(0x1E8E3E)
+    static let removed = hex(0xC5221F)
+
 
     /// An agent's colour as the recap paints it. Cursor and OpenCode wear the
     /// system label colour in the menu bar, which is nothing on a poster, so they
@@ -32,34 +32,25 @@ enum WrapStyle {
         switch agentID {
         case "cursor":   return hex(0xE8E8E8)
         case "opencode": return hex(0xF2C14E)
-        case "":         return cream
+        case "":         return secondary
         default:
-            let c = Agent.byID(agentID).brand.usingColorSpace(.sRGB) ?? cream
+            let c = Agent.byID(agentID).brand.usingColorSpace(.sRGB) ?? secondary
             return c
         }
     }
 
-    static func mix(_ a: NSColor, _ b: NSColor, _ t: CGFloat) -> NSColor {
-        let a = a.usingColorSpace(.sRGB) ?? a, b = b.usingColorSpace(.sRGB) ?? b
-        return NSColor(srgbRed: a.redComponent + (b.redComponent - a.redComponent) * t,
-                       green: a.greenComponent + (b.greenComponent - a.greenComponent) * t,
-                       blue: a.blueComponent + (b.blueComponent - a.blueComponent) * t,
-                       alpha: a.alphaComponent + (b.alphaComponent - a.alphaComponent) * t)
+    /// An agent's colour as ink on paper: a brand too pale to read on the card
+    /// (Cursor's near-white) falls back to the secondary grey.
+    static func onPaper(_ agentID: String) -> NSColor {
+        let c = colour(for: agentID).usingColorSpace(.sRGB) ?? secondary
+        let lum = 0.2126 * c.redComponent + 0.7152 * c.greenComponent + 0.0722 * c.blueComponent
+        return lum > 0.8 ? secondary : c
     }
 
     // MARK: - Motion
 
     static func clamp(_ x: Double) -> Double { min(1, max(0, x)) }
     static func easeOut(_ x: Double) -> Double { let p = 1 - clamp(x); return 1 - p * p * p }
-    static func easeInOut(_ x: Double) -> Double {
-        let x = clamp(x)
-        return x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2
-    }
-    /// A little past 1 and back: for things that land.
-    static func easeBack(_ x: Double) -> Double {
-        let x = clamp(x), c1 = 1.70158, c3 = c1 + 1
-        return 1 + c3 * pow(x - 1, 3) + c1 * pow(x - 1, 2)
-    }
     /// 0…1 for an element that starts `delay` seconds into the slide and takes `dur`.
     static func appear(_ seconds: Double, _ delay: Double, _ dur: Double = 0.7) -> Double {
         clamp((seconds - delay) / dur)
@@ -94,6 +85,25 @@ enum WrapStyle {
                                        options: [.usesLineFragmentOrigin, .usesFontLeading])
         attr.draw(with: NSRect(x: x, y: y, width: width, height: ceil(bounds.height) + 2),
                   options: [.usesLineFragmentOrigin, .usesFontLeading])
+        return ceil(bounds.height)
+    }
+
+    /// Draws an attributed string with its top at `y`, and returns its height.
+    @discardableResult
+    static func rich(_ s: NSAttributedString, x: CGFloat, y: CGFloat, width: CGFloat,
+                     lineHeight: CGFloat = 1.2) -> CGFloat {
+        let m = NSMutableAttributedString(attributedString: s)
+        let p = NSMutableParagraphStyle()
+        p.lineBreakMode = .byWordWrapping
+        if let f = s.attribute(.font, at: 0, effectiveRange: nil) as? NSFont {
+            p.minimumLineHeight = f.pointSize * lineHeight
+            p.maximumLineHeight = f.pointSize * lineHeight
+        }
+        m.addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: m.length))
+        let bounds = m.boundingRect(with: NSSize(width: width, height: 10_000),
+                                    options: [.usesLineFragmentOrigin, .usesFontLeading])
+        m.draw(with: NSRect(x: x, y: y, width: width, height: ceil(bounds.height) + 2),
+               options: [.usesLineFragmentOrigin, .usesFontLeading])
         return ceil(bounds.height)
     }
 
@@ -150,48 +160,10 @@ enum WrapStyle {
         NSBezierPath(roundedRect: rect, xRadius: r, yRadius: r).fill()
     }
 
-    /// A soft glow: a radial gradient from `color` to clear.
-    static func glow(_ c: CGPoint, _ r: CGFloat, _ color: NSColor, in ctx: CGContext) {
-        let cs = CGColorSpace(name: CGColorSpace.sRGB)!
-        let col = color.usingColorSpace(.sRGB) ?? color
-        guard let g = CGGradient(colorsSpace: cs, colors: [col.cgColor, col.withAlphaComponent(0).cgColor] as CFArray,
-                                 locations: [0, 1]) else { return }
-        ctx.drawRadialGradient(g, startCenter: c, startRadius: 0, endCenter: c, endRadius: r, options: [])
-    }
-
-    /// An arc ring from the top, clockwise on screen, `fraction` of the way round.
-    static func ring(_ c: CGPoint, _ r: CGFloat, width: CGFloat, fraction: Double,
-                     _ color: NSColor, track: NSColor?, in ctx: CGContext) {
-        ctx.saveGState()
-        ctx.setLineWidth(width)
-        ctx.setLineCap(.round)
-        if let track {
-            ctx.setStrokeColor(track.cgColor)
-            ctx.addArc(center: c, radius: r, startAngle: 0, endAngle: .pi * 2, clockwise: false)
-            ctx.strokePath()
-        }
-        if fraction > 0.001 {
-            ctx.setStrokeColor(color.cgColor)
-            let start = -CGFloat.pi / 2
-            ctx.addArc(center: c, radius: r, startAngle: start,
-                       endAngle: start + CGFloat(fraction) * .pi * 2, clockwise: false)
-            ctx.strokePath()
-        }
-        ctx.restoreGState()
-    }
-
     /// Draws an image into a flipped context the right way up.
     static func image(_ img: NSImage, in rect: CGRect, alpha: CGFloat = 1) {
         img.draw(in: rect, from: .zero, operation: .sourceOver, fraction: alpha,
                  respectFlipped: true, hints: [.interpolation: NSImageInterpolation.high])
-    }
-
-    static func symbol(_ name: String, size: CGFloat, weight: NSFont.Weight = .bold,
-                       color: NSColor) -> NSImage? {
-        let config = NSImage.SymbolConfiguration(pointSize: size, weight: weight)
-            .applying(.init(paletteColors: [color]))
-        return NSImage(systemSymbolName: name, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
     }
 
     // MARK: - Marks

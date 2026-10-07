@@ -51,8 +51,8 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         w.titleVisibility = .hidden
         w.isMovableByWindowBackground = true
         w.isReleasedWhenClosed = false
-        w.backgroundColor = WrapStyle.night
-        w.appearance = NSAppearance(named: .darkAqua)
+        w.backgroundColor = WrapStyle.paper
+        w.appearance = NSAppearance(named: .aqua)
         w.delegate = self
         w.center()
 
@@ -234,7 +234,7 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         guard let view = window?.contentView,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return false }
         view.wantsLayer = true
-        view.layer?.backgroundColor = WrapStyle.night.cgColor
+        view.layer?.backgroundColor = WrapStyle.paper.cgColor
         view.cacheDisplay(in: view.bounds, to: rep)
         return (try? rep.representation(using: .png, properties: [:])?.write(to: url)) != nil
     }
