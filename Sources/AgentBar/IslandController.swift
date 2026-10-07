@@ -95,6 +95,9 @@ final class IslandController: NSObject {
     /// rows rebuild every store tick, and recreating a content-static card each
     /// time reset the plan box's inner scroll mid-read.
     var approvalCards: [String: NSView] = [:]
+    /// Which identical requests each cached card offered to answer together
+    /// (`ApprovalBatch`); a card whose group changed is drawn again.
+    var approvalCardGroups: [String: String] = [:]
 
     /// Selections and the wizard step per pending question request, keyed by the
     /// request file name. They live here, not in the card: the island rebuilds its
@@ -284,6 +287,7 @@ final class IslandController: NSObject {
         questionSelections = questionSelections.filter { live.contains($0.key) }
         questionSteps = questionSteps.filter { live.contains($0.key) }
         approvalCards = approvalCards.filter { live.contains($0.key) }
+        approvalCardGroups = approvalCardGroups.filter { live.contains($0.key) }
         // Answered in the terminal, timed out, or replaced under the same name while
         // a note was being typed: the note has nothing left to go with.
         if let c = composing, requestIdentity[c] == nil || approvalCards[c] == nil {

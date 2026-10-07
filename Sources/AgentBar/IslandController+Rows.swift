@@ -56,7 +56,14 @@ extension IslandController {
         let mine = requests.filter { $0.sessionId == s.id }
         var out: [NSView] = []
         for r in mine {
-            if let cached = approvalCards[r.fileName] {
+            let alike = ApprovalBatch.alike(r, in: requests, cwd: { [sessions] q in
+                sessions.first { $0.id == q.sessionId }?.cwd ?? "" })
+            // A card drawn for "Allow all 2" must not stand when a third identical
+            // request arrives or one is answered elsewhere — unless a note is being
+            // typed on it, which a redraw would throw away.
+            let group = alike.map(\.identity).joined(separator: ",")
+            if let cached = approvalCards[r.fileName],
+               approvalCardGroups[r.fileName] == group || composing == r.fileName {
                 out.append(cached)
                 continue
             }
@@ -67,6 +74,7 @@ extension IslandController {
                 // one checkout and the opposite in another.
                 cwd: s.cwd,
                 width: Self.expandedWidth - IslandContentView.hPad * 2 - Self.cardIndent,
+                alike: alike,
                 onChoose: { [weak self] behavior in
                 // "rule" is not an answer to this request — it opens the sheet and
                 // leaves the card pending. Handled before the answer path so a
@@ -80,6 +88,10 @@ extension IslandController {
                         shape: DecisionLedger.shape(of: r),
                         cwd: r.cwd.isEmpty ? s.cwd : r.cwd,
                         display: r.display))
+                    return
+                }
+                if behavior == "allowAll" {
+                    self?.allowAll(alike)
                     return
                 }
                 // Only confirm what actually reached disk: a dropped answer leaves the
@@ -100,6 +112,7 @@ extension IslandController {
                 if on { self.beginComposing(r.fileName) } else { self.endComposing() }
             }))
             approvalCards[r.fileName] = view
+            approvalCardGroups[r.fileName] = group
             out.append(view)
         }
         return out
@@ -156,6 +169,17 @@ extension IslandController {
 
     /// Echo the choice in the pill — "✓ Allowed" — for a beat, then go back to
     /// reporting. Defer skips the flash: the hand-off itself is the feedback.
+    /// "Allow all N": each request that was on the card and is still waiting, answered
+    /// as if Allow had been pressed on it — its own ledger row, its own answer file.
+    private func allowAll(_ shown: [ApprovalRequest]) {
+        var any = false
+        for q in ApprovalBatch.stillPending(shown.map(\.identity), in: requests) {
+            guard let s = sessions.first(where: { $0.id == q.sessionId }) else { continue }
+            if AgentActions.answer(ApprovalAction(request: q, behavior: "allow", session: s)) { any = true }
+        }
+        if any { flashAnswer("allow") }
+    }
+
     private func flashAnswer(_ behavior: String, plan: Bool = false) {
         wantsExpanded = false
         collapseWork?.cancel()

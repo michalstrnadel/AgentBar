@@ -22,6 +22,7 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
     private(set) var composing = false
 
     init(request: ApprovalRequest, deferTitle: String, cwd: String = "", width: CGFloat,
+         alike: [ApprovalRequest] = [],
          onChoose: @escaping (String) -> Void,
          onDenyNote: @escaping (String) -> Void = { _ in },
          onCompose: @escaping (Bool) -> Void = { _ in }) {
@@ -105,6 +106,16 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
                                    emphasised: promote)
             always.toolTip = request.ruleMenuTitle
             secondary.append(always)
+        }
+        // The same request waiting in other sessions too: one click for all of them,
+        // and only the ones on screen now (`ApprovalBatch`).
+        if alike.count > 1, plan == nil {
+            let all = Self.link(ApprovalBatch.title(alike.count), target: self,
+                                action: #selector(allowAllClicked))
+            all.toolTip = "Allows these \(alike.count) identical requests — "
+                + alike.map { $0.agentName.isEmpty ? $0.agentID : $0.agentName }.joined(separator: ", ")
+                + ". Each is written to the approval history as your own answer."
+            secondary.append(all)
         }
         if let offer {
             let rule = Self.link("Always \(offer) this here…", target: self,
@@ -221,6 +232,7 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
     @objc private func allowClicked() { onChoose("allow") }
     @objc private func denyClicked() { onChoose("deny") }
     @objc private func alwaysClicked() { onChoose("always") }
+    @objc private func allowAllClicked() { onChoose("allowAll") }
     @objc private func deferClicked() { onChoose("defer") }
     /// Not a decision about this request: it opens the rule sheet and leaves the
     /// card exactly where it was, still pending, still yours to answer.

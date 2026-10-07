@@ -7,6 +7,8 @@ extension MenuBuilder {
     /// directly under the session row — no second navigation level.
     static func addInlineApproval(to menu: NSMenu, for s: Session,
                                           requests: [ApprovalRequest],
+                                          allRequests: [ApprovalRequest] = [],
+                                          allSessions: [Session] = [],
                                           controller: StatusItemController) {
         for r in requests {
             let tag = "req:\(requestKey(r))" // lets updateInPlace find a strip's rows
@@ -68,6 +70,26 @@ extension MenuBuilder {
                                  .foregroundColor: NSColor.controlAccentColor])
                 item.toolTip = "Writes a rule of your own. It answers this prompt and nothing "
                     + "wider, and every time it does the approval history says so."
+                menu.addItem(item)
+            }
+
+            // The same request waiting in other sessions: one click for all of them
+            // that are on screen now (`ApprovalBatch`). The identities ride on the
+            // identifier, so a request that arrives later is never part of the click.
+            let alike = ApprovalBatch.alike(r, in: allRequests, cwd: { q in
+                allSessions.first { $0.id == q.sessionId }?.cwd ?? "" })
+            if alike.count > 1, !plan(r) {
+                let item = NSMenuItem(title: "", action: #selector(StatusItemController.allowAllAlike(_:)),
+                                      keyEquivalent: "")
+                item.target = controller
+                item.representedObject = tag
+                item.identifier = NSUserInterfaceItemIdentifier(alike.map(\.identity).joined(separator: ","))
+                item.attributedTitle = NSAttributedString(
+                    string: "      \(ApprovalBatch.title(alike.count)) — the same request in \(alike.count) sessions",
+                    attributes: [.font: NSFont.menuFont(ofSize: 11),
+                                 .foregroundColor: NSColor.controlAccentColor])
+                item.toolTip = "Each one is written to the approval history as your own answer. "
+                    + "A request that arrives after this menu opened is not included."
                 menu.addItem(item)
             }
 

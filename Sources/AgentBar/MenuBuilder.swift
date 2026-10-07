@@ -43,6 +43,7 @@ enum MenuBuilder {
                         // Row click defers to the session's own UI; actions live right below.
                         menu.addItem(item)
                         addInlineApproval(to: menu, for: s, requests: sessionRequests,
+                                          allRequests: requests, allSessions: sessions,
                                           controller: controller)
                         continue
                     }
