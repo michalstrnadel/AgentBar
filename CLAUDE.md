@@ -89,6 +89,10 @@ open "build/AgentBar.app"
    anything it does not understand falls through to the human. The whole feature is
    one `guard` away from the product that existed before it: no match, a malformed
    rules file, a command that will not tokenise, and nobody answers.
+   **Allow all N** (`ApprovalBatch`) is a click, not a rule: it answers only the
+   identical requests on screen when it was drawn, each as the person's own row.
+   **Try an approval** (`DemoApproval`) is a request on screen only — it answers
+   nothing because nothing waits on it.
    A rule has three modes and the middle one is the point: **watching** matches,
    works out the answer, writes it down and answers nothing, so an approving rule
    can be judged on a week of what it *would* have done before it speaks. New rules

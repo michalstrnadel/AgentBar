@@ -210,6 +210,20 @@ person reads before pressing Return. Nothing starts without that Return, the
 first session is not stopped or told anything, and no link can trigger it: it
 exists only behind a click on a row, its chip, or a menu.
 
+## Allow all alike, and the demo request
+
+**Allow all N** answers several pending requests with one click, and is held to
+what one click can honestly mean: the requests must share the tool, the **whole**
+input byte for byte, and the directory; only those on screen when the button was
+drawn are answered — one that arrives a moment later is not part of the click —
+and each is written to the ledger as its own decision by the person. It is not a
+rule, and plans and questions never batch (`ApprovalBatch`).
+
+**Try an approval** (`DemoApproval`) puts one made-up request on screen. It is
+never written to `requests.d`, never reaches the history, the ledger, the
+notifications or a rule, and answering it writes no answer file: the answer path
+hands it back before anything is written.
+
 ## Handing a file to an agent
 
 Dropping a file on a session in the island (`DropToAgent`) is the only place

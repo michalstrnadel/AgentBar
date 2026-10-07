@@ -23,6 +23,7 @@ do, or a rule you wrote yourself, and every answer is written down.
 | Do this | AgentBar does that |
 |---|---|
 | Give Claude Code, Codex or Copilot a task that runs a command | A **needs approval** card with the exact command (a mini-diff for an edit); **Allow** or **Deny** in one click, no terminal switch |
+| **Try an approval** in the welcome window | A made-up request waits at the notch (or in the menu bar) — answer it the way you would a real one, before any agent is wired. Nothing runs |
 | Click **Deny with a note…** and type *"use pnpm here, not npm"* | The agent reads the note as the reason and changes course instead of trying the next thing |
 | Push the pointer up to the notch | The island opens: every session, what it is doing, and the one that needs you on top |
 | Click a session row | Jumps to the exact tab or pane — iTerm2, Terminal, WezTerm, tmux — or brings forward the app it runs in |
@@ -239,6 +240,11 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   terminal switch. The terminal wizard stays live the whole time — whoever answers
   first wins. Multi-question calls become a one-question-at-a-time wizard on the
   island: each tap records and slides to the next, with Back and a 2/4 mark.
+- **Allow all alike** — three agents waiting on the same `npm test` in the same
+  folder are one decision: the card says **Allow all 3**. Only the exact same
+  request counts (same tool, the whole same input, the same directory), only the
+  ones on screen when you click, and each goes into the approval history as your
+  own answer.
 - **Deny with a note** — refuse and say what to do instead: *"use pnpm here, not
   npm"*. Type it on the island card (**Deny with a note…**), on the notification
   banner, or `agentbar deny --note "…"`; the agent reads it as the reason and changes
