@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // A link that launched the app waited for this: before the first poll
             // there is no session for `agentbar://focus` to find.
             defer { URLCommands.storesReady() }
-            self.mascot.update(sessions: sessions, systemColor: IconColor.system)
+            self.mascot.update(sessions: DemoApproval.shared.merged(sessions), systemColor: IconColor.system)
             SoundCenter.shared.observe(sessions)
             // Takes the git baseline a session's record is later measured against.
             // A session that appears and ends inside one tick gets none, which is
@@ -52,9 +52,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             WorkDiff.shared.observe(sessions)
             self.history.observe(sessions)
             Notifier.shared.observe(sessions)
-            self.controller.apply(sessions)
+            self.controller.apply(DemoApproval.shared.merged(sessions))
             if self.islandRunning {
-                self.island.apply(sessions: sessions, requests: self.requestStore.requests)
+                self.island.apply(sessions: DemoApproval.shared.merged(sessions),
+                                  requests: DemoApproval.shared.merged(self.requestStore.requests))
+            }
+        }
+        // "Try an approval": the demo reaches the surfaces and nothing else — not
+        // the history, the ledger or the notifications above (`DemoApproval`).
+        DemoApproval.shared.onChange = { [weak self] in
+            guard let self else { return }
+            let sessions = DemoApproval.shared.merged(self.sessions)
+            self.mascot.update(sessions: sessions, systemColor: IconColor.system)
+            self.controller.apply(sessions)
+            self.controller.requestsChanged()
+            if self.islandRunning {
+                self.island.apply(sessions: sessions,
+                                  requests: DemoApproval.shared.merged(self.requestStore.requests))
             }
         }
         // The launcher reads the same poll every other surface does, rather than
@@ -80,7 +94,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.controller.requestsChanged()
             Notifier.shared.requestsChanged(self.requestStore.requests, sessions: self.sessions)
             if self.islandRunning {
-                self.island.apply(sessions: self.sessions, requests: self.requestStore.requests)
+                self.island.apply(sessions: DemoApproval.shared.merged(self.sessions),
+                                  requests: DemoApproval.shared.merged(self.requestStore.requests))
             }
         }
 
@@ -177,7 +192,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         islandRunning = wanted
         if wanted {
             island.start()
-            island.apply(sessions: sessions, requests: requestStore.requests)
+            island.apply(sessions: DemoApproval.shared.merged(sessions),
+                         requests: DemoApproval.shared.merged(requestStore.requests))
         } else {
             island.stop()
         }

@@ -53,6 +53,8 @@ enum AgentActions {
     /// with the hook still blocked. (A question's wizard is already on screen, but
     /// deferring still retires the island card — answered where the user is going.)
     static func focus(_ s: Session, requests: [ApprovalRequest]) {
+        // The demo has no terminal; its card is where it is answered.
+        if DemoApproval.isDemo(s) { return }
         // A cloud session lives at a URL, not in anything local: open it and stop —
         // there is no tty to resolve and no blocked hook to release. Checked first
         // so no local-only path can ever run for a row the poller wrote.
@@ -79,6 +81,12 @@ enum AgentActions {
     /// answer never reached disk: the request is still pending and still answerable.
     @discardableResult
     static func answer(_ a: ApprovalAction) -> Bool {
+        // The "Try an approval" demo: no hook waits on it, so nothing is written —
+        // not an answer file, not a ledger row. It only learns how it was answered.
+        if DemoApproval.isDemo(a.request) {
+            DemoApproval.shared.finish(a.behavior)
+            return ack(true)
+        }
         // A plan cannot be approved through the hook — Claude Code ignores a
         // hook allow at the plan dialog (the approval also picks the next
         // permission mode). Approve by answering the dialog itself: focus the

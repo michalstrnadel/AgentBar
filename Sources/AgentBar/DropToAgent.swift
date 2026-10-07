@@ -33,6 +33,7 @@ enum DropToAgent {
         case "cloud":           return "runs in the cloud — a path on this Mac means nothing there"
         case "claude-desktop":  return "lives in the Claude app — drop the file there"
         case "antigravity-app": return "lives in Antigravity — drop the file there"
+        case "demo":            return "is a demo — there is no agent to hand it to"
         default:                return s.pid > 0 ? nil : "has no terminal AgentBar can find"
         }
     }

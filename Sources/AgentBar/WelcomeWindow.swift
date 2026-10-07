@@ -65,6 +65,8 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
     private var showBox: NSButton!
     private var headline: NSTextField!
     private var quitButton: NSButton!
+    private var tryButton: NSButton!
+    private var tryCaption: NSTextField!
     /// A driver of its own, fed a canned session, so the preview animates whether
     /// or not anything real is running.
     private let mascot = MascotDriver()
@@ -308,6 +310,19 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
                                                    action: #selector(showChanges))
         changesButton.isHidden = true
 
+        // One made-up request, answered the way a real one is — before any agent is
+        // wired. It opens nothing: it waits where a real one would (`DemoApproval`).
+        tryButton = SettingsChrome.smallButton("Try an approval", target: self, action: #selector(tryApproval))
+        tryCaption = NSTextField(wrappingLabelWithString: "A made-up request to answer, before any agent asks. Nothing runs.")
+        tryCaption.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        tryCaption.textColor = .secondaryLabelColor
+        tryCaption.preferredMaxLayoutWidth = Self.rowWidth - 140
+        let tryRow = NSStackView(views: [tryButton, tryCaption])
+        tryRow.orientation = .horizontal
+        tryRow.alignment = .firstBaseline
+        tryRow.spacing = 10
+        DemoApproval.shared.onFinish = { [weak self] how in self?.demoFinished(how) }
+
         showBox = NSButton(checkboxWithTitle: "Show this window on launch",
                            target: self, action: #selector(toggleShowOnLaunch))
 
@@ -326,7 +341,7 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         buttons.translatesAutoresizingMaskIntoConstraints = false
         buttons.widthAnchor.constraint(equalToConstant: Self.rowWidth).isActive = true
 
-        let col = NSStackView(views: [wiredLabel, changesButton, showBox, buttons])
+        let col = NSStackView(views: [wiredLabel, changesButton, tryRow, showBox, buttons])
         col.orientation = .vertical
         col.alignment = .leading
         col.spacing = 10
@@ -419,6 +434,29 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
 
     @objc private func toggleShowOnLaunch() {
         Self.showOnLaunch = showBox.state == .on
+    }
+
+    @objc private func tryApproval() {
+        DemoApproval.shared.start()
+        guard DemoApproval.shared.isActive else { return }
+        tryButton.isEnabled = false
+        tryCaption.stringValue = Presentation.current.showsIsland
+            ? "A demo request is waiting at the notch — move the pointer up to it."
+            : "A demo request is waiting in the menu bar — click AgentBar's icon."
+    }
+
+    private func demoFinished(_ how: String) {
+        // The window may be closed by now; the demo ended all the same.
+        tryButton?.isEnabled = true
+        let what: String
+        switch how {
+        case "allow", "always": what = "✓ Allowed."
+        case "deny": what = "✕ Denied."
+        case "defer": what = "Handed back to the terminal."
+        default: what = "The demo timed out, the way a real request does."
+        }
+        tryCaption?.stringValue = how == "expired" ? what
+            : what + " That's the whole thing — and nothing ran: it was a demo."
     }
 
     @objc private func showChanges() {

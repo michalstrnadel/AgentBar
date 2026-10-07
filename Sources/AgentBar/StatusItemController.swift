@@ -11,6 +11,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private let mascot: MascotDriver
 
     private var sessions: [Session] = []
+    /// The pending requests as the menu shows them: the store's, plus the "Try an
+    /// approval" demo while it waits (`DemoApproval` — on screen only).
+    private var shownRequests: [ApprovalRequest] { DemoApproval.shared.merged(requestStore.requests) }
 
     /// Stores and mascot are owned by the app so both surfaces share one poll and
     /// one animation timer.
@@ -116,7 +119,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let now = Date()
         guard now.timeIntervalSince(lastHotkey) > 1 else { return }
         lastHotkey = now
-        guard let r = requestStore.requests.first(where: { $0.questions == nil })
+        guard let r = shownRequests.first(where: { $0.questions == nil })
         else { return }  // no-op when nothing answerable is pending
         // Routed through the same path the buttons use, so a plan gets its
         // keystroke approval instead of an allow the hook is obliged to
@@ -185,7 +188,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
               menu.highlightedItem == nil, openMenuDepth <= 1 else { return }
         let content = contentSignature()
         guard content != builtSignature else { return }
-        if MenuBuilder.updateInPlace(menu, sessions: sessions, requests: requestStore.requests,
+        if MenuBuilder.updateInPlace(menu, sessions: sessions, requests: shownRequests,
                                      controller: self) {
             builtSignature = content
         } else {
@@ -194,7 +197,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func populateRootMenu(_ menu: NSMenu) {
-        MenuBuilder.populate(menu, sessions: sessions, requests: requestStore.requests,
+        MenuBuilder.populate(menu, sessions: sessions, requests: shownRequests,
                              controller: self)
         builtSignature = contentSignature()
     }
@@ -209,7 +212,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // name (names repeat across the tools of one turn) must not read as "no
         // change" — the strip would stay bound to the old request and answer the
         // new one while showing the old command.
-        let pending = requestStore.requests.map { "\($0.fileName)|\($0.identity)" }
+        let pending = shownRequests.map { "\($0.fileName)|\($0.identity)" }
         return (rows + ["req:"] + pending
                 + ["upd:\(UpdateChecker.shared.status)",
                    "hk:\(approvalShortcutEnabled):\(KeyCombo.allow.display)\(KeyCombo.deny.display)",
@@ -222,7 +225,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc func sessionRowClicked(_ sender: NSMenuItem) {
         guard let s = sender.representedObject as? Session else { return }
-        AgentActions.focus(s, requests: requestStore.requests)
+        AgentActions.focus(s, requests: shownRequests)
     }
 
     @objc func openAgentClicked(_ sender: NSMenuItem) {
@@ -264,6 +267,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             shape: DecisionLedger.shape(of: r),
             cwd: r.cwd.isEmpty ? (session?.cwd ?? "") : r.cwd,
             display: r.display))
+    }
+
+    /// "Allow all N" under a pending request: each identical request that was in
+    /// the menu when it opened and is still waiting, answered as its own Allow.
+    @objc func allowAllAlike(_ sender: NSMenuItem) {
+        guard let shown = sender.identifier?.rawValue.split(separator: ",").map(String.init) else { return }
+        for q in ApprovalBatch.stillPending(shown, in: requestStore.requests) {
+            guard let s = sessions.first(where: { $0.id == q.sessionId }) else { continue }
+            AgentActions.answer(ApprovalAction(request: q, behavior: "allow", session: s))
+        }
     }
 
     /// A finished session's project folder. The session itself is gone — there is no
