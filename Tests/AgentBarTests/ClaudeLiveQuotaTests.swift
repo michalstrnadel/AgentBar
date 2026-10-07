@@ -116,7 +116,12 @@ struct ClaudeLiveQuotaTests {
             quota.update([moved], now: now)
             quota.update([moved], now: now)
         }
-        try await Task.sleep(nanoseconds: 1_500_000_000)
+        // The redraw is a main-queue hop a second later; in a full run the main
+        // queue is busy with other suites, so wait for it to land rather than for a
+        // fixed time, then a little longer to see that no second one follows.
+        let deadline = Date().addingTimeInterval(15)
+        while calls.value == 0, Date() < deadline { try await Task.sleep(nanoseconds: 100_000_000) }
+        try await Task.sleep(nanoseconds: 1_200_000_000)
         #expect(calls.value == 1)
         #expect(quota.latest(now: now)?.windows.first?.usedPercent == 11)
     }
