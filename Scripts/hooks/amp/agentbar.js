@@ -30,13 +30,17 @@ const resolveCli = () => {
 // is the Amp the user started (plugins in-process) and its own pid is the one;
 // otherwise the parent is the Amp that spawned the plugin host.
 const SHELLS = /^-?(sh|bash|dash|zsh|ksh|mksh|fish)$/;
-const ampPid = () => {
+// The parent's program: on Linux the binary /proc says it runs — its `comm` is a
+// script's own file name when a shell runs a script ("my-script" for bash), which
+// would hide that it is a shell — and `ps` elsewhere. "" when neither answers.
+const parentComm = () => {
+  try { return fs.readlinkSync(`/proc/${process.ppid}/exe`); } catch {}
   try {
-    const comm = execFileSync("ps", ["-o", "comm=", "-p", String(process.ppid)], { encoding: "utf8", timeout: 1000 }).trim();
-    if (SHELLS.test(path.basename(comm))) return process.pid;
+    return execFileSync("ps", ["-o", "comm=", "-p", String(process.ppid)], { encoding: "utf8", timeout: 1000 }).trim();
   } catch {}
-  return process.ppid;
+  return "";
 };
+const ampPid = () => (SHELLS.test(path.basename(parentComm())) ? process.pid : process.ppid);
 
 const str = (v) => (typeof v === "string" ? v : "");
 
