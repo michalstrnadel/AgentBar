@@ -13,9 +13,12 @@ final class WrapWindow: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var player: WrapCardView!
     private var rangeControl: NSSegmentedControl!
-    private var namesBox: NSButton!
     private var status: NSTextField!
-    private var exportButtons: [NSButton] = []
+    private var copyButton: NSButton!
+    private var shareButton: NSButton!
+    /// Off by default: a card you post should not name your private repositories.
+    private var includeNames = false
+    private var loading = 0
 
     private(set) var range: DayWrap.Range = .today
 
@@ -27,22 +30,33 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
         window?.makeFirstResponder(player)
-        player.build()
     }
 
     @objc func openFromMenu(_ sender: Any?) { show(.today) }
 
+    /// The recap is read off the main queue — the transcripts behind the agent
+    /// time can be megabytes — and the card builds once it is in.
     private func reload() {
-        let wrap = DayWrap.make(range, history: HistoryStore.read(), ledger: DecisionLedger.read())
-        player.load(wrap)
-        status.stringValue = ""
+        loading += 1
+        let ticket = loading, range = self.range
+        say("")
+        DispatchQueue.global(qos: .userInitiated).async {
+            let wrap = DayWrap.load(range)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, ticket == self.loading else { return }
+                self.player.load(wrap)
+                self.player.build()
+            }
+        }
     }
 
     // MARK: - Build
 
+    private static let barHeight: CGFloat = 60
+
     private func build() {
         let size = WrapCardView.size
-        let barHeight: CGFloat = 92
+        let barHeight = Self.barHeight
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: size.width, height: size.height + barHeight),
                          styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView],
                          backing: .buffered, defer: false)
@@ -59,58 +73,91 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         player = WrapCardView(frame: NSRect(origin: NSPoint(x: 0, y: barHeight), size: size))
         player.autoresizingMask = [.width, .height]
 
-        rangeControl = NSSegmentedControl(labels: ["Today", "This week"], trackingMode: .selectOne,
+        // The bar: which recap on the left, what to do with it on the right — two
+        // buttons, with every way out of the window behind the second.
+        rangeControl = NSSegmentedControl(labels: ["Today", "This Week"], trackingMode: .selectOne,
                                           target: self, action: #selector(rangeChanged))
-        rangeControl.controlSize = .small
-        namesBox = NSButton(checkboxWithTitle: "Project names in exports", target: nil, action: nil)
-        namesBox.controlSize = .small
-        namesBox.font = .systemFont(ofSize: 11)
-        namesBox.state = .off
-        namesBox.toolTip = "Off by default: a card you post should not name your private repositories."
+        rangeControl.segmentStyle = .rounded
+        rangeControl.controlSize = .regular
+        rangeControl.setWidth(76, forSegment: 0)
+        rangeControl.setWidth(88, forSegment: 1)
 
-        func button(_ title: String, _ symbol: String, _ action: Selector, _ tip: String) -> NSButton {
-            let b = NSButton(title: title, image: NSImage(systemSymbolName: symbol, accessibilityDescription: nil)!,
-                             target: self, action: action)
-            b.imagePosition = .imageLeading
-            b.controlSize = .small
-            b.bezelStyle = .rounded
-            b.toolTip = tip
-            return b
-        }
-        exportButtons = [
-            button("Copy", "doc.on.doc", #selector(copyCard), "Copy the card as an image (⌘C)"),
-            button("Image", "photo", #selector(saveImage), "Save the card as a PNG — story or square"),
-            button("Video", "film", #selector(saveVideo), "Save the card building itself, as a 6-second MP4"),
-            button("GIF", "sparkles.rectangle.stack", #selector(saveGIF), "Save the card building itself, as a looping GIF"),
-            button("Share", "square.and.arrow.up", #selector(share(_:)), "Share the card"),
-        ]
+        copyButton = NSButton(title: "Copy", target: self, action: #selector(copyCard))
+        copyButton.bezelStyle = .rounded
+        copyButton.controlSize = .regular
+        copyButton.toolTip = "Copy the card as an image (⌘C)"
+        shareButton = NSButton(title: "Share", image: NSImage(systemSymbolName: "square.and.arrow.up",
+                                                              accessibilityDescription: nil)!,
+                               target: self, action: #selector(showShareMenu(_:)))
+        shareButton.imagePosition = .imageLeading
+        shareButton.bezelStyle = .rounded
+        shareButton.controlSize = .regular
+        shareButton.toolTip = "Save the card or a video of it, or send it somewhere"
+
         status = NSTextField(labelWithString: "")
         status.font = .systemFont(ofSize: 11)
         status.textColor = .secondaryLabelColor
+        status.lineBreakMode = .byTruncatingTail
+        status.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        let top = NSStackView(views: [rangeControl, NSView(), namesBox])
-        top.orientation = .horizontal
-        let buttons = NSStackView(views: exportButtons + [status])
-        buttons.orientation = .horizontal
-        buttons.spacing = 6
-        let bar = NSStackView(views: [top, buttons])
-        bar.orientation = .vertical
-        bar.alignment = .leading
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+        let bar = NSStackView(views: [rangeControl, status, spacer, copyButton, shareButton])
+        bar.orientation = .horizontal
+        bar.alignment = .centerY
         bar.spacing = 8
-        bar.edgeInsets = NSEdgeInsets(top: 12, left: 14, bottom: 12, right: 14)
-        bar.frame = NSRect(x: 0, y: 0, width: size.width, height: barHeight)
-        bar.autoresizingMask = [.width]
-        top.translatesAutoresizingMaskIntoConstraints = false
-        top.widthAnchor.constraint(equalToConstant: size.width - 28).isActive = true
+        bar.setCustomSpacing(12, after: rangeControl)
+        bar.translatesAutoresizingMaskIntoConstraints = false
+
+        // A hairline between the card and the bar, the card's own.
+        let line = NSBox(frame: NSRect(x: 16, y: barHeight - 1, width: size.width - 32, height: 1))
+        line.boxType = .custom
+        line.borderWidth = 0
+        line.fillColor = WrapStyle.hairline
+        line.autoresizingMask = [.width]
 
         let content = NSView(frame: NSRect(x: 0, y: 0, width: size.width, height: size.height + barHeight))
         content.addSubview(player)
         content.addSubview(bar)
+        content.addSubview(line)
+        NSLayoutConstraint.activate([
+            bar.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
+            bar.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
+            bar.bottomAnchor.constraint(equalTo: content.bottomAnchor),
+            bar.heightAnchor.constraint(equalToConstant: barHeight),
+        ])
         w.contentView = content
         w.contentAspectRatio = NSSize(width: size.width, height: size.height + barHeight)
         window = w
         player.onCopy = { [weak self] in self?.copyCard() }
     }
+
+    /// Everything that takes the card somewhere, in one menu.
+    @objc private func showShareMenu(_ sender: NSButton) {
+        let menu = NSMenu()
+        func item(_ title: String, _ action: Selector, _ symbol: String, _ shape: String? = nil) {
+            let i = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            i.target = self
+            i.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+            i.representedObject = shape
+            menu.addItem(i)
+        }
+        item("Share…", #selector(shareCard), "square.and.arrow.up")
+        menu.addItem(.separator())
+        item("Save Image…", #selector(saveImageShape(_:)), "photo", "story")
+        item("Save Square Image…", #selector(saveImageShape(_:)), "square", "square")
+        item("Save Video…", #selector(saveVideo), "film")
+        item("Save GIF…", #selector(saveGIF), "sparkles.rectangle.stack")
+        menu.addItem(.separator())
+        let names = NSMenuItem(title: "Include Project Names", action: #selector(toggleNames), keyEquivalent: "")
+        names.target = self
+        names.state = includeNames ? .on : .off
+        names.toolTip = "Off by default: a card you post should not name your private repositories."
+        menu.addItem(names)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    @objc private func toggleNames() { includeNames.toggle() }
 
     // MARK: - Window
 
@@ -120,7 +167,6 @@ final class WrapWindow: NSObject, NSWindowDelegate {
     @objc private func rangeChanged() {
         range = rangeControl.selectedSegment == 0 ? .today : .week
         reload()
-        player.build()
     }
 
     // MARK: - Export
@@ -128,7 +174,7 @@ final class WrapWindow: NSObject, NSWindowDelegate {
     /// The recap as it leaves the Mac: without project names and tasks unless the
     /// box says otherwise.
     private var exported: DayWrap {
-        namesBox.state == .on ? player.wrap : player.wrap.shareSafe()
+        includeNames ? player.wrap : player.wrap.shareSafe()
     }
 
     @objc private func copyCard() {
@@ -137,20 +183,6 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         pb.clearContents()
         pb.setData(data, forType: .png)
         say("Card copied — paste it anywhere.")
-    }
-
-    @objc private func saveImage() {
-        let menu = NSMenu()
-        for (title, shape) in [("Story card (1080 × 1920)", WrapExport.Shape.story),
-                               ("Square card (1080 × 1080)", .square)] {
-            let item = NSMenuItem(title: title, action: #selector(saveImageShape(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = shape == .story ? "story" : "square"
-            menu.addItem(item)
-        }
-        if let b = exportButtons.first(where: { $0.action == #selector(saveImage) }) {
-            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: b.bounds.height + 4), in: b)
-        }
     }
 
     @objc private func saveImageShape(_ sender: NSMenuItem) {
@@ -182,11 +214,11 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         }
     }
 
-    @objc private func share(_ sender: NSButton) {
+    @objc private func shareCard() {
         guard let rep = WrapExport.card(exported, shape: .story), let data = WrapExport.png(rep) else { return }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName("png"))
         guard (try? data.write(to: url)) != nil else { return }
-        NSSharingServicePicker(items: [url]).show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        NSSharingServicePicker(items: [url]).show(relativeTo: shareButton.bounds, of: shareButton, preferredEdge: .minY)
     }
 
     private func fileName(_ ext: String, _ suffix: String = "") -> String {
@@ -205,13 +237,13 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         panel.directoryURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
         panel.beginSheetModal(for: window) { [weak self] response in
             guard response == .OK, let url = panel.url else { return }
-            self?.exportButtons.forEach { $0.isEnabled = false }
+            self?.setBusy(true)
             self?.say("Rendering…")
             DispatchQueue.global(qos: .userInitiated).async {
                 let error: Error?
                 do { try work(url); error = nil } catch let e { error = e }
                 DispatchQueue.main.async {
-                    self?.exportButtons.forEach { $0.isEnabled = true }
+                    self?.setBusy(false)
                     if let error {
                         self?.say("Not saved: \(error.localizedDescription)")
                     } else {
@@ -223,7 +255,12 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         }
     }
 
-    private func say(_ s: String) { status.stringValue = s }
+    private func say(_ s: String) { status?.stringValue = s }
+
+    private func setBusy(_ busy: Bool) {
+        copyButton.isEnabled = !busy
+        shareButton.isEnabled = !busy
+    }
 
     /// The window with its card finished, drawn to a file without putting it on
     /// screen.

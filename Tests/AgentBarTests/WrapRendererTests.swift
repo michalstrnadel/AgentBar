@@ -64,7 +64,7 @@ import Testing
 
     @Test func tilesAreOnlyTheFactsThatExist() {
         let facts = WrapRenderer.tileFacts(wrap).map(\.caption)
-        #expect(Array(facts.prefix(4)) == ["Top agent", "Changed", "Your answers", "Top project"])
+        #expect(Array(facts.prefix(4)) == ["Top agent", "Changed", "Your answers", "Your prompts"])
         var bare = wrap
         bare.changeMeasured = 0
         bare.waits = DayWrap.Waits()

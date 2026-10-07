@@ -343,33 +343,39 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
 ## Your Day
 
 <p align="center">
-  <img src="docs/assets/your-day.gif?v=2026-10-07c" width="300" alt="AgentBar's Your Day card building itself on plain paper: the date, 11h of agent time counting up, 'The Orchestrator. 3 agents working at once at 9:24.', the day's hours as bars in each agent's colour with the peak marked by a thin line, and a list: top agent Claude, changed +3,160 −968, your answers 25, top project">
+  <img src="docs/assets/your-day.gif?v=2026-10-07d" width="300" alt="AgentBar's Your Day card building itself on plain paper: the date, 11h of agent time counting up, 'The Orchestrator. 3 agents working at once at 9:24.', the day's hours as bars in each agent's colour with the peak marked by a thin line, and a list: top agent Claude, changed +3,160 −968, your answers 25, top project">
   &nbsp;
-  <img src="docs/assets/your-day.png?v=2026-10-07c" width="300" alt="The same card for a week: 34h 24m of agent time, seven days as bars with the best day marked, and the same list">
+  <img src="docs/assets/your-day.png?v=2026-10-07d" width="300" alt="The same card for a week: 34h 24m of agent time, seven days as bars with the best day marked, and the same list">
 </p>
 
 **Your Day…** — in the menu bar's menu and the island's ⋯ — puts your day with
 your agents on one card, the way a year-in-music recap does, built to be read in a
 glance and made to be shared. **This week** switches it to the last seven days.
 
-- **Agent time** first, as the one big number, and **who you were today** under it
+- **Agent time** first, as the one big number — the time agents were actually
+  *working*, not how long their windows were open — and **who you were today** under it
   as a sentence — The Orchestrator, The Marathoner, The Night Owl, The Delegator,
   The Quick Draw… — with the number that earned it.
 - **The day as bars**, hour by hour, in the colour of the agent that had each
-  hour, with **your peak** — the most agents at once — marked by a thin line. A
-  week marks its best day instead.
+  hour, with **your peak** — the most agents at once — marked by a thin line, and
+  **you** underneath: a dot for every hour you typed prompts or answered requests,
+  bigger the more you did. A week marks its best day instead.
 - Then a plain list: **your top agent** and its share, **what changed in your
   repos**, **your answers** (how many your rules gave, how long the agents waited
-  on you) and **where the work went**. Flat paper and ink — the agents' colours
+  on you), **your prompts**, **the longest run**, **the busiest hour** and **where
+  the work went**. Flat paper and ink — the agents' colours
   appear on their bars and nowhere else.
-- **Honest numbers, as everywhere in AgentBar**: a figure measured on some sessions
-  says so ("9 of 21 sessions"), and a fact with nothing behind it gets no row
-  rather than a zero. Lines are *what changed in the repo* while the agents ran,
+- **Honest numbers, as everywhere in AgentBar**: working time comes from Claude
+  Code's own transcript (every prompt and every step is stamped; a silence of more
+  than five minutes inside a turn is waiting, not work) or, for other agents, from
+  the stretches AgentBar saw them in thinking or tool. A session with neither is
+  counted but gets no time. A figure measured on some sessions says so ("9 of 21
+  sessions"), and a fact with nothing behind it gets no row rather than a zero. Lines are *what changed in the repo* while the agents ran,
   not a claim about who wrote them.
-- **Share it**: copy the card (⌘C), save it as a story (1080 × 1920) or square PNG,
-  save it building itself as a 6-second MP4 or a looping GIF, or hand it to the
-  share sheet. **Project names stay out of everything you export** unless you tick
-  the box.
+- **Share it**: **Copy** (⌘C) puts the card on the clipboard; **Share** saves it
+  as a story (1080 × 1920) or square PNG, saves it building itself as a 6-second MP4
+  or a looping GIF, or hands it to the share sheet. **Project names stay out of
+  everything you export** unless you tick **Include Project Names** in that menu.
 - It never opens by itself. It builds once when it opens, then holds still — a click
   or Space builds it again, Esc closes — and Reduce Motion shows it finished.
 - `agentbar://day` and `agentbar://week` open it from Shortcuts or Raycast.

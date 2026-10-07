@@ -199,11 +199,24 @@ enum WrapRenderer {
             S.text(mark.label, font, S.ink, x: left ? mark.x + 12 * f.u : mark.x - 12 * f.u - tw, y: lineTop - 6 * f.u,
                    width: tw + 4 * f.u, alpha: CGFloat(d))
         }
-        // Which colour is whom: the agents that own a bar, in the order of the day.
+        // You, under the agents: a dot per hour you typed a prompt or answered a
+        // request, bigger the more you did — the day's other half.
+        let maxYou = w.youBins.max() ?? 0
+        let youY = bottom + (f.square ? 50 : 66) * f.u
+        if maxYou > 0 {
+            for (i, c) in w.youBins.enumerated() where c > 0 {
+                let d = f.a(0.9 + Double(i) * (today ? 0.015 : 0.05), 0.4)
+                let r = (3 + 8 * CGFloat((Double(c) / Double(maxYou)).squareRoot())) * f.u * CGFloat(S.easeOut(d))
+                S.circle(CGPoint(x: f.m + CGFloat(i) * (bw + gap) + bw / 2, y: youY), r, S.ink.withAlphaComponent(0.8))
+            }
+        }
+
+        // Which colour is whom: the agents that own a bar, in the order of the day,
+        // and you.
         var seen: [String] = []
         for a in w.binAgents where !a.isEmpty && !seen.contains(a) { seen.append(a) }
         var lx = f.m
-        let ly = bottom + (f.square ? 44 : 56) * f.u
+        let ly = (maxYou > 0 ? youY + 22 * f.u : bottom) + (f.square ? 44 : 56) * f.u - (maxYou > 0 ? 24 * f.u : 0)
         let lf = S.font(22 * f.u, .regular)
         for id in seen.prefix(5) {
             let name = Agent.byID(id).name
@@ -215,7 +228,12 @@ enum WrapRenderer {
             S.text(name, lf, S.secondary, x: lx, y: ly, width: 300 * f.u, alpha: CGFloat(la))
             lx += S.measure(name, lf).width + 28 * f.u
         }
-        return ly + (seen.isEmpty ? 0 : 40 * f.u) + (f.square ? 10 : 30) * f.u
+        if maxYou > 0, lx + 140 * f.u <= f.W - f.m {
+            S.circle(CGPoint(x: lx + 7 * f.u, y: ly + 12 * f.u), 7 * f.u, S.ink.withAlphaComponent(0.8 * CGFloat(la)))
+            S.text("You — prompts and answers", lf, S.secondary, x: lx + 24 * f.u, y: ly, width: 400 * f.u,
+                   alpha: CGFloat(la))
+        }
+        return ly + (seen.isEmpty && maxYou == 0 ? 0 : 40 * f.u) + (f.square ? 10 : 30) * f.u
     }
 
     // MARK: Rows — the rest of the day
@@ -256,6 +274,19 @@ enum WrapRenderer {
             else if let fast = w.waits.fastest { bits.append("fastest \(S.shortWait(fast))") }
             out.append(Tile(caption: "Your answers", value: S.grouped(decided),
                             detail: bits.joined(separator: ", "), color: S.ink))
+        }
+        if w.prompts > 0 {
+            let at = w.yourBin.map { "most around \(hourLabel(w, $0))" } ?? ""
+            out.append(Tile(caption: "Your prompts", value: S.grouped(w.prompts), detail: at, color: S.ink))
+        }
+        if let l = w.longest, l.seconds >= 60 {
+            out.append(Tile(caption: "Longest run", value: HistoryDigest.duration(l.seconds),
+                            detail: l.task.isEmpty ? Agent.byID(l.agent).name : "“\(Handoff.clip(l.task, 60))”",
+                            color: S.ink))
+        }
+        if let b = w.busiestBin {
+            out.append(Tile(caption: w.range == .today ? "Busiest hour" : "Busiest day", value: hourLabel(w, b),
+                            detail: "\(HistoryDigest.duration(w.bins[b])) of agent work", color: S.ink))
         }
         if let p = w.projects.first {
             let rest = w.projects.dropFirst().map(\.name)
@@ -333,6 +364,12 @@ enum WrapRenderer {
     }
 
     // MARK: Footer
+
+    /// "14:00–15:00" for a day's bin, "Tuesday" for a week's.
+    static func hourLabel(_ w: DayWrap, _ i: Int) -> String {
+        guard w.range == .today else { return weekday(w.binStart(i), short: false) }
+        return String(format: "%02d:00–%02d:00", i, (i + 1) % 24)
+    }
 
     private static func footerHeight(_ f: Frame) -> CGFloat { (f.square ? 90 : 150) * f.u }
 
