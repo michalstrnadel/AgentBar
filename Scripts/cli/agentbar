@@ -168,6 +168,7 @@ function sessions() {
 const FINISHED = { done: 1, error: 1 };   // deliberately not "idle" — see HistoryStore.swift
 
 function recordHistory(ss) {
+  spansCache = null;   // per pass: a long `watch` must not write the spans it read at start
   try {
     const live = {};
     for (const s of ss) if (s.started !== false) live[s.id] = s;
@@ -206,6 +207,11 @@ function recordHistory(ss) {
       if (w) o.weight = w;
       const ch = repoChange(s.cwd || "", baselines[id] || oldBases[id]);
       if (ch) o.change = ch;
+      // When it was working: this frontend does not track it, but the app may have
+      // (history.jsonl `spans`). The last line for a session wins, so a line written
+      // here without them would erase them — carry the newest known ones forward.
+      const known = priorSpans()[id];
+      if (known) o.spans = known;
       return o;
     };
     const out = [];
@@ -220,6 +226,29 @@ function recordHistory(ss) {
     fs.appendFileSync(historyFile, out.map((r) => JSON.stringify(r)).join("\n") + "\n");
     pruneHistory();
   } catch {}
+}
+
+// The newest `spans` each session's history carries, read once per write pass.
+let spansCache = null;
+function priorSpans() {
+  if (spansCache) return spansCache;
+  spansCache = {};
+  for (const r of readHistory()) if (Array.isArray(r.spans) && r.spans.length) spansCache[r.sessionId] = r.spans;
+  return spansCache;
+}
+
+// Seconds a history line says the session was working, inside [since, until] —
+// null when it does not say. Never endedAt − startedAt: that is how long the
+// window was open, and a window left open all day is not a day of work.
+function workedSeconds(r, since, until) {
+  if (!Array.isArray(r.spans)) return null;
+  let total = 0;
+  for (const sp of r.spans) {
+    if (!Array.isArray(sp) || sp.length !== 2) continue;
+    const a = Math.max(Number(sp[0]) || 0, since), b = Math.min(Number(sp[1]) || 0, until);
+    if (b > a) total += b - a;
+  }
+  return total;
 }
 
 // Reads every line that still parses, last-line-per-id wins. A line torn by a
@@ -268,14 +297,16 @@ function printHistory(argv, json) {
 
   let measured = 0, seconds = 0, tokensMeasured = 0, tokens = 0;
   for (const r of rows) {
-    if (r.startedAt > 0 && r.endedAt >= r.startedAt) { seconds += r.endedAt - r.startedAt; measured++; }
+    const worked = workedSeconds(r, since, now());
+    if (worked !== null) { seconds += worked; measured++; }
     if (r.weight) { tokens += weightTotal(r.weight); tokensMeasured++; }
   }
   const failed = rows.filter((r) => r.state === "error").length;
   for (const r of rows) {
     const when = new Date((r.endedAt || 0) * 1000)
       .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const dur = r.startedAt > 0 && r.endedAt >= r.startedAt ? durationText(r.endedAt - r.startedAt) : "";
+    const worked = workedSeconds(r, since, now());
+    const dur = worked !== null ? durationText(worked) : "";
     const name = r.project || r.agentName || r.agent || "session";
     const mark = r.state === "error" ? red("✗") : green("✓");
     // Every trailing column is blank when it was not measured, never zero-filled.

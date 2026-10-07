@@ -72,6 +72,16 @@ seed_session h2 done $$
 "$CLI" status >/dev/null 2>&1
 check "finished turn recorded once"    '[ "$(grep -c "\"sessionId\":\"h2\"" "$HOME/.agentbar/history.jsonl")" = 1 ]'
 check "finished turn keeps its state"  'grep -q "\"state\":\"done\"" "$HOME/.agentbar/history.jsonl"'
+# The app writes when a session was working (`spans`); a line this frontend writes
+# for the same session must carry them, or the last-line-wins rule erases them.
+fresh_home
+mkdir -p "$HOME/.agentbar"
+printf '{"agent":"codex","sessionId":"h5","state":"done","startedAt":1,"endedAt":2,"spans":[[100,200]]}\n' > "$HOME/.agentbar/history.jsonl"
+seed_session h5 tool $$
+"$CLI" status >/dev/null 2>&1
+seed_session h5 done $$
+"$CLI" status >/dev/null 2>&1
+check "a CLI line keeps the app's spans" '[ "$(tail -1 "$HOME/.agentbar/history.jsonl" | grep -c "\"spans\":\[\[100,200\]\]")" = 1 ]'
 # `idle` is where a session waits between turns — not an ending.
 fresh_home
 seed_session h3 tool $$
@@ -88,8 +98,11 @@ fresh_home
 export AGENTBAR_NOW="$(node -e 'const d = new Date(); d.setHours(12, 0, 0, 0); console.log(Math.floor(d / 1000))')"
 NOW="$AGENTBAR_NOW"
 {
-  printf '{"agent":"claude","sessionId":"h1","project":"Alpha","state":"done","startedAt":%s,"endedAt":%s}\n' "$((NOW-3600))" "$((NOW-1800))"
-  printf '{"agent":"codex","sessionId":"h2","project":"Beta","state":"error","startedAt":%s,"endedAt":%s}\n' "$((NOW-900))" "$((NOW-300))"
+  # Open for 30 and 10 minutes and working all of it; a third open all afternoon
+  # but working 0 — the window's span is not the work.
+  printf '{"agent":"claude","sessionId":"h1","project":"Alpha","state":"done","startedAt":%s,"endedAt":%s,"spans":[[%s,%s]]}\n' "$((NOW-3600))" "$((NOW-1800))" "$((NOW-3600))" "$((NOW-1800))"
+  printf '{"agent":"codex","sessionId":"h2","project":"Beta","state":"error","startedAt":%s,"endedAt":%s,"spans":[[%s,%s]]}\n' "$((NOW-900))" "$((NOW-300))" "$((NOW-900))" "$((NOW-300))"
+  printf '{"agent":"gemini","sessionId":"h4","project":"Gamma","state":"done","startedAt":%s,"endedAt":%s,"spans":[]}\n' "$((NOW-3000))" "$((NOW-200))"
   # Yesterday: a digest called Today that counts backwards 24h from whenever you
   # look at it is not a day.
   printf '{"agent":"claude","sessionId":"h3","project":"Old","state":"done","startedAt":%s,"endedAt":%s}\n' "$((NOW-200000))" "$((NOW-190000))"

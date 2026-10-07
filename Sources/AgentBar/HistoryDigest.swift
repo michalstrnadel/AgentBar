@@ -17,13 +17,13 @@ enum HistoryDigest {
         let state: String
         let startedAt: TimeInterval
         let endedAt: TimeInterval
-        /// Nil when the writer never carried `started_at` — older rows, and agents
-        /// that report no session start at all. A duration guessed from one
-        /// timestamp would be a fabrication.
-        var duration: TimeInterval? {
-            guard startedAt > 0, endedAt >= startedAt else { return nil }
-            return endedAt - startedAt
-        }
+        /// How long the session was working in the digest's range — its `spans`,
+        /// clipped. Nil when nobody recorded when it worked: older lines, and a
+        /// writer that does not track it. Deliberately not `endedAt − startedAt`,
+        /// which is how long the window was open — a session left open all day is
+        /// not a day of work, and three of them are not seventy hours.
+        var worked: TimeInterval?
+        var duration: TimeInterval? { worked }
         /// What the session cost, when its agent keeps a readable number. Nil for the
         /// seven agents that keep none — and for the three that do, whenever the file
         /// was not there. Never zero standing in for "unknown".
@@ -71,6 +71,8 @@ enum HistoryDigest {
             .sorted { $0.endedAt > $1.endedAt }
             .map { Entry(agent: $0.agent, project: $0.project, cwd: $0.cwd, state: $0.state,
                          startedAt: $0.startedAt, endedAt: $0.endedAt,
+                         worked: $0.spans.map { WorkSpans.clipped($0, from: since, to: until)
+                             .reduce(0) { $0 + $1.seconds } },
                          weight: $0.weight, change: $0.change, agentName: $0.agentName) }
 
         var summary = Summary()

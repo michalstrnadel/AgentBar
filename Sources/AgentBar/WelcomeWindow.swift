@@ -269,12 +269,12 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         switch (TodayStripView.showsTotal, TodayStripView.showsBars) {
         case (true, true):
             return "\"12 sessions · 3h 40m · 4.1M tokens\", and under it a bar per "
-                + "session — wider the longer it ran, red for what failed."
+                + "session — wider the longer it worked, red for what failed."
         case (true, false):
-            return "One line: how many sessions finished, how long they took, what "
+            return "One line: how many sessions finished, how long they worked, what "
                 + "they cost and what failed."
         case (false, true):
-            return "A bar per session that finished today — wider the longer it ran, "
+            return "A bar per session that finished today — wider the longer it worked, "
                 + "red for what failed. Point at one for its numbers."
         case (false, false):
             return "The island stays as it is. Today's account is still under its ⋯, "

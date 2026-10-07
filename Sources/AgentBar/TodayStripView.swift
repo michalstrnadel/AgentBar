@@ -125,7 +125,7 @@ final class TodayStripView: NSView, NSViewToolTipOwner {
         ])
     }
 
-    /// One rectangle per session: longer ran, wider bar.
+    /// One rectangle per session: longer worked, wider bar.
     ///
     /// **Widths are square-rooted, not linear.** A real day is one eight-hour session
     /// and a handful of two-minute ones, and drawn to scale the long one takes 97% of
@@ -135,8 +135,8 @@ final class TodayStripView: NSView, NSViewToolTipOwner {
     /// as a measurement: the real numbers are in the line above and in each bar's
     /// tooltip, and that is the only reason a compressed scale is honest.
     ///
-    /// Sessions the protocol could not time (`started_at` is optional, and several
-    /// agents omit it) take the floor width and nothing more — they must not be given
+    /// Sessions nobody could time — a history line without `spans` (older lines, and
+    /// writers that do not track them) — take the floor width and nothing more — they must not be given
     /// an invented share of the day, and they must not be dropped either.
     private func layoutBars() -> [(NSRect, HistoryDigest.Entry)] {
         let leading = overflow > 0 ? Self.overflowWidth : 0

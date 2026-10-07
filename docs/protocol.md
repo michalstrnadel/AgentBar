@@ -330,7 +330,9 @@ Rules:
   last line wins, so it must). `startedAt`–`endedAt` is how long the session was
   *open*; a reader that sums that as work counts a window left open all day as a
   day of work. Absent `spans` means *not known*, never "did nothing". A writer
-  that does not track them (the Linux CLI) omits the key.
+  that does not track them (the Linux CLI) MUST carry forward the newest `spans`
+  the file already holds for that session, and omit the key only when there are
+  none — a line without them would erase them, since the last line wins.
 
 ### `weight` — what the session cost
 

@@ -17,9 +17,16 @@ import Testing
 
     private func record(_ id: String, agent: String = "claude", project: String = "AgentBar",
                         state: String = "done", started: TimeInterval, ended: TimeInterval,
-                        tokens: Int? = nil, files: Int? = nil)
+                        tokens: Int? = nil, files: Int? = nil,
+                        spans: [(TimeInterval, TimeInterval)]? = nil)
     -> HistoryStore.Record {
         var extra = ""
+        // Working the whole time it was open, unless `spans` says otherwise; a
+        // session with no start was never timed, so it carries none.
+        let worked = spans ?? (started > 0 ? [(started, ended)] : [])
+        if (started > 0 && ended >= started) || spans != nil {
+            extra += #","spans":[\#(worked.map { "[\(Int($0.0)),\(Int($0.1))]" }.joined(separator: ","))]"#
+        }
         // Output only, so `total` is exactly what was asked for.
         if let tokens {
             extra += #","weight":{"in":0,"out":\#(tokens),"cacheWrite":0,"cacheRead":9999,"src":"claude-transcript"}"#
@@ -52,6 +59,16 @@ import Testing
     }
 
     // MARK: - Numbers that must not overstate
+
+    /// Open from nine to nine, working one hour of it: one hour. The window's span
+    /// is how long it was open, and summing that is how a day reached 52 hours.
+    @Test func aWindowOpenAllDayCountsOnlyItsWork() {
+        let a = record("a", started: Self.noon - 10_800, ended: Self.noon,
+                       spans: [(Self.noon - 7_200, Self.noon - 3_600)])
+        let (summary, entries) = HistoryDigest.today([a], now: Self.noon, calendar: Self.utc)
+        #expect(summary.seconds == 3_600)
+        #expect(entries.first?.duration == 3_600)
+    }
 
     @Test func durationsAddUpAndFailuresAreCounted() {
         let a = record("a", started: Self.noon - 3_600, ended: Self.noon - 1_800)   // 30m
