@@ -301,8 +301,11 @@ any account of a day's work. Hence one append-only JSON Lines file.
               "cacheRead": 220795232, "src": "claude-transcript" },
                                // OPTIONAL: what the session cost, in the agent's own
                                //   numbers. Absent = nobody could measure it.
-  "change": { "files": 7, "added": 210, "removed": 80, "base": "3a30264" }
+  "change": { "files": 7, "added": 210, "removed": 80, "base": "3a30264" },
                                // OPTIONAL: what moved in the repo while it ran.
+  "spans": [[1784844010, 1784844300], [1784844500, 1784844790]]
+                               // OPTIONAL: when the session was working (thinking or
+                               //   tool), as [start, end] pairs in Unix seconds.
 }
 ```
 
@@ -323,6 +326,11 @@ Rules:
   agent reporting it. A reader that counts those as clean finishes is inventing
   outcomes.
 - Writers prune to **30 days** and a hard cap of **5000 records**.
+- `spans` is the session's working time so far, carried whole on every line (the
+  last line wins, so it must). `startedAt`–`endedAt` is how long the session was
+  *open*; a reader that sums that as work counts a window left open all day as a
+  day of work. Absent `spans` means *not known*, never "did nothing". A writer
+  that does not track them (the Linux CLI) omits the key.
 
 ### `weight` — what the session cost
 

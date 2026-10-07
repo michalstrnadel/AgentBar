@@ -58,8 +58,9 @@ struct DayWrap: Equatable {
 
     var sessions = 0
     var failed = 0
-    /// Summed session time ("agent time") over the `timed` sessions that carry both
-    /// ends. Two agents for an hour each is two hours of it.
+    /// Time agents spent working ("agent time"), summed over the `timed` sessions
+    /// whose working stretches are known (`WorkSpans`) — not how long their windows
+    /// were open. Two agents working for an hour each is two hours of it.
     var agentSeconds: TimeInterval = 0
     var timed = 0
     /// Wall-clock time with at least one agent running — the union of the spans.
@@ -71,6 +72,13 @@ struct DayWrap: Equatable {
     var bins: [TimeInterval] = []
     /// The agent with the most time in each bin, "" for an empty one.
     var binAgents: [String] = []
+    /// What *you* did in each bin: prompts typed and requests answered.
+    var youBins: [Int] = []
+    /// Prompts typed in the range, where the agent records them (Claude Code).
+    var prompts = 0
+    /// The bin with the most agent work, and the one with the most of you; nil when empty.
+    var busiestBin: Int? { bins.indices.max { bins[$0] < bins[$1] }.flatMap { bins[$0] > 0 ? $0 : nil } }
+    var yourBin: Int? { youBins.indices.max { youBins[$0] < youBins[$1] }.flatMap { youBins[$0] > 0 ? $0 : nil } }
 
     var agents: [AgentShare] = []
     var projects: [ProjectShare] = []
@@ -142,6 +150,7 @@ struct DayWrap: Equatable {
     static func make(_ range: Range,
                      history: [HistoryStore.Record],
                      ledger: [DecisionLedger.Record],
+                     work: [String: WorkSpans.Read] = [:],
                      now: TimeInterval = Date().timeIntervalSince1970,
                      calendar: Calendar = .current) -> DayWrap {
         let (start, end) = span(range, now: now, calendar: calendar)
@@ -153,15 +162,20 @@ struct DayWrap: Equatable {
         w.tokens = summary.tokens
         w.tokensMeasured = summary.tokensMeasured
 
-        // Spans, clipped to the range: a session that began last night counts for
-        // the part of it that was today.
+        // The stretches each session was actually working, clipped to the range:
+        // the transcript's when there is one, else what AgentBar saw. A session
+        // with neither is counted but untimed — never given its window's span.
         struct Span { let r: HistoryStore.Record; let from: TimeInterval; let to: TimeInterval }
-        let spans: [Span] = records.compactMap { r in
-            guard r.startedAt > 0, r.endedAt >= r.startedAt else { return nil }
-            let from = max(r.startedAt, start), to = min(r.endedAt, end)
-            return to > from ? Span(r: r, from: from, to: to) : nil
+        var spans: [Span] = []
+        var timedIDs = Set<String>()
+        for r in records {
+            guard let known = work[r.sessionId]?.spans ?? r.spans else { continue }
+            timedIDs.insert(r.sessionId)
+            for s in WorkSpans.clipped(known, from: start, to: end) {
+                spans.append(Span(r: r, from: s.start, to: s.end))
+            }
         }
-        w.timed = spans.count
+        w.timed = timedIDs.count
         w.agentSeconds = spans.reduce(0) { $0 + ($1.to - $1.from) }
         w.firstStart = spans.map(\.from).min() ?? 0
         w.lastEnd = records.map(\.endedAt).max() ?? 0
@@ -219,6 +233,7 @@ struct DayWrap: Equatable {
             .sorted { order($0.seconds, $0.sessions, $0.name, $1.seconds, $1.sessions, $1.name) }
             .prefix(3))
 
+        // The longest single stretch of work, not the longest-open window.
         if let s = spans.max(by: { ($0.to - $0.from) < ($1.to - $1.from) }) {
             let task = !s.r.prompt.isEmpty ? s.r.prompt : s.r.label
             w.longest = Longest(agent: s.r.agent, project: s.r.project,
@@ -249,8 +264,36 @@ struct DayWrap: Equatable {
         w.waits.fastest = waits.first
         if !waits.isEmpty { w.waits.median = waits[waits.count / 2] }
 
+        // You, by the hour: every prompt you typed (where the agent keeps them) and
+        // every request you answered yourself.
+        w.youBins = Array(repeating: 0, count: count)
+        func bin(_ t: TimeInterval) -> Int? {
+            guard t >= start, t <= end else { return nil }
+            let i = Int((t - start) / w.binLength)
+            return i >= 0 && i < count ? i : nil
+        }
+        let ids = Set(records.map(\.sessionId))
+        for (id, read) in work where ids.contains(id) {
+            for t in read.prompts { if let i = bin(t) { w.youBins[i] += 1; w.prompts += 1 } }
+        }
+        for r in mine { if let i = bin(r.ts) { w.youBins[i] += 1 } }
+
         w.persona = persona(for: w, calendar: calendar)
         return w
+    }
+
+    /// This Mac's recap: the history and the ledger, plus each Claude session's
+    /// transcript for when it was really working. Reads files — off the main queue.
+    static func load(_ range: Range, now: TimeInterval = Date().timeIntervalSince1970,
+                     calendar: Calendar = .current) -> DayWrap {
+        let history = HistoryStore.read()
+        let (start, end) = span(range, now: now, calendar: calendar)
+        var work: [String: WorkSpans.Read] = [:]
+        for r in history where r.agent == "claude" && r.endedAt >= start && r.endedAt <= end {
+            if let read = WorkSpans.claude(sessionId: r.sessionId, cwd: r.cwd) { work[r.sessionId] = read }
+        }
+        return make(range, history: history, ledger: DecisionLedger.read(), work: work,
+                    now: now, calendar: calendar)
     }
 
     // MARK: - Persona

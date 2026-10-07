@@ -15,7 +15,14 @@ enum WrapDemo {
             var c = ""
             if let change { c = #","change":{"files":\#(change.0),"added":\#(change.1),"removed":\#(change.2)}"# }
             let line = #"{"agent":"\#(agent)","sessionId":"demo-\#(records.count)","project":"\#(project)","cwd":"/demo/\#(project)","prompt":"\#(prompt)","startedAt":\#(Int(at(from, day: day))),"endedAt":\#(Int(at(to, day: day))),"state":"\#(state)"\#(c)}"#
-            if let r = HistoryStore.Record(jsonLine: line) { records.append(r) }
+            guard var r = HistoryStore.Record(jsonLine: line) else { return }
+            // Working in stretches, the way a real session does: three runs with
+            // pauses for reading in between, about four fifths of the span.
+            let a = at(from, day: day), b = at(to, day: day), len = b - a
+            r.spans = [(0.0, 0.3), (0.36, 0.62), (0.7, 0.96)].map {
+                WorkSpans.Span(start: a + len * $0.0, end: a + len * $0.1)
+            }
+            records.append(r)
         }
         add("claude", "AgentBar", 8.2, 10.9, prompt: "Build the Your Day recap, Wrapped style", change: (14, 1_240, 310))
         add("codex", "landing-site", 9.1, 9.9, change: (6, 380, 122))
@@ -44,7 +51,12 @@ enum WrapDemo {
             r.ts = at(9 + Double(i)); r.via = "rule"; r.decision = "allow"; r.shape = "bash:git status"
             ledger.append(r)
         }
-        return DayWrap.make(range, history: records, ledger: ledger,
+        // Your prompts: one at the start of each stretch.
+        var work: [String: WorkSpans.Read] = [:]
+        for r in records {
+            work[r.sessionId] = WorkSpans.Read(spans: r.spans ?? [], prompts: (r.spans ?? []).map(\.start))
+        }
+        return DayWrap.make(range, history: records, ledger: ledger, work: work,
                             now: range == .today ? end : end, calendar: calendar)
     }
 }

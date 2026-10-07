@@ -145,6 +145,22 @@ import Testing
         #expect(back.first?.cwd == "/tmp/AgentBar")
     }
 
+    /// The line carries when the session was working, not just how long it was
+    /// open: two stretches of thinking, with a pause at the prompt between them.
+    @Test func theLineCarriesTheStretchesItWasWorking() throws {
+        let url = dir.appendingPathComponent("spans.jsonl")
+        let store = HistoryStore(url: url)
+        store.enrich = { $0 }
+        store.observe([try session("a", state: "idle")], now: 1_000)       // baseline
+        store.observe([try session("a", state: "thinking")], now: 1_100)
+        store.observe([try session("a", state: "idle")], now: 1_400)
+        store.observe([try session("a", state: "tool")], now: 2_000)
+        store.observe([try session("a", state: "done")], now: 2_060)
+        store.flush()
+        let spans = try #require(HistoryStore.read(url: url).first?.spans)
+        #expect(spans == [.init(start: 1_100, end: 1_400), .init(start: 2_000, end: 2_060)])
+    }
+
     /// A session is written more than once — turn end, then disappearance. The
     /// reader has to collapse those to the newest, or a day's count double-counts.
     @Test func theLastLineForASessionWins() throws {

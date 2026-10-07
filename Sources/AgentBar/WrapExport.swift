@@ -155,7 +155,7 @@ enum WrapExport {
         let fm = FileManager.default
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         let wrap = demo ? WrapDemo.wrap(range)
-            : DayWrap.make(range, history: HistoryStore.read(), ledger: DecisionLedger.read())
+            : DayWrap.load(range)
         var ok = true
         func write(_ rep: NSBitmapImageRep?, _ name: String) {
             guard let rep, let data = png(rep) else { ok = false; return }

@@ -63,6 +63,10 @@ final class HistoryStore {
         /// record can still say "Aider" rather than its id. "" for known agents,
         /// and omitted from the line then, so older readers see no new field.
         var agentName = ""
+        /// The stretches AgentBar saw this session working (thinking or tool) — the
+        /// real "agent time", where the session's own span is how long it was open.
+        /// Nil for a line written before this was kept, or by a writer that does not.
+        var spans: [WorkSpans.Span]? = nil
 
         /// Who the record belongs to, resolved the way a live row is.
         var resolvedAgent: Agent { Agent.byID(agent, name: agentName) }
@@ -78,6 +82,7 @@ final class HistoryStore {
             if let weight { o["weight"] = weight.json }
             if let change { o["change"] = change.json }
             if !agentName.isEmpty { o["agentName"] = agentName }
+            if let spans, !spans.isEmpty { o["spans"] = WorkSpans.json(spans) }
             return o
         }
 
@@ -147,10 +152,54 @@ final class HistoryStore {
     /// Injected in tests, which must not shell out to git or read a home directory.
     var enrich: (Record) -> Record = HistoryStore.measure
 
-    func observe(_ sessions: [Session]) {
+    // MARK: - Working stretches
+
+    /// When each session's current stretch of work began, while it lasts.
+    private var workingSince: [String: TimeInterval] = [:]
+    /// Each session's stretches so far, seeded from its last history line so a
+    /// relaunch carries on rather than starting the session's account over.
+    private var stretches: [String: [WorkSpans.Span]] = [:]
+    /// The most a line carries: the newest stretches of a very long session.
+    static let maxSpans = 400
+
+    /// Opens and closes stretches as rows enter and leave thinking/tool.
+    private func track(_ sessions: [Session], now: TimeInterval) {
+        let live = Set(sessions.map(\.id))
+        for s in sessions {
+            if stretches[s.id] == nil {
+                stretches[s.id] = Self.cached(url: url).last { $0.sessionId == s.id }?.spans ?? []
+            }
+            if s.state.isWorking, !s.decayed {
+                if workingSince[s.id] == nil { workingSince[s.id] = now }
+            } else if let start = workingSince.removeValue(forKey: s.id) {
+                closeStretch(s.id, start, now)
+            }
+        }
+        for (id, start) in workingSince where !live.contains(id) {
+            workingSince[id] = nil
+            closeStretch(id, start, now)
+        }
+        stretches = stretches.filter { live.contains($0.key) || previous[$0.key] != nil }
+    }
+
+    private func closeStretch(_ id: String, _ start: TimeInterval, _ end: TimeInterval) {
+        guard end > start else { return }
+        let all = WorkSpans.joined((stretches[id] ?? []) + [WorkSpans.Span(start: start, end: end)])
+        stretches[id] = Array(all.suffix(Self.maxSpans))
+    }
+
+    func observe(_ sessions: [Session], now: TimeInterval = Date().timeIntervalSince1970) {
         defer { previous = Dictionary(sessions.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }) }
-        guard primed else { primed = true; return }
-        let due = Self.records(from: previous, to: sessions, now: Date().timeIntervalSince1970)
+        guard primed else {
+            primed = true
+            // A session already working at launch has been for a while; from here on
+            // is what can be vouched for.
+            track(sessions, now: now)
+            return
+        }
+        track(sessions, now: now)
+        var due = Self.records(from: previous, to: sessions, now: now)
+        for i in due.indices { due[i].spans = stretches[due[i].sessionId] }
         guard !due.isEmpty else { return }
         writer.async { [weak self] in
             guard let self else { return }
@@ -288,5 +337,6 @@ extension HistoryStore.Record {
         change = RepoChange(json: o["change"])
         // Cleaned again on the way back in: the file is the user's to edit.
         agentName = Session.displayName(o["agentName"])
+        spans = WorkSpans.spans(fromJSON: o["spans"])
     }
 }

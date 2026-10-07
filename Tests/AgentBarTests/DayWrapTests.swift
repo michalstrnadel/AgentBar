@@ -17,10 +17,18 @@ import Testing
             .timeIntervalSince1970
     }
 
+    /// A session that worked from `from` to `to` without a break, unless `spans`
+    /// says when it really worked; `spans: []` is a session watched but never busy.
     private func record(_ agent: String, _ project: String, from: TimeInterval, to: TimeInterval,
-                        state: String = "done", prompt: String = "", change: String = "") -> HistoryStore.Record {
+                        state: String = "done", prompt: String = "", change: String = "",
+                        spans: [(TimeInterval, TimeInterval)]? = nil, untimed: Bool = false) -> HistoryStore.Record {
         let c = change.isEmpty ? "" : #","change":\#(change)"#
-        let line = #"{"agent":"\#(agent)","sessionId":"\#(UUID().uuidString)","project":"\#(project)","cwd":"/r/\#(project)","prompt":"\#(prompt)","startedAt":\#(Int(from)),"endedAt":\#(Int(to)),"state":"\#(state)"\#(c)}"#
+        var sp = ""
+        if !untimed {
+            let list = (spans ?? [(from, to)]).map { "[\(Int($0.0)),\(Int($0.1))]" }.joined(separator: ",")
+            sp = #","spans":[\#(list)]"#
+        }
+        let line = #"{"agent":"\#(agent)","sessionId":"\#(UUID().uuidString)","project":"\#(project)","cwd":"/r/\#(project)","prompt":"\#(prompt)","startedAt":\#(Int(from)),"endedAt":\#(Int(to)),"state":"\#(state)"\#(c)\#(sp)}"#
         return HistoryStore.Record(jsonLine: line)!
     }
 
@@ -67,8 +75,8 @@ import Testing
     }
 
     @Test func anUntimedSessionCountsButAddsNoTime() {
-        var r = record("gemini", "X", from: at(9), to: at(10))
-        r.startedAt = 0
+        // No stretches known: neither a transcript nor a watched one.
+        let r = record("gemini", "X", from: at(9), to: at(10), untimed: true)
         let w = DayWrap.make(.today, history: [r], ledger: [], now: at(18), calendar: calendar)
         #expect(w.sessions == 1)
         #expect(w.timed == 0)
@@ -142,6 +150,40 @@ import Testing
         #expect(w.longest?.task == "")
         #expect(w.longest?.project == "a project")
         #expect(w.agentSeconds == 7200)
+    }
+
+    // MARK: - Working time, not open time
+
+    @Test func aWindowOpenAllDayCountsOnlyItsWork() {
+        // Open from 8 to 20, working 9:00–9:30 and 14:00–15:00.
+        let r = record("claude", "app", from: at(8), to: at(20),
+                       spans: [(at(9), at(9, 30)), (at(14), at(15))])
+        let w = DayWrap.make(.today, history: [r], ledger: [], now: at(21), calendar: calendar)
+        #expect(w.agentSeconds == 5_400)
+        #expect(w.timed == 1)
+        #expect(w.longest?.seconds == 3_600)
+        #expect(w.busiestBin == 14)
+    }
+
+    @Test func aSessionWithNoKnownWorkIsCountedButNotTimed() {
+        let r = record("codex", "api", from: at(8), to: at(20), untimed: true)
+        let w = DayWrap.make(.today, history: [r], ledger: [], now: at(21), calendar: calendar)
+        #expect(w.sessions == 1)
+        #expect(w.timed == 0)
+        #expect(w.agentSeconds == 0)
+    }
+
+    @Test func theTranscriptWinsOverWhatWasSeenAndGivesYourPrompts() {
+        let r = record("claude", "app", from: at(8), to: at(20), spans: [(at(8), at(20))])
+        let read = WorkSpans.Read(spans: [WorkSpans.Span(start: at(10), end: at(10, 20))],
+                                  prompts: [at(10), at(10, 5), at(16)])
+        let w = DayWrap.make(.today, history: [r], ledger: [decision(at(16, 10), waited: 5)],
+                             work: [r.sessionId: read], now: at(21), calendar: calendar)
+        #expect(w.agentSeconds == 1_200)
+        #expect(w.prompts == 3)
+        #expect(w.youBins[10] == 2)
+        #expect(w.youBins[16] == 2)   // a prompt and an answer
+        #expect(w.yourBin == 10 || w.yourBin == 16)
     }
 }
 
