@@ -203,4 +203,15 @@ import Testing
         #expect(URLCommands.mostNeeded([remote]) == nil)
         #expect(URLCommands.linkable([remote, local]).map(\.id) == [local.id])
     }
+
+    /// Keep Mac Awake changes how the Mac sleeps, so no link may start or stop it —
+    /// a web page would otherwise be able to hold a laptop up all night.
+    @Test func noLinkKeepsTheMacAwake() {
+        for s in ["agentbar://awake", "agentbar://keep-awake", "agentbar://caffeinate",
+                  "agentbar://keepawake?for=2h", "agentbar://sleep"] {
+            #expect(parse(s) == nil, "\(s)")
+        }
+        // Opening its Settings page is only a page.
+        #expect(parse("agentbar://settings/keep-awake") == .settings(page: .keepAwake))
+    }
 }

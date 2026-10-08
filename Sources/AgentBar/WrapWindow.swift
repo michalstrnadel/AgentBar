@@ -40,6 +40,8 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         loading += 1
         let ticket = loading, range = self.range
         say("")
+        player.load(.placeholder(range))
+        player.finish()
         DispatchQueue.global(qos: .userInitiated).async {
             let wrap = DayWrap.load(range)
             DispatchQueue.main.async { [weak self] in
@@ -177,8 +179,15 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         includeNames ? player.wrap : player.wrap.shareSafe()
     }
 
+    /// Nothing leaves the Mac before the numbers are in: a copied placeholder would
+    /// be a recap of nothing.
+    private var ready: Bool {
+        if player.wrap.pending { say("Still adding up — one moment.") }
+        return !player.wrap.pending
+    }
+
     @objc private func copyCard() {
-        guard let rep = WrapExport.card(exported, shape: .story), let data = WrapExport.png(rep) else { return }
+        guard ready, let rep = WrapExport.card(exported, shape: .story), let data = WrapExport.png(rep) else { return }
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setData(data, forType: .png)
@@ -186,6 +195,7 @@ final class WrapWindow: NSObject, NSWindowDelegate {
     }
 
     @objc private func saveImageShape(_ sender: NSMenuItem) {
+        guard ready else { return }
         let shape: WrapExport.Shape = sender.representedObject as? String == "square" ? .square : .story
         let wrap = exported
         save(name: fileName("png", shape == .square ? "-square" : ""), type: .png) { url in
@@ -197,6 +207,7 @@ final class WrapWindow: NSObject, NSWindowDelegate {
     }
 
     @objc private func saveVideo() {
+        guard ready else { return }
         let wrap = exported
         save(name: fileName("mp4"), type: .mpeg4Movie) { [weak self] url in
             try WrapExport.writeMP4(wrap, to: url) { p in
@@ -206,6 +217,7 @@ final class WrapWindow: NSObject, NSWindowDelegate {
     }
 
     @objc private func saveGIF() {
+        guard ready else { return }
         let wrap = exported
         save(name: fileName("gif"), type: .gif) { [weak self] url in
             try WrapExport.writeGIF(wrap, to: url) { p in
@@ -215,7 +227,7 @@ final class WrapWindow: NSObject, NSWindowDelegate {
     }
 
     @objc private func shareCard() {
-        guard let rep = WrapExport.card(exported, shape: .story), let data = WrapExport.png(rep) else { return }
+        guard ready, let rep = WrapExport.card(exported, shape: .story), let data = WrapExport.png(rep) else { return }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName("png"))
         guard (try? data.write(to: url)) != nil else { return }
         NSSharingServicePicker(items: [url]).show(relativeTo: shareButton.bounds, of: shareButton, preferredEdge: .minY)
@@ -282,7 +294,7 @@ final class WrapWindow: NSObject, NSWindowDelegate {
 final class WrapCardView: NSView {
     static let size = NSSize(width: 405, height: 720)
 
-    private(set) var wrap = DayWrap(range: .today, start: 0, end: 0)
+    private(set) var wrap = DayWrap.placeholder(.today)
     private var t: Double = WrapRenderer.buildSeconds
     private var timer: Timer?
     private var last: CFTimeInterval = 0
@@ -304,6 +316,7 @@ final class WrapCardView: NSView {
 
     /// What VoiceOver reads: the card's facts as a sentence each.
     static func spoken(_ w: DayWrap) -> String {
+        if w.pending { return "\(w.range.title) with agents. Adding it up." }
         guard !w.isEmpty else { return "\(w.range.title) with agents. Nothing has finished yet." }
         var parts = ["\(w.range.title) with agents. You were \(w.persona.title). \(w.persona.reason)"]
         if w.timed > 0 { parts.append("\(HistoryDigest.duration(w.agentSeconds)) of agent time.") }

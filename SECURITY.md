@@ -224,6 +224,33 @@ never written to `requests.d`, never reaches the history, the ledger, the
 notifications or a rule, and answering it writes no answer file: the answer path
 hands it back before anything is written.
 
+## Keeping the Mac awake
+
+Keep Mac Awake (`KeepAwake`) changes how the Mac sleeps, so it is held to the
+rules a setting is: only a click starts it — the island's cup, either menu, or
+Settings ▸ Keep Awake — and no `agentbar://` link, rule or schedule reaches it.
+
+- **The assertion.** One `ProcessInfo.beginActivity` power assertion, named
+  `AgentBar: …` in `pmset -g assertions`. The system releases it when AgentBar
+  exits, crash included.
+- **The Away nudge.** Off by default. When on, and only while the Mac is kept awake
+  and you have not touched it for four minutes, AgentBar posts one mouse-moved
+  event at the pointer's current position: zero distance, no click, no key. It
+  uses the Accessibility permission keystroke approval already needs and does
+  nothing without it.
+- **The closed lid.** Off by default, and the only part that runs as root. Turning
+  it on shows macOS's own administrator prompt, once per start, and runs
+  `pmset -a disablesleep 1` together with a small shell loop that turns sleep back
+  on (`pmset -a disablesleep 0`) within five seconds of any of: AgentBar's process
+  ending, a stop file appearing at `~/.agentbar/awake-lid.stop`, or a deadline
+  passing (the mode's end, at most 12 hours). Every value in that command is
+  AgentBar's own — a pid, an epoch second and a path in its folder, single-quoted.
+  Turning it off writes the stop file, so it needs no second password. If the Mac
+  restarts while it is on, the setting survives the restart but the loop does not,
+  so `~/.agentbar/awake-lid.json` marks that it was started. On the next launch,
+  the menu and Settings offer **Restore…**, which asks for the password once. It
+  never asks by itself.
+
 ## Handing a file to an agent
 
 Dropping a file on a session in the island (`DropToAgent`) is the only place

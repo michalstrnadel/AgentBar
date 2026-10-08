@@ -233,8 +233,19 @@ universal bundle, and it is signed locally.
    The last line proves the asset is the CI build with a new signature and
    nothing else — the same check `release-provenance.yml` runs on the published
    asset before attesting it.
-5. `Scripts/dev/release-notes.sh X.Y.Z > /tmp/notes.md`, then
-   `gh release create vX.Y.Z AgentBar.app.zip --title "…" --notes-file /tmp/notes.md`.
+5. Pack the disk image the Download button points at, from the same signed app,
+   and check it before it goes anywhere:
+   ```bash
+   Scripts/dev/make-dmg.sh AgentBar.app AgentBar.dmg   # signs it, verifies it
+   hdiutil attach -quiet -readonly -nobrowse -mountpoint /tmp/rel/dmg AgentBar.dmg
+   ditto -c -k --sequesterRsrc --keepParent /tmp/rel/dmg/AgentBar.app /tmp/rel/dmg-app.zip
+   hdiutil detach -quiet /tmp/rel/dmg
+   Scripts/dev/verify-release.sh /tmp/rel/ci/AgentBar.app.zip /tmp/rel/dmg-app.zip
+   ```
+   It needs Finder (the window layout is Finder's), so it is made here, not in CI.
+   Eject any mounted "AgentBar" volume first; the script refuses otherwise.
+6. `Scripts/dev/release-notes.sh X.Y.Z > /tmp/notes.md`, then
+   `gh release create vX.Y.Z AgentBar.app.zip AgentBar.dmg --title "…" --notes-file /tmp/notes.md`.
    The notes are the CHANGELOG section and nothing else: the app shows the same
    section from the CHANGELOG it bundles (Settings ▸ What's New, and before an
    update installs), so GitHub and the app say the same thing. Edit the CHANGELOG,
@@ -242,15 +253,18 @@ universal bundle, and it is signed locally.
    asset **must** be named `AgentBar.app.zip` and the tag `vX.Y.Z`: `UpdateChecker`
    looks up exactly that name under `releases/latest` and strips the leading `v`
    to compare versions. A different name ships an update nobody can install.
-6. Update `Casks/agentbar.rb` in `michalstrnadel/homebrew-tap`: bump `version`,
+   `AgentBar.dmg` is for people downloading by hand
+   (`releases/latest/download/AgentBar.dmg`); nothing automatic reads it.
+7. Update `Casks/agentbar.rb` in `michalstrnadel/homebrew-tap`: bump `version`,
    set `sha256` to the output of `shasum -a 256 AgentBar.app.zip`, push, then
    verify with `brew audit --cask michalstrnadel/tap/agentbar` (and
    `brew style` on the tap checkout).
-7. Publishing the release starts `release-provenance.yml`. Wait for it, then check
-   the download answers for itself:
+8. Publishing the release starts `release-provenance.yml`. Wait for it, then check
+   both downloads answer for themselves:
    ```bash
-   gh release download vX.Y.Z -p AgentBar.app.zip -D /tmp/check
+   gh release download vX.Y.Z -p AgentBar.app.zip -p AgentBar.dmg -D /tmp/check
    gh attestation verify /tmp/check/AgentBar.app.zip -R michalstrnadel/AgentBar
+   gh attestation verify /tmp/check/AgentBar.dmg -R michalstrnadel/AgentBar
    ```
    A failed run means the asset is not the CI build re-signed; it gets no
    attestation, and it should not stay published.

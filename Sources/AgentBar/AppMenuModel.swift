@@ -30,6 +30,7 @@ enum AppMenuModel {
         var macOSVersion: String
         /// The version whose notes the menu still offers (`ReleaseNotes.menuOffer`).
         var whatsNew: String? = nil
+        var keepAwake = KeepAwakeMenu()
 
         static var current: Inputs {
             Inputs(update: UpdateChecker.shared.status,
@@ -39,7 +40,8 @@ enum AppMenuModel {
                    diagnosticsFailures: Diagnostics.failures,
                    macOSVersion: AppMenuModel.macOSVersion,
                    whatsNew: ReleaseNotes.menuOffer(current: AppMenuModel.appVersion,
-                                                    releases: ReleaseNotes.bundled))
+                                                    releases: ReleaseNotes.bundled),
+                   keepAwake: .current)
         }
     }
 
@@ -68,6 +70,7 @@ enum AppMenuModel {
                          toolTip: i.soundsOn
                             ? "Cues when a session needs approval, asks a question or finishes — volume in Settings"
                             : "Off — click for a soft cue when a session needs approval, asks or finishes"),
+            keepAwakeEntry(i.keepAwake),
             // Where AgentBar shows itself (menu bar / island / both), plus the
             // first-run blurb — the same window, reachable again.
             AppMenuEntry(id: "appearance", title: "Appearance…", symbol: "macwindow.on.rectangle",
@@ -86,6 +89,49 @@ enum AppMenuModel {
                          toolTip: "Opens a new discussion on GitHub in your browser"),
             AppMenuEntry(id: "quit", title: "Quit AgentBar", action: .quit, keyEquivalent: "q"),
         ]
+    }
+
+    /// Keep Mac Awake: every mode one pick away, the live one ticked, and what is
+    /// left on the badge. Picking the ticked mode again turns it off; the island's
+    /// cup is the one-click toggle.
+    static func keepAwakeEntry(_ k: KeepAwakeMenu) -> AppMenuEntry {
+        // What it is doing, first: the one line that answers "is it on, and why".
+        var children = [AppMenuEntry(id: "awake.status", title: k.reason,
+                                     symbol: k.current == nil ? "moon.zzz" : "cup.and.saucer.fill")]
+        children += KeepAwakeChoice.allCases.map { c in
+            AppMenuEntry(id: "awake.\(c.rawValue)", title: c.title(untilMinutes: k.untilMinutes),
+                         action: .keepAwake(c), on: k.current == c,
+                         toolTip: k.current == c ? "On — pick again to turn it off" : c.help)
+        }
+        children.append(.separator("awake.sep"))
+        children.append(AppMenuEntry(id: "awake.display", title: "Keep Screen On",
+                                     action: .keepAwakeToggleDisplay, on: k.display,
+                                     toolTip: k.display ? "On — the screen stays lit while Keep Awake is on"
+                                        : "Off — the screen dims and locks as usual; the Mac keeps working"))
+        // The ellipsis says what macOS convention says it says: another step
+        // follows, here the password.
+        children.append(AppMenuEntry(id: "awake.lid",
+                                     title: k.lid ? "Stay Awake With Lid Closed" : "Stay Awake With Lid Closed…",
+                                     action: .keepAwakeToggleLid, on: k.lid,
+                                     toolTip: k.lid ? "On — closing the lid won't stop your agents. Click to turn off."
+                                        : "Close the lid and your agents keep working. Asks for your password; "
+                                          + "turns off by itself when Keep Awake ends."))
+        children.append(.separator("awake.sep2"))
+        if k.current != nil {
+            children.append(AppMenuEntry(id: "awake.off", title: "Turn Off", action: .keepAwakeOff))
+        }
+        if k.lidLeftover {
+            children.append(AppMenuEntry(
+                id: "awake.restore", title: "Sleep Still Disabled — Restore…",
+                symbol: "exclamationmark.triangle", action: .keepAwakeRestoreLid,
+                toolTip: "An earlier closed-lid session left sleep off. Asks for your password once."))
+        }
+        children.append(AppMenuEntry(id: "awake.settings", title: "Keep Awake Settings…",
+                                     action: .openKeepAwakeSettings))
+        return AppMenuEntry(id: "awake", title: "Keep Mac Awake",
+                            symbol: k.current == nil ? "cup.and.saucer" : "cup.and.saucer.fill",
+                            on: k.current != nil, toolTip: k.reason, badge: k.badge,
+                            children: children)
     }
 
     /// Carries the verdict of the last background pass rather than only opening
@@ -202,6 +248,12 @@ enum AppMenuAction: Equatable {
     case openWhatsNew
     case sendFeedback
     case quit
+    case keepAwake(KeepAwakeChoice)
+    case keepAwakeOff
+    case keepAwakeRestoreLid
+    case keepAwakeToggleDisplay
+    case keepAwakeToggleLid
+    case openKeepAwakeSettings
 
     func perform() {
         switch self {
@@ -231,6 +283,25 @@ enum AppMenuAction: Equatable {
                                                              macOSVersion: AppMenuModel.macOSVersion))
         case .quit:
             NSApp.terminate(nil)
+        case .keepAwake(let choice):
+            KeepAwake.shared.pick(choice)
+            SettingsWindow.shared.refreshIfVisible()
+        case .keepAwakeOff:
+            KeepAwake.shared.stop()
+            SettingsWindow.shared.refreshIfVisible()
+        case .keepAwakeRestoreLid:
+            LidSleep.shared.restoreLeftover { _ in
+                KeepAwake.shared.reevaluate()
+                SettingsWindow.shared.refreshIfVisible()
+            }
+        case .keepAwakeToggleDisplay:
+            KeepAwake.shared.setKeepDisplayOn(!KeepAwakePrefs.settings().keepDisplayOn)
+            SettingsWindow.shared.refreshIfVisible()
+        case .keepAwakeToggleLid:
+            KeepAwake.shared.setLid(!KeepAwakePrefs.lid())
+            SettingsWindow.shared.refreshIfVisible()
+        case .openKeepAwakeSettings:
+            SettingsWindow.shared.show(page: .keepAwake)
         }
     }
 }
@@ -254,5 +325,38 @@ struct AppMenuEntry: Equatable {
 
     static func separator(_ id: String) -> AppMenuEntry {
         AppMenuEntry(id: id, title: "", isSeparator: true)
+    }
+}
+
+/// What the Keep Mac Awake row is drawn from, as plain values.
+struct KeepAwakeMenu: Equatable {
+    var current: KeepAwakeChoice?
+    var untilMinutes = 18 * 60
+    var reason = "Off"
+    var badge: String?
+    var display = false
+    var lid = false
+    var lidLeftover = false
+
+    static var current: KeepAwakeMenu {
+        let k = KeepAwake.shared
+        return KeepAwakeMenu(current: k.currentChoice, untilMinutes: KeepAwakePrefs.untilMinutes(),
+                             reason: k.isOn ? k.decision.reason : "Off — the Mac sleeps as usual",
+                             badge: k.badge, display: KeepAwakePrefs.settings().keepDisplayOn,
+                             lid: KeepAwakePrefs.lid() || LidSleep.shared.isOn,
+                             lidLeftover: LidSleep.shared.hasLeftover)
+    }
+}
+
+extension KeepAwakeChoice {
+    /// The tooltip of the choice's menu row.
+    var help: String {
+        switch self {
+        case .whileAgentsWork: return "Awake while a session on this Mac works, and 5 minutes after its last turn"
+        case .oneHour:         return "Awake for the next hour"
+        case .twoHours:        return "Awake for the next two hours"
+        case .untilTime:       return "Awake until this time — change it in Keep Awake Settings"
+        case .indefinite:      return "Awake until you turn it off — no time limit"
+        }
     }
 }

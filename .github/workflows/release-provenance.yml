@@ -74,3 +74,27 @@ jobs:
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: rel/AgentBar.app.zip
+      # The disk image the Download button points at, when the release has one
+      # (from 1.48.0). It gets the same proof: the app inside it is the CI build,
+      # re-signed, and the image itself carries the project's signature.
+      - name: Check the disk image holds the same app
+        id: dmg
+        run: |
+          if ! gh release download "$TAG" -R "$GITHUB_REPOSITORY" -p AgentBar.dmg -D rel 2>/dev/null; then
+            echo "No AgentBar.dmg on $TAG — nothing more to attest."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          codesign --verify rel/AgentBar.dmg
+          codesign -dvvv rel/AgentBar.dmg 2>&1 | grep -qx "Authority=AgentBar Local Signing"
+          mkdir "$PWD/dmg-mnt"
+          hdiutil attach -quiet -readonly -nobrowse -mountpoint "$PWD/dmg-mnt" rel/AgentBar.dmg
+          ditto -c -k --sequesterRsrc --keepParent "$PWD/dmg-mnt/AgentBar.app" dmg-app.zip
+          hdiutil detach -quiet "$PWD/dmg-mnt"
+          ./Scripts/dev/verify-release.sh ci/AgentBar.app.zip dmg-app.zip
+          echo "present=true" >> "$GITHUB_OUTPUT"
+      - name: Attest the disk image
+        if: steps.dmg.outputs.present == 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: rel/AgentBar.dmg

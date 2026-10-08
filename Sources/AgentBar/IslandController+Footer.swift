@@ -57,6 +57,34 @@ extension IslandController {
         return b
     }
 
+    /// Keep Mac Awake, one click from the corner like Take a break. The tooltip
+    /// says what is happening and how to reach the other modes.
+    private func keepAwakeButton() -> NSView {
+        let k = KeepAwake.shared
+        let hint = k.isOn
+            ? "\(k.decision.reason) — click to stop · right-click or hold for options"
+            : "Keep Mac awake \(KeepAwakePrefs.lastChoice().title(untilMinutes: KeepAwakePrefs.untilMinutes()).lowercased())"
+              + " — click to start · right-click or hold for options"
+        let b = KeepAwakeButton(on: k.isOn, paused: k.decision.paused != nil, toolTip: hint)
+        b.onClick = { KeepAwake.shared.toggle() }
+        b.onMenu = { [weak self] view in self?.showKeepAwakeMenu(from: view) }
+        return b
+    }
+
+    /// The same mode list the shared menu's "Keep Mac Awake ▸" shows, rendered
+    /// from the same entries, so the two can never offer different modes.
+    private func showKeepAwakeMenu(from view: NSView) {
+        let menu = NSMenu()
+        let header = NSMenuItem(title: "Keep Mac Awake", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        let entry = AppMenuModel.keepAwakeEntry(.current)
+        for item in AppMenuRenderer.items(entry.children, target: self, action: Self.appMenuAction) {
+            menu.addItem(item)
+        }
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: view.bounds.height + 4), in: view)
+    }
+
     private func footerRow() -> NSView {
         let dots = NSButton(title: "⋯", target: self, action: #selector(showMenu(_:)))
         dots.isBordered = false
@@ -96,6 +124,7 @@ extension IslandController {
             chip.onChoose = { [weak self] view in self?.chooseSessionForScreenshot(shot, from: view) }
             views.append(chip)
         }
+        views.append(keepAwakeButton())
         views.append(breakButton())
         views.append(dots)
         let row = NSStackView(views: views)

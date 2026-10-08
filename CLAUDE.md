@@ -67,6 +67,10 @@ open "build/AgentBar.app"
    that request in them. Closed, paused or yielded, its clock does not run.
    `RuleSheet` is a sheet on Settings, not a fourth surface: it is modal to a window
    the user already opened and it closes when it is answered.
+   **Keep Mac Awake** (`KeepAwake`) is the cup in the island's footer and a row in
+   the shared menu, not a surface: it changes how the Mac sleeps, so only a click
+   turns it on, no link may, and its closed-lid mode — the one root command in the
+   app — asks for the password inside that click and never on its own (SECURITY.md).
    **Hand a file to an agent** (`DropToAgent`) is the one place AgentBar puts text
    into a terminal, and it is fenced the way keystroke approval is: only on a drop
    the person made, only the dropped paths (escaped, no line breaks), pasted only

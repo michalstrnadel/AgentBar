@@ -61,7 +61,9 @@ enum WrapRenderer {
     private static func card(_ f: Frame) {
         S.fill(CGRect(origin: .zero, size: f.size), S.paper)
         var y = header(f, top: (f.square ? 56 : 104) * f.u)
-        if f.w.isEmpty {
+        if f.w.pending {
+            adding(f, y: y + (f.square ? 40 : 80) * f.u)
+        } else if f.w.isEmpty {
             empty(f, y: y + (f.square ? 40 : 80) * f.u)
         } else {
             y = hero(f, y: y + (f.square ? 34 : 64) * f.u)
@@ -84,6 +86,13 @@ enum WrapRenderer {
         S.fill(CGRect(x: f.m, y: y, width: f.inner * CGFloat(S.easeOut(f.a(0.05, 0.6))), height: max(1, 2 * f.u)),
                S.hairline)
         return y
+    }
+
+    /// The numbers are still being read: one quiet line, nothing that looks like
+    /// a result.
+    private static func adding(_ f: Frame, y: CGFloat) {
+        S.text("Adding up \(f.w.range == .today ? "your day" : "your week")…",
+               S.font(36 * f.u, .regular), S.secondary, x: f.m, y: y, width: f.inner, lineHeight: 1.3, alpha: 1)
     }
 
     private static func empty(_ f: Frame, y: CGFloat) {

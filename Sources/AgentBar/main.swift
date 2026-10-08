@@ -52,6 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             WorkDiff.shared.observe(sessions)
             self.history.observe(sessions)
             Notifier.shared.observe(sessions)
+            // The real sessions, before any demo is merged: a made-up request must
+            // never hold the Mac awake.
+            KeepAwake.shared.observe(sessions)
             self.controller.apply(DemoApproval.shared.merged(sessions))
             if self.islandRunning {
                 self.island.apply(sessions: DemoApproval.shared.merged(sessions),
@@ -105,6 +108,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Notifier.shared.requests = { [weak self] in self?.requestStore.requests ?? [] }
         Notifier.shared.sessions = { [weak self] in self?.sessions ?? [] }
         Notifier.shared.start()
+
+        // Keep Mac Awake reaches both surfaces the way a setting does.
+        KeepAwake.shared.onChange = { [weak self] in
+            guard let self else { return }
+            self.controller.settingsChanged()
+            if self.islandRunning { self.island.usageChanged() }
+            SettingsWindow.shared.refreshIfVisible()
+        }
+        KeepAwake.shared.start()
 
         controller.start()
         store.start()

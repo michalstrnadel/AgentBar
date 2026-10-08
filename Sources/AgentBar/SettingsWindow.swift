@@ -23,7 +23,9 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     var onChange: (() -> Void)?
 
     enum Page: String, CaseIterable {
-        case general, agents, notifications, shortcuts, usage, approvals, rules
+        case general
+        case keepAwake = "keep-awake"
+        case agents, notifications, shortcuts, usage, approvals, rules
         // Spelled the way `agentbar://settings/claude-code` reads: links are lowercase.
         case claudeCode = "claude-code"
         case diagnostics
@@ -32,6 +34,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         var title: String {
             switch self {
             case .general:     return "General"
+            case .keepAwake:   return "Keep Awake"
             case .agents:      return "Agents"
             case .notifications: return "Notifications"
             case .shortcuts:   return "Shortcuts"
@@ -51,6 +54,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         var tint: NSColor {
             switch self {
             case .general:       return .systemGray
+            case .keepAwake:     return .systemBrown
             // The one page that writes into other programs' files.
             case .agents:        return .systemTeal
             case .notifications: return .systemRed
@@ -70,6 +74,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         var symbol: String {
             switch self {
             case .general:     return "gearshape"
+            case .keepAwake:   return "cup.and.saucer"
             case .agents:      return "point.3.connected.trianglepath.dotted"
             case .notifications: return "bell"
             case .shortcuts:   return "keyboard"
@@ -150,6 +155,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var exportButton: NSButton!
     private var rulesPageButton: NSButton!
     private var rulesView: RulesView!
+    private let keepAwake = KeepAwakeSettingsPage()
     private var decisionWeek: DecisionWeekView!
     private var notifySettingsButton: NSButton!
     private var notifyTestButton: NSButton!
@@ -431,6 +437,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                                   action: #selector(exportDecisions))
         rulesPageButton = SettingsChrome.smallButton("Open Rules", target: self,
                                                      action: #selector(showRulesPage))
+        keepAwake.onChange = { [weak self] in self?.onChange?() }
         rulesView = RulesView()
         // A rule changed on the Rules page is a rule the week reads, so the week
         // is redrawn with it.
@@ -630,6 +637,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                 ]),
                 pluginsHost,
             ])
+        case .keepAwake:
+            add(keepAwake.views)
         case .rules:
             add([
                 SettingsChrome.card([
@@ -771,6 +780,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         rulesBox.state = RulesStore.enabled ? .on : .off
         rulesView.reload()
         decisionWeek.reload()
+        keepAwake.reload()
         notifyApprovalsBox.state = Notifier.Prefs.approvals ? .on : .off
         notifyFailuresBox.state = Notifier.Prefs.failures ? .on : .off
         notifyQuietBox.state = Notifier.Prefs.quiet ? .on : .off

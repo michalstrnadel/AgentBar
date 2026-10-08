@@ -116,6 +116,19 @@ struct DayWrap: Equatable {
     var persona = Persona(title: "The Builder", reason: "", symbol: "hammer.fill")
 
     var isEmpty: Bool { sessions == 0 }
+    /// Still being added up. A card that is drawn before the numbers are in must
+    /// say so — drawn as an empty recap it read "A quiet day" under the date of
+    /// 1 January 1970 for as long as a long transcript took to read.
+    var pending = false
+
+    /// The card shown while the real one is read: the right dates, no numbers.
+    static func placeholder(_ range: Range, now: TimeInterval = Date().timeIntervalSince1970,
+                            calendar: Calendar = .current) -> DayWrap {
+        let (start, end) = span(range, now: now, calendar: calendar)
+        var w = DayWrap(range: range, start: start, end: end)
+        w.pending = true
+        return w
+    }
     var topAgent: AgentShare? { agents.first }
 
     static func == (a: DayWrap, b: DayWrap) -> Bool {

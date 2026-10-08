@@ -62,3 +62,55 @@ import Testing
         #expect(back.spans == [.init(start: 2, end: 5)])
     }
 }
+
+/// The transcript reader works on bytes; these hold it to what the old
+/// JSON-per-line reader did, and to the cases it now has to get right itself.
+@Suite struct ClaudeScanTests {
+    private func read(_ lines: [String]) -> WorkSpans.Read {
+        WorkSpans.claude(lines: lines.map { Substring($0) })
+    }
+
+    @Test func theTopLevelTimestampWinsOverOneInsideAToolInput() {
+        let r = read([
+            #"{"type":"user","message":{"role":"user","content":"go"},"timestamp":"2026-10-07T10:00:00.000Z"}"#,
+            #"{"type":"assistant","message":{"content":[{"type":"tool_use","input":{"timestamp":"2020-01-01T00:00:00Z"}}]},"timestamp":"2026-10-07T10:02:30.500Z"}"#,
+        ])
+        #expect(r.prompts.count == 1)
+        #expect(r.spans.first?.seconds == 150.5)
+    }
+
+    @Test func quotedTextCannotPassForStructure() {
+        // A prompt whose text mentions a tool result is still a prompt: inside a
+        // JSON string the quotes are escaped, so it cannot match the key.
+        let r = read([
+            #"{"type":"user","message":{"role":"user","content":"why is \"type\":\"tool_result\" here"},"timestamp":"2026-10-07T10:00:00Z"}"#,
+        ])
+        #expect(r.prompts.count == 1)
+    }
+
+    @Test func sidechainLinesAreSkipped() {
+        let r = read([
+            #"{"type":"user","message":{"role":"user","content":"go"},"timestamp":"2026-10-07T10:00:00Z"}"#,
+            #"{"isSidechain":true,"type":"assistant","message":{},"timestamp":"2026-10-07T10:04:00Z"}"#,
+            #"{"type":"assistant","message":{},"timestamp":"2026-10-07T10:01:00Z"}"#,
+        ])
+        #expect(r.spans.first?.seconds == 60)
+    }
+
+    @Test func theFastDateMatchesTheFormatter() {
+        for s in ["2026-10-07T10:00:20.123Z", "2026-02-28T23:59:59Z", "2024-02-29T12:00:00.5Z", "1999-12-31T00:00:00Z"] {
+            let fast = Array(s.utf8).withUnsafeBytes { WorkSpans.ClaudeScan.iso($0) }
+            #expect(fast == WeightReader.parseISO(s)?.timeIntervalSince1970, "\(s)")
+        }
+    }
+}
+
+@Suite struct WrapPlaceholderTests {
+    @Test func thePlaceholderHasTodaysDatesAndSaysItIsNotDone() {
+        let now = Date(timeIntervalSince1970: 1_791_500_000)
+        let w = DayWrap.placeholder(.today, now: now.timeIntervalSince1970)
+        #expect(w.pending)
+        #expect(w.start == Calendar.current.startOfDay(for: now).timeIntervalSince1970)
+        #expect(WrapCardView.spoken(w) == "Your day with agents. Adding it up.")
+    }
+}

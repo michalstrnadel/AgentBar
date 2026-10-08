@@ -3,6 +3,45 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Keep Mac Awake.** A cup in the island's footer, beside Take a break. One
+  click keeps the Mac awake **while your agents work**: it stays up while a
+  session on this Mac is working or waiting on you, and sleeps five minutes after
+  the last turn. Right-click or hold the cup — or **Keep Mac Awake ▸** in either
+  menu — for the other modes: for 1 hour, for 2 hours, until a time, or until you
+  turn it off (Indefinitely). The menu also carries the two switches people
+  reach for — **Keep Screen On** and **Stay Awake With Lid Closed…** — and
+  Settings ▸ Keep Awake has the rest:
+  - **Keep the screen on.** Off by default: the agents need the Mac, not the
+    screen, so it still dims and locks.
+  - **Pause on battery** below 10, 20, 30 or 50 % (on, at 20 %). Paused, not
+    ended: plugging in brings it back.
+  - **Keep chat apps from showing you Away**: after four minutes without input, a
+    pointer move that goes nowhere, only while the Mac is kept awake. Uses the
+    Accessibility permission keystroke approval already asks for, and AgentBar's
+    own sense of whether you are away ignores it.
+  - **Stay awake with the lid closed**: asks for your password, and sleep comes back by
+    itself when the mode ends, AgentBar quits or crashes, after 12 hours, or when
+    the Mac runs hot (see SECURITY.md).
+
+  It holds one power assertion for as long as it is on — no renewal timer, so no
+  gaps — and `pmset -g assertions` names it with what it is doing. Cloud and ssh
+  sessions do not count, a request nobody answers stops counting after 30
+  minutes, a "for 2 hours" survives an update's relaunch, and no `agentbar://`
+  link can start or stop it.
+
+### Fixed
+
+- **Your Day opened on "Thursday, 1 January" and "A quiet day."** The card was
+  drawn before its numbers were in, from an empty recap dated 1970, and a long
+  Claude Code transcript kept it there: a 118 MB one took 15 s to read. Transcripts
+  are now read as bytes, about 12× faster, and a session that is still running is
+  read from where the last look stopped. While it adds up, the card shows today's
+  date and "Adding up your day…", and Copy and Share wait for the real one.
+
 ## 1.47.1 - 2026-10-07
 
 ### Fixed

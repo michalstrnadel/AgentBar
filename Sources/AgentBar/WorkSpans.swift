@@ -41,31 +41,58 @@ enum WorkSpans {
 
     /// The stretches and prompts in a transcript's lines. Pure.
     static func claude<S: Sequence>(lines: S) -> Read where S.Element == Substring {
-        var out = Read()
-        var open: Span?
-        func close() {
+        var scan = ClaudeScan()
+        for line in lines {
+            var bytes = Array(line.utf8)
+            bytes.withUnsafeBytes { scan.feed($0) }
+        }
+        return scan.result
+    }
+
+    /// Reads a transcript one line at a time, in bytes.
+    ///
+    /// A long Claude Code session leaves a transcript of a hundred megabytes and
+    /// more, nearly all of it tool output inside assistant lines. Decoding all of
+    /// that as one String and then every line as JSON made opening Your Day take
+    /// eighteen seconds on a working machine, with a blank card for all of them.
+    /// So a line is first looked at as bytes: only the top-level keys matter —
+    /// `type`, `timestamp`, `isSidechain` — and those are found by searching for
+    /// their exact, unescaped spelling, which text inside a JSON string can never
+    /// have (its quotes are escaped). Only a user line that is not a tool result —
+    /// a prompt, which is small — is parsed whole, because whether it counts as
+    /// typed depends on its content.
+    ///
+    /// The state survives between calls, so a transcript that grew since the last
+    /// read is read from where it stopped (`claude(sessionId:cwd:)`).
+    struct ClaudeScan {
+        private(set) var out = Read()
+        private var open: Span?
+
+        var result: Read {
+            var r = out
+            if let s = open, s.end > s.start { r.spans.append(s) }
+            r.spans = joined(r.spans)
+            return r
+        }
+
+        private mutating func close() {
             if let s = open, s.end > s.start { out.spans.append(s) }
             open = nil
         }
-        for line in lines {
-            // Cheap filter before parsing: only stamped user and assistant lines matter.
-            guard line.contains("\"timestamp\""),
-                  line.contains("\"type\":\"user\"") || line.contains("\"type\":\"assistant\""),
-                  let data = line.data(using: .utf8),
-                  let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-                  let stamp = o["timestamp"] as? String,
-                  let at = WeightReader.parseISO(stamp)?.timeIntervalSince1970
-            else { continue }
-            if o["isSidechain"] as? Bool == true { continue }
-            let type = o["type"] as? String
-            if type == "user", o["isMeta"] as? Bool != true, isPrompt(o["message"]) {
+
+        mutating func feed(_ line: UnsafeRawBufferPointer) {
+            guard let at = Self.timestamp(line) else { return }
+            let isUser = Self.contains(line, Self.typeUser)
+            guard isUser || Self.contains(line, Self.typeAssistant) else { return }
+            if Self.contains(line, Self.sidechain) { return }
+            if isUser, !Self.contains(line, Self.toolResult), Self.isTypedPrompt(line) {
                 close()
                 out.prompts.append(at)
                 open = Span(start: at, end: at)
-                continue
+                return
             }
             // A step of the turn: an assistant line or a tool result.
-            guard var s = open else { continue }
+            guard var s = open else { return }
             if at - s.end > maxGap {
                 close()
                 s = Span(start: at, end: at)
@@ -73,9 +100,82 @@ enum WorkSpans {
             s.end = max(s.end, at)
             open = s
         }
-        close()
-        out.spans = joined(out.spans)
-        return out
+
+        private static let typeUser = Array(#""type":"user""#.utf8)
+        private static let typeAssistant = Array(#""type":"assistant""#.utf8)
+        private static let sidechain = Array(#""isSidechain":true"#.utf8)
+        private static let toolResult = Array(#""type":"tool_result""#.utf8)
+        private static let stampKey = Array(#""timestamp":""#.utf8)
+
+        static func contains(_ hay: UnsafeRawBufferPointer, _ needle: [UInt8]) -> Bool {
+            guard let base = hay.baseAddress, hay.count >= needle.count else { return false }
+            return needle.withUnsafeBytes { n in memmem(base, hay.count, n.baseAddress, n.count) != nil }
+        }
+
+        /// The line's own timestamp: the last one in it, because the top-level key
+        /// comes after `message`, where a tool's input could carry a key of the same
+        /// name.
+        static func timestamp(_ line: UnsafeRawBufferPointer) -> TimeInterval? {
+            guard let base = line.baseAddress else { return nil }
+            var from = 0
+            var found: Int?
+            while from < line.count,
+                  let hit = stampKey.withUnsafeBytes({ n in
+                      memmem(base + from, line.count - from, n.baseAddress, n.count)
+                  }) {
+                let at = base.distance(to: UnsafeRawPointer(hit))
+                found = at + stampKey.count
+                from = at + 1
+            }
+            guard let valueStart = found else { return nil }
+            var end = valueStart
+            while end < line.count, line[end] != UInt8(ascii: "\""), end - valueStart < 40 { end += 1 }
+            guard end < line.count, end > valueStart else { return nil }
+            return iso(UnsafeRawBufferPointer(rebasing: line[valueStart..<end]))
+        }
+
+        /// `2026-10-07T10:00:20.123Z`, the shape Claude Code writes, without a
+        /// formatter; anything else goes to the formatter.
+        static func iso(_ b: UnsafeRawBufferPointer) -> TimeInterval? {
+            func num(_ r: Range<Int>) -> Int? {
+                var v = 0
+                for i in r {
+                    let c = b[i]
+                    guard c >= 48, c <= 57 else { return nil }
+                    v = v * 10 + Int(c - 48)
+                }
+                return v
+            }
+            if b.count >= 20, b[4] == 45, b[7] == 45, b[10] == 84, b[13] == 58, b[16] == 58,
+               b[b.count - 1] == 90,
+               let y = num(0..<4), let mo = num(5..<7), let d = num(8..<10),
+               let h = num(11..<13), let mi = num(14..<16), let sec = num(17..<19),
+               (1...12).contains(mo), (1...31).contains(d) {
+                var frac = 0.0
+                if b.count > 21, b[19] == 46, let f = num(20..<(b.count - 1)) {
+                    frac = Double(f) / pow(10, Double(b.count - 21))
+                }
+                // Days from the civil date (Howard Hinnant's algorithm), in UTC.
+                let yy = mo <= 2 ? y - 1 : y
+                let era = (yy >= 0 ? yy : yy - 399) / 400
+                let yoe = yy - era * 400
+                let mp = (mo + 9) % 12
+                let doy = (153 * mp + 2) / 5 + d - 1
+                let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
+                let days = era * 146_097 + doe - 719_468
+                return Double(days * 86_400 + h * 3_600 + mi * 60 + sec) + frac
+            }
+            guard let s = String(bytes: b, encoding: .utf8) else { return nil }
+            return WeightReader.parseISO(s)?.timeIntervalSince1970
+        }
+
+        /// A user line that is not a tool result: typed, unless it is meta or has
+        /// no text or image in it.
+        static func isTypedPrompt(_ line: UnsafeRawBufferPointer) -> Bool {
+            guard let o = (try? JSONSerialization.jsonObject(with: Data(line))) as? [String: Any],
+                  o["isMeta"] as? Bool != true else { return false }
+            return isPrompt(o["message"])
+        }
     }
 
     /// A prompt the person typed, as opposed to a tool result fed back in.
@@ -87,11 +187,21 @@ enum WorkSpans {
             && parts.contains { ["text", "image"].contains($0["type"] as? String ?? "") }
     }
 
+    private struct CacheEntry {
+        var size: UInt64
+        var mtime: Date
+        /// Bytes consumed: the end of the last complete line.
+        var offset: UInt64
+        var scan: ClaudeScan
+    }
     private static let cacheLock = NSLock()
-    private static var cache: [String: (size: UInt64, mtime: Date, read: Read)] = [:]
+    private static var cache: [String: CacheEntry] = [:]
 
-    /// A Claude session's stretches, from its transcript, memoised on the file's
-    /// size and time. Blocking file I/O: off the main queue.
+    /// A Claude session's stretches, from its transcript. Memoised on the file's
+    /// size and time, and a transcript that only grew — they are append-only — is
+    /// read from where the last read stopped, so reopening Your Day while a long
+    /// session runs costs the new lines, not the whole file. Blocking file I/O:
+    /// off the main queue.
     static func claude(sessionId: String, cwd: String,
                        home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Read? {
         guard let url = WeightReader.transcript(sessionId: sessionId, cwd: cwd, home: home),
@@ -99,12 +209,37 @@ enum WorkSpans {
               let size = (attrs[.size] as? NSNumber)?.uint64Value,
               let mtime = attrs[.modificationDate] as? Date else { return nil }
         cacheLock.lock()
-        if let c = cache[url.path], c.size == size, c.mtime == mtime { cacheLock.unlock(); return c.read }
+        let cached = cache[url.path]
         cacheLock.unlock()
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        let read = claude(lines: text.split(separator: "\n", omittingEmptySubsequences: true))
-        cacheLock.lock(); cache[url.path] = (size, mtime, read); cacheLock.unlock()
-        return read
+        if let c = cached, c.size == size, c.mtime == mtime { return c.scan.result }
+        var entry = CacheEntry(size: 0, mtime: mtime, offset: 0, scan: ClaudeScan())
+        if let c = cached, size >= c.offset { entry = c }   // grew: resume
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        do { try handle.seek(toOffset: entry.offset) } catch { return nil }
+        // In chunks, so a hundred-megabyte file is never one allocation.
+        var carry = Data()
+        while let chunk = try? handle.read(upToCount: 4 << 20), !chunk.isEmpty {
+            carry.append(chunk)
+            let consumed: Int = carry.withUnsafeBytes { (buf: UnsafeRawBufferPointer) in
+                guard let base = buf.baseAddress else { return 0 }
+                var lineStart = 0
+                while lineStart < buf.count,
+                      let nl = memchr(base + lineStart, 10, buf.count - lineStart) {
+                    let i = base.distance(to: UnsafeRawPointer(nl))
+                    if i > lineStart { entry.scan.feed(UnsafeRawBufferPointer(rebasing: buf[lineStart..<i])) }
+                    lineStart = i + 1
+                }
+                return lineStart
+            }
+            entry.offset += UInt64(consumed)
+            if consumed > 0 { carry = carry.subdata(in: consumed..<carry.count) }
+        }
+        // A last line without its newline yet is read next time, once it is whole.
+        entry.size = size
+        entry.mtime = mtime
+        cacheLock.lock(); cache[url.path] = entry; cacheLock.unlock()
+        return entry.scan.result
     }
 
     // MARK: - Shared

@@ -218,7 +218,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
                    "hk:\(approvalShortcutEnabled):\(KeyCombo.allow.display)\(KeyCombo.deny.display)",
                    "mode:\(systemColor)",
                    "snd:\(SoundCenter.enabled)",
-                   "diag:\(Diagnostics.failures)"]).joined(separator: "\n")
+                   "diag:\(Diagnostics.failures)",
+                   "awake:\(KeepAwake.shared.signature)"]).joined(separator: "\n")
     }
 
     // MARK: - Actions (targets for MenuBuilder items)

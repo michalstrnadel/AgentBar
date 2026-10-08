@@ -57,14 +57,18 @@ import Testing
     @Test(arguments: statuses)
     func bothSurfacesRenderTheSameSection(_ status: UpdateChecker.Status) {
         for (color, sounds, failures) in [(false, true, 0), (true, false, 2)] {
-            let i = Self.inputs(status, systemColor: color, sounds: sounds, failures: failures)
+            var i = Self.inputs(status, systemColor: color, sounds: sounds, failures: failures)
+            #expect(Self.snapshot(Self.menuBar(i)) == Self.snapshot(Self.island(i)))
+            i.keepAwake = KeepAwakeMenu(current: .twoHours, reason: "Awake until 18:00 · 42 min left",
+                                        badge: "42m", lidLeftover: true)
             #expect(Self.snapshot(Self.menuBar(i)) == Self.snapshot(Self.island(i)))
         }
     }
 
     @Test func theSectionHasTheRowsBothSurfacesPromise() {
         let titles = Self.snapshot(Self.island(Self.inputs(.idle))).map(\.title)
-        #expect(titles == ["Icon Color", "Sounds", "Appearance…", "Diagnostics…", "Settings…", "",
+        #expect(titles == ["Icon Color", "Sounds", "Keep Mac Awake", "Appearance…", "Diagnostics…",
+                           "Settings…", "",
                            "Check for Updates…", "Send Feedback…", "Quit AgentBar"])
     }
 
@@ -73,7 +77,7 @@ import Testing
         _ status: UpdateChecker.Status
     ) {
         let rows = Self.snapshot(Self.menuBar(Self.inputs(status)))
-        let update = rows[6]
+        let update = rows[7]
         let expected: (String, AppMenuAction?) = {
             switch status {
             case .idle:           return ("Check for Updates…", .checkForUpdates)
@@ -97,10 +101,10 @@ import Testing
             default: return false
             }
         }()
-        #expect(rows.count == (offered ? 10 : 9))
+        #expect(rows.count == (offered ? 11 : 10))
         if offered {
-            #expect(rows[7].title == "What's in 9.9.9…")
-            #expect(rows[7].command == .openWhatsNew)
+            #expect(rows[8].title == "What's in 9.9.9…")
+            #expect(rows[8].command == .openWhatsNew)
         }
         #expect(rows.last?.title == "Quit AgentBar")
     }
@@ -112,9 +116,9 @@ import Testing
         i.whatsNew = "1.39.0"
         let rows = Self.snapshot(Self.menuBar(i))
         #expect(rows == Self.snapshot(Self.island(i)))
-        #expect(rows[7].title == "What's New in 1.39.0…")
-        #expect(rows[7].command == .openWhatsNew)
-        #expect(rows.count == 10)
+        #expect(rows[8].title == "What's New in 1.39.0…")
+        #expect(rows[8].command == .openWhatsNew)
+        #expect(rows.count == 11)
         i.update = .ready("1.40.0")
         let both = Self.snapshot(Self.menuBar(i))
         #expect(both.filter { $0.command == .openWhatsNew }.map(\.title) == ["What's in 1.40.0…"])
@@ -131,9 +135,9 @@ import Testing
     }
 
     @Test func diagnosticsCarriesTheVerdict() {
-        #expect(Self.snapshot(Self.menuBar(Self.inputs(.idle, failures: 1)))[3].title
+        #expect(Self.snapshot(Self.menuBar(Self.inputs(.idle, failures: 1)))[4].title
                 == "Diagnostics — 1 problem…")
-        #expect(Self.snapshot(Self.menuBar(Self.inputs(.idle, failures: 3)))[3].title
+        #expect(Self.snapshot(Self.menuBar(Self.inputs(.idle, failures: 3)))[4].title
                 == "Diagnostics — 3 problems…")
     }
 
@@ -153,12 +157,12 @@ import Testing
         AppMenuRenderer.refresh(menu, with: AppMenuModel.appSection(Self.inputs(.available("9.9.9"))),
                                 target: nil, action: IslandController.appMenuAction)
         #expect(menu.items.count == before)
-        let row = Self.snapshot(menu.items)[6]
+        let row = Self.snapshot(menu.items)[7]
         #expect(row.title == "Update to 9.9.9 — Install & Relaunch")
         #expect(row.command == .installUpdate)
         AppMenuRenderer.refresh(menu, with: AppMenuModel.appSection(Self.inputs(.downloading("9.9.9"))),
                                 target: nil, action: IslandController.appMenuAction)
-        let after = Self.snapshot(menu.items)[6]
+        let after = Self.snapshot(menu.items)[7]
         #expect(after.command == nil)
         #expect(!after.clickable)
         #expect(after.title == "Downloading 9.9.9…")
@@ -181,5 +185,50 @@ import Testing
         #expect(!body.contains(NSUserName()))
         #expect(!body.contains(NSHomeDirectory()))
         #expect(!body.contains("/"))
+    }
+
+    /// Keep Mac Awake: every mode one pick away, the live one ticked, Turn Off only
+    /// while something is on, and Restore only when an earlier lid session left
+    /// sleep disabled.
+    @Test func keepAwakeOffersEveryModeAndTicksTheLiveOne() throws {
+        let off = Self.snapshot(Self.island(Self.inputs(.idle)))[2]
+        #expect(off.title == "Keep Mac Awake")
+        #expect(off.state == .off)
+        #expect(off.children.filter { !$0.separator }.map(\.title) == [
+            "Off", "While Agents Work", "For 1 Hour", "For 2 Hours", "Until 18:00", "Indefinitely",
+            "Keep Screen On", "Stay Awake With Lid Closed…", "Keep Awake Settings…",
+        ])
+        // The status line says what is happening and does nothing when clicked.
+        #expect(off.children.first?.command == nil)
+        #expect(off.children.allSatisfy { $0.state == .off })
+
+        var i = Self.inputs(.idle)
+        i.keepAwake = KeepAwakeMenu(current: .whileAgentsWork, untilMinutes: 21 * 60 + 30,
+                                    reason: "Awake while 2 agents work", badge: "2")
+        let on = Self.snapshot(Self.island(i))[2]
+        #expect(on.state == .on)
+        #expect(on.toolTip == "Awake while 2 agents work")
+        let mode = try #require(on.children.first { $0.command == .keepAwake(.whileAgentsWork) })
+        #expect(mode.state == .on)
+        #expect(on.children.first?.title == "Awake while 2 agents work")
+        #expect(on.children.map(\.title).contains("Until 21:30"))
+        #expect(on.children.map(\.title).contains("Turn Off"))
+        #expect(!on.children.map(\.title).contains("Sleep Still Disabled — Restore…"))
+
+        i.keepAwake.lidLeftover = true
+        let leftover = Self.snapshot(Self.island(i))[2]
+        #expect(leftover.children.contains { $0.command == .keepAwakeRestoreLid })
+    }
+
+    /// The two switches that matter most sit in the menu itself, ticked as they are.
+    @Test func keepAwakeCarriesTheDisplayAndLidSwitches() throws {
+        var i = Self.inputs(.idle)
+        i.keepAwake = KeepAwakeMenu(display: true, lid: false)
+        let row = Self.snapshot(Self.island(i))[2]
+        let display = try #require(row.children.first { $0.command == .keepAwakeToggleDisplay })
+        let lid = try #require(row.children.first { $0.command == .keepAwakeToggleLid })
+        #expect(display.state == .on)
+        #expect(lid.state == .off)
+        #expect(Self.snapshot(Self.menuBar(i)) == Self.snapshot(Self.island(i)))
     }
 }
