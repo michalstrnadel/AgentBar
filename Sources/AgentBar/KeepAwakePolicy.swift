@@ -20,14 +20,20 @@ enum KeepAwakeMode: Equatable, Codable {
 }
 
 /// What a click remembers and the menu offers. "For 1 hour" is a choice; once
-/// made it becomes `.until(now + 1h)`, so the mode itself never counts.
+/// made it becomes `.until(now + 1h)`, so the mode itself never counts. The
+/// order is the menu's: shortest first.
 enum KeepAwakeChoice: String, CaseIterable, Equatable {
-    case whileAgentsWork, oneHour, twoHours, untilTime, indefinite
+    case whileAgentsWork, fifteenMinutes, thirtyMinutes, oneHour, twoHours, untilTime, indefinite
+
+    /// The fixed spans, for the choices that are one.
+    static let timed: [KeepAwakeChoice] = [.fifteenMinutes, .thirtyMinutes, .oneHour, .twoHours]
 
     /// `untilMinutes` is minutes past midnight for "Until 18:00".
     func title(untilMinutes: Int) -> String {
         switch self {
         case .whileAgentsWork: return "While Agents Work"
+        case .fifteenMinutes:  return "For 15 Minutes"
+        case .thirtyMinutes:   return "For 30 Minutes"
         case .oneHour:         return "For 1 Hour"
         case .twoHours:        return "For 2 Hours"
         case .untilTime:       return "Until \(KeepAwakePolicy.clock(untilMinutes))"
@@ -38,6 +44,8 @@ enum KeepAwakeChoice: String, CaseIterable, Equatable {
     func mode(now: Date, untilMinutes: Int, calendar: Calendar = .current) -> KeepAwakeMode {
         switch self {
         case .whileAgentsWork: return .whileAgentsWork
+        case .fifteenMinutes:  return .until(now.addingTimeInterval(15 * 60))
+        case .thirtyMinutes:   return .until(now.addingTimeInterval(30 * 60))
         case .oneHour:         return .until(now.addingTimeInterval(3600))
         case .twoHours:        return .until(now.addingTimeInterval(7200))
         case .untilTime:       return .until(KeepAwakePolicy.nextOccurrence(of: untilMinutes, after: now,
@@ -47,7 +55,7 @@ enum KeepAwakeChoice: String, CaseIterable, Equatable {
     }
 
     /// The choice a live mode came from, for the checkmark. A deadline cannot say
-    /// which of the three timed choices made it, so the caller passes what was
+    /// which of the timed choices made it, so the caller passes what was
     /// last picked and a timed mode keeps that one ticked.
     static func matching(_ mode: KeepAwakeMode?, lastChoice: KeepAwakeChoice) -> KeepAwakeChoice? {
         switch mode {
@@ -55,7 +63,7 @@ enum KeepAwakeChoice: String, CaseIterable, Equatable {
         case .whileAgentsWork: return .whileAgentsWork
         case .indefinite:      return .indefinite
         case .until:
-            return [.oneHour, .twoHours, .untilTime].contains(lastChoice) ? lastChoice : .untilTime
+            return (timed + [.untilTime]).contains(lastChoice) ? lastChoice : .untilTime
         }
     }
 }

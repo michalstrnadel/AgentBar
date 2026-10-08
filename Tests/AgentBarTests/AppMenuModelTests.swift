@@ -195,7 +195,7 @@ import Testing
         #expect(off.title == "Keep Mac Awake")
         #expect(off.state == .off)
         #expect(off.children.filter { !$0.separator }.map(\.title) == [
-            "Off", "While Agents Work", "For 1 Hour", "For 2 Hours", "Until 18:00", "Indefinitely",
+            "Off", "While Agents Work", "For 15 Minutes", "For 30 Minutes", "For 1 Hour", "For 2 Hours", "Until 18:00", "Indefinitely",
             "Keep Screen On", "Stay Awake With Lid Closed…", "Keep Awake Settings…",
         ])
         // The status line says what is happening and does nothing when clicked.

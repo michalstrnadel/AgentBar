@@ -353,6 +353,8 @@ extension KeepAwakeChoice {
     var help: String {
         switch self {
         case .whileAgentsWork: return "Awake while a session on this Mac works, and 5 minutes after its last turn"
+        case .fifteenMinutes:  return "Awake for the next 15 minutes"
+        case .thirtyMinutes:   return "Awake for the next 30 minutes"
         case .oneHour:         return "Awake for the next hour"
         case .twoHours:        return "Awake for the next two hours"
         case .untilTime:       return "Awake until this time — change it in Keep Awake Settings"

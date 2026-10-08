@@ -158,6 +158,9 @@ private func inputs(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Dat
     }
 
     @Test func choicesBecomeModes() {
+        #expect(KeepAwakeChoice.fifteenMinutes.mode(now: t0, untilMinutes: 0) == .until(t0.addingTimeInterval(900)))
+        #expect(KeepAwakeChoice.thirtyMinutes.mode(now: t0, untilMinutes: 0) == .until(t0.addingTimeInterval(1800)))
+        #expect(KeepAwakeChoice.matching(.until(t0), lastChoice: .fifteenMinutes) == .fifteenMinutes)
         #expect(KeepAwakeChoice.oneHour.mode(now: t0, untilMinutes: 0) == .until(t0.addingTimeInterval(3600)))
         #expect(KeepAwakeChoice.twoHours.mode(now: t0, untilMinutes: 0) == .until(t0.addingTimeInterval(7200)))
         #expect(KeepAwakeChoice.whileAgentsWork.mode(now: t0, untilMinutes: 0) == .whileAgentsWork)

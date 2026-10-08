@@ -3,6 +3,13 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Keep Mac Awake for 15 or 30 minutes.** Two shorter spans join the mode menu
+  and Settings, above the hour.
+
 ## 1.48.0 - 2026-10-08
 
 ### Added
