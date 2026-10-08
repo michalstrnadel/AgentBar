@@ -20,7 +20,7 @@
 // spelled literally inside a top-level function whose parameter is `$`.
 // Scripts/test/mod-test.sh holds that list to an allow-list.
 
-export const VERSION = "1.47.1";
+export const VERSION = "1.48.0";
 
 // ---- Limits (docs/protocol.md, "mods.d") ------------------------------------
 
