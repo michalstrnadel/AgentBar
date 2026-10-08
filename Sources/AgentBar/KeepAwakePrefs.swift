@@ -15,6 +15,7 @@ enum KeepAwakePrefs {
         static let nudge = "keepAwakeNudge"
         static let lid = "keepAwakeLid"
         static let mode = "keepAwakeMode"
+        static let keyboard = "keepAwakeKeyboardDark"
     }
 
     /// What one click on the cup starts. "While agents work" until something else
@@ -56,6 +57,13 @@ enum KeepAwakePrefs {
     /// administrator password each time it starts (`LidSleep`).
     static func lid(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.lid) }
     static func setLid(_ on: Bool, _ d: UserDefaults = .standard) { d.set(on, forKey: Key.lid) }
+
+    /// The keyboard's light goes off while you are away (`KeyboardLight`). On unless
+    /// switched off: a Mac held up all night should not sit there with its keys lit.
+    static func keyboardDark(_ d: UserDefaults = .standard) -> Bool {
+        d.object(forKey: Key.keyboard) as? Bool ?? true
+    }
+    static func setKeyboardDark(_ on: Bool, _ d: UserDefaults = .standard) { d.set(on, forKey: Key.keyboard) }
 
     /// The live mode, kept so a relaunch — an automatic update, say — does not
     /// quietly drop "for 2 hours" halfway through. nil is off.

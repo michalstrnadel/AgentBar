@@ -238,6 +238,13 @@ Settings ▸ Keep Awake — and no `agentbar://` link, rule or schedule reaches 
   event at the pointer's current position: zero distance, no click, no key. It
   uses the Accessibility permission keystroke approval already needs and does
   nothing without it.
+- **The keyboard's light.** While the Mac is kept awake, AgentBar turns the
+  built-in keyboard's backlight off 30 seconds after your last input and on again
+  at the next. It goes through `KeyboardBrightnessClient`, the private
+  CoreBrightness class that Control Center's keyboard slider uses. It calls only
+  the selectors it has checked are there, and it uses `commit: false`, so your
+  saved brightness is never written. It needs no permission. The level it
+  darkened from is kept in AgentBar's preferences until it is given back.
 - **The closed lid.** Off by default, and the only part that runs as root. Turning
   it on shows macOS's own administrator prompt, once per start, and runs
   `pmset -a disablesleep 1` together with a small shell loop that turns sleep back

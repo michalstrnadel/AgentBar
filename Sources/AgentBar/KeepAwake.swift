@@ -1,8 +1,8 @@
 import Cocoa
 
 /// Keep Mac Awake: gathers what `KeepAwakePolicy` needs, asks it, and applies the
-/// answer — the power assertion, the battery watch, the presence nudge and, when
-/// asked for, the closed-lid mode.
+/// answer — the power assertion, the battery watch, the presence nudge, the
+/// keyboard's light and, when asked for, the closed-lid mode.
 ///
 /// Changed only by a click (the island's cup, the shared menu, Settings). No link,
 /// rule or schedule turns it on, and nothing about it appears on screen by itself.
@@ -41,6 +41,7 @@ final class KeepAwake {
     func start() {
         guard !started else { return }
         started = true
+        KeyboardLight.shared.restoreLeftover()
         if let saved = KeepAwakePrefs.mode() {
             if case .until(let end) = saved, end <= Date() {
                 KeepAwakePrefs.setMode(nil)
@@ -140,7 +141,8 @@ final class KeepAwake {
         }
     }
 
-    /// Settings changed something the decision reads (display, battery, nudge).
+    /// Settings changed something the decision reads (display, battery, nudge,
+    /// the keyboard's light).
     func settingsChanged() {
         if !KeepAwakePrefs.lid() { lidRequested = false }
         reevaluate()
@@ -204,6 +206,7 @@ final class KeepAwake {
         }
         assertion.apply(d.assertion, reason: d.reason)
         nudge.setRunning(d.isOn && KeepAwakePrefs.settings().nudge)
+        KeyboardLight.shared.setActive(d.isOn && KeepAwakePrefs.keyboardDark())
         applyLid(d, now: now)
 
         timer?.invalidate()

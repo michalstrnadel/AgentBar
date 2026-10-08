@@ -14,6 +14,8 @@ final class KeepAwakeSettingsPage: NSObject {
     private let untilPicker = NSDatePicker()
     private var untilRow: NSView!
     private var displayBox: NSSwitch!
+    private var keyboardBox: NSSwitch!
+    private var keyboardRow: NSView!
     private var batteryBox: NSSwitch!
     private let floorPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private var nudgeBox: NSSwitch!
@@ -47,6 +49,10 @@ final class KeepAwakeSettingsPage: NSObject {
         untilPicker.action = #selector(untilChanged)
 
         displayBox = SettingsChrome.toggle(target: self, action: #selector(toggleDisplay))
+        keyboardBox = SettingsChrome.toggle(target: self, action: #selector(toggleKeyboard))
+        keyboardRow = SettingsChrome.row("Keyboard light off while you're away",
+                                         "Dark 30 seconds after your last keystroke, lit again at the next.",
+                                         control: keyboardBox)
         batteryBox = SettingsChrome.toggle(target: self, action: #selector(toggleBattery))
         floorPopup.controlSize = .small
         for p in KeepAwakePrefs.floorChoices {
@@ -87,6 +93,7 @@ final class KeepAwakeSettingsPage: NSObject {
                 SettingsChrome.row("Keep the screen on",
                                    "Off: the screen dims and locks as usual; the Mac keeps working.",
                                    control: displayBox),
+                keyboardRow,
                 SettingsChrome.row("Pause on battery",
                                    "Plugging in picks it up again.", control: batteryControls),
                 SettingsChrome.row("Stay available in chat apps",
@@ -142,6 +149,9 @@ final class KeepAwakeSettingsPage: NSObject {
 
         let s = KeepAwakePrefs.settings()
         displayBox.state = s.keepDisplayOn ? .on : .off
+        keyboardBox.state = KeepAwakePrefs.keyboardDark() ? .on : .off
+        // An iMac or a Mac mini has no backlit keyboard to turn off.
+        show(keyboardRow, KeyboardLight.isAvailable)
         batteryBox.state = s.batteryGuard ? .on : .off
         floorPopup.selectItem(withTag: s.batteryFloor)
         floorPopup.isEnabled = s.batteryGuard
@@ -193,6 +203,11 @@ final class KeepAwakeSettingsPage: NSObject {
 
     @objc private func toggleDisplay() {
         KeepAwake.shared.setKeepDisplayOn(displayBox.state == .on)
+        changed()
+    }
+
+    @objc private func toggleKeyboard() {
+        KeepAwakePrefs.setKeyboardDark(keyboardBox.state == .on)
         changed()
     }
 

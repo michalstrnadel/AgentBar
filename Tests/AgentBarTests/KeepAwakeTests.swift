@@ -184,6 +184,9 @@ private func inputs(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Dat
                                                                 batteryFloor: 20, nudge: false))
         #expect(!KeepAwakePrefs.lid(d))
         #expect(KeepAwakePrefs.mode(d) == nil)
+        #expect(KeepAwakePrefs.keyboardDark(d), "the keys go dark unless that is switched off")
+        KeepAwakePrefs.setKeyboardDark(false, d)
+        #expect(!KeepAwakePrefs.keyboardDark(d))
     }
 
     @Test func roundTrips() throws {
@@ -282,5 +285,27 @@ private func inputs(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Dat
         #expect(!LidSleep.isLeftover(markerExists: true, sleepDisabled: false, ownSession: false))
         #expect(!LidSleep.isLeftover(markerExists: false, sleepDisabled: true, ownSession: false),
                 "somebody else's disablesleep is not ours to undo")
+    }
+}
+
+@Suite struct KeyboardLightPolicyTests {
+    @Test func darkOnlyWhileKeptAwakeAndAway() {
+        #expect(!KeyboardLightPolicy.shouldBeDark(active: false, humanIdle: 3600, dark: false))
+        #expect(!KeyboardLightPolicy.shouldBeDark(active: false, humanIdle: 3600, dark: true),
+                "Keep Awake ending gives the light back")
+        #expect(!KeyboardLightPolicy.shouldBeDark(active: true, humanIdle: 29, dark: false))
+        #expect(KeyboardLightPolicy.shouldBeDark(active: true, humanIdle: 30, dark: false))
+    }
+
+    @Test func theFirstKeystrokeBringsItBack() {
+        #expect(KeyboardLightPolicy.shouldBeDark(active: true, humanIdle: 5, dark: true),
+                "once dark it stays dark until the person is back, not merely under the threshold")
+        #expect(!KeyboardLightPolicy.shouldBeDark(active: true, humanIdle: 0.3, dark: true))
+    }
+
+    @Test func ourOwnNudgeDoesNotCountAsComingBack() {
+        // Four minutes away, then the nudge resets the system clock to zero.
+        let idle = InputIdle.humanIdle(system: 0.2, nudge: (Date(), 240), now: Date())
+        #expect(KeyboardLightPolicy.shouldBeDark(active: true, humanIdle: idle, dark: true))
     }
 }
