@@ -3,6 +3,20 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.50.0 - 2026-10-09
+
+### Added
+
+- **The keyboard goes dark while you are away.** A Mac kept awake with its
+  screen on used to keep its keys lit all night, and "Stay available in chat
+  apps" relit them every four minutes. Now, while Keep Mac Awake holds the Mac
+  up, the backlight goes off 30 seconds after your last keystroke and comes back
+  at the next one. AgentBar's own nudge does not count as you coming back. Your
+  brightness setting is never changed, only what the keys show at the moment,
+  and if AgentBar quits while they are dark it lights them again on the next
+  launch. On by default; Settings ▸ Keep Awake ▸ "Keyboard light off while
+  you're away". Macs without a backlit keyboard don't show the row.
+
 ## 1.49.0 - 2026-10-08
 
 ### Added
