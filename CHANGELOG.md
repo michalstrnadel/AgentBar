@@ -3,6 +3,23 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.54.1 - 2026-10-09
+
+### Fixed
+
+- **Updates arrive the same day.** AgentBar looked for a new version once a day,
+  on a timer that stops while the Mac sleeps, so a laptop that slept at night
+  could run a day or more behind. It now looks every four hours by the clock,
+  and again after every wake.
+
+### Changed
+
+- **Keep Mac Awake no longer locks the screen unless you ask it to.** "Lock the
+  screen when you leave" was on by default, so with Keep Screen On the screen
+  went dark after ten minutes without input, and nothing showed the agents were
+  still working (they were: the Mac never slept). It is now off until you switch
+  it on in Settings ▸ Keep Awake.
+
 ## 1.54.0 - 2026-10-09
 
 ### Added
