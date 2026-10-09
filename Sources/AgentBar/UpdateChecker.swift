@@ -1,7 +1,7 @@
 import Cocoa
 
 /// In-app updates from GitHub Releases — no Sparkle, no windows, no daemons.
-/// A quiet daily check plus a "Check for Updates…" menu row. With **Install updates
+/// A quiet check every few hours plus a "Check for Updates…" menu row. With **Install updates
 /// automatically** on (the default), a newer release is downloaded, checked and staged
 /// in the background, and installed at the first quiet moment: nothing waiting on the
 /// human, and nobody at the keyboard for five minutes. Installing swaps the app bundle
@@ -64,8 +64,7 @@ final class UpdateChecker {
     /// on nobody's half-finished click, short enough that a lunch break does it.
     static let quietIdle: TimeInterval = 5 * 60
     /// A failed automatic download or verification is tried again at most once a
-    /// day. 23 hours, not 24: the daily check that retries runs 24 hours after the
-    /// previous *check*, which is a little less than 24 hours after its failure.
+    /// day, however often the checks themselves run.
     static let retryAfter: TimeInterval = 23 * 3600
 
     private static let autoUpdateKey = "autoUpdate"
@@ -73,6 +72,14 @@ final class UpdateChecker {
     private static let stagedPathKey = "updateStagedPath"
     private static let stagedVersionKey = "updateStagedVersion"
     private static let attemptKey = "updateInstallAttempt"
+    private static let lastCheckKey = "updateLastCheck"
+
+    /// How long after one automatic check the next is due. It was a day, on a
+    /// `Timer` — and a timer's clock stops while the Mac sleeps, so a laptop that
+    /// slept every night checked days apart and sat a whole day of releases
+    /// behind (1.51.1 was still running the evening 1.54.0 shipped). Now the wall
+    /// clock decides, asked every quarter of an hour and on every wake.
+    static let checkEvery: TimeInterval = 4 * 3600
 
     init(_ deps: Dependencies? = nil) {
         self.deps = deps ?? Self.live
@@ -134,26 +141,49 @@ final class UpdateChecker {
 
     // MARK: - Checking
 
-    /// First check shortly after launch (network may still be waking), then daily.
+    /// Whether an automatic check is due: never checked, `checkEvery` gone by on
+    /// the wall clock, or a clock that went backwards (a stored time in the future
+    /// would otherwise hold every check off until it came round).
+    static func isDue(lastCheck: Date?, now: Date) -> Bool {
+        guard let lastCheck else { return true }
+        let since = now.timeIntervalSince(lastCheck)
+        return since >= checkEvery || since < 0
+    }
+
+    /// First check shortly after launch (network may still be waking), then
+    /// whenever one is due — asked on a short tick and after every wake, because
+    /// neither a sleeping Mac nor a long-running timer keeps wall-clock time.
     func startPeriodicChecks() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in
             self?.check(manual: false)
         }
-        timer = Timer.scheduledTimer(withTimeInterval: 24 * 3600, repeats: true) { [weak self] _ in
-            self?.check(manual: false)
+        timer = Timer.scheduledTimer(withTimeInterval: 15 * 60, repeats: true) { [weak self] _ in
+            self?.checkIfDue()
         }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            // The network is rarely back the instant the lid opens.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 30) { self?.checkIfDue() }
+        }
+    }
+
+    func checkIfDue() {
+        let last = deps.defaults.object(forKey: Self.lastCheckKey) as? Date
+        guard Self.isDue(lastCheck: last, now: deps.now()) else { return }
+        check(manual: false)
     }
 
     func check(manual: Bool) {
         switch status {
         case .checking, .downloading, .ready: return
         case .available:
-            // Keep the offer visible; the daily tick is also the once-a-day retry
-            // of an automatic download that failed.
+            // Keep the offer visible; an automatic check is also the once-a-day
+            // retry of an automatic download that failed (`retryAfter` gates it).
             if !manual { autoStageIfAllowed(); return }
         default: break
         }
         setStatus(manual ? .checking : status)
+        deps.defaults.set(deps.now(), forKey: Self.lastCheckKey)
         var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(Self.repo)/releases/latest")!)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.timeoutInterval = 15

@@ -185,7 +185,7 @@ private func inputs(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Dat
         #expect(KeepAwakePrefs.settings(d) == KeepAwakeSettings(keepDisplayOn: false, batteryGuard: true,
                                                                 batteryFloor: 20, nudge: false))
         #expect(KeepAwakePrefs.settings(d).pauseInLowPower)
-        #expect(KeepAwakePrefs.settings(d).lockWhenAway, "a Mac kept lit is locked when you leave")
+        #expect(!KeepAwakePrefs.settings(d).lockWhenAway, "a screen asked to stay on is not locked unasked")
         #expect(KeepAwakePrefs.settings(d).lockAfter == 600)
         #expect(!KeepAwakePrefs.settings(d).sleepWhenDone)
         #expect(!KeepAwakePrefs.shortcut(d), "no chord is claimed until asked for")
@@ -350,7 +350,11 @@ private func inputs(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Dat
     }
 
     @Test func locksOnceWhenYouLeaveAndOnlyWhileTheScreenIsHeld() {
-        let lit = KeepAwakeSettings(keepDisplayOn: true)
+        var lit = KeepAwakeSettings(keepDisplayOn: true)
+        #expect(!KeepAwakePolicy.shouldLock(KeepAwakePolicy.decide(inputs(.indefinite, settings: lit)),
+                                            settings: lit, humanIdle: 3600, locked: false),
+                "never unless switched on")
+        lit.lockWhenAway = true
         let held = KeepAwakePolicy.decide(inputs(.indefinite, settings: lit))
         #expect(!KeepAwakePolicy.shouldLock(held, settings: lit, humanIdle: 599, locked: false))
         #expect(KeepAwakePolicy.shouldLock(held, settings: lit, humanIdle: 600, locked: false))

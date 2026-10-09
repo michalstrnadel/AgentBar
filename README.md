@@ -36,7 +36,7 @@ do, or a rule you wrote yourself, and every answer is written down.
 | Flip an agent's switch off in **Settings ▸ Agents** | Shows what it will take out of that agent's settings, then removes only AgentBar's own entries — and leaves them out from then on |
 | `agentbar report --agent aider --name Aider --state tool --label Editing --pid $$` | Any tool you run joins the bar under its own name and mark — wrap it in a few lines, no Swift |
 | **Your Day…** in the menu or the island's ⋯ | Your day — or week — with your agents on one card: who you were today, agent time, the hours, your top agent, what changed, your answers; copy it, post it, or save it as a video |
-| Click the cup in the island's footer | **Keep Mac Awake** while your agents work: the Mac stays up while a session runs and sleeps five minutes after its last turn. Right-click or hold for 15 or 30 minutes, an hour, two, until a time, or until you say. The time left counts down beside the cup and at the top of its menu, where Add 15 Minutes stretches a timed choice. The keyboard goes dark and the screen locks while you're away, it can sleep the Mac when the agents finish, and Settings ▸ Awake Triggers starts it by itself when an agent works, on the charger, with a display, or while an app runs |
+| Click the cup in the island's footer | **Keep Mac Awake** while your agents work: the Mac stays up while a session runs and sleeps five minutes after its last turn. Right-click or hold for 15 or 30 minutes, an hour, two, until a time, or until you say. The time left counts down beside the cup and at the top of its menu, where Add 15 Minutes stretches a timed choice. The keyboard goes dark while you're away (and the screen can lock, if you switch that on), it can sleep the Mac when the agents finish, and Settings ▸ Awake Triggers starts it by itself when an agent works, on the charger, with a display, or while an app runs |
 | Drag a screenshot or a file onto a session in the island | Its path lands in that agent's prompt — pasted into the right tab, never with Return |
 | Let a quota window run hot | The meter says when it runs out at this pace — "out ~15:40" — when that is before it resets |
 | Right-click a session in the island | **Continue in** another agent: the launcher opens in the same project with a prompt that says where the work got to — Return is still yours |
@@ -74,7 +74,7 @@ That's the whole loop. More install options below; troubleshooting at the bottom
 ### What the installer changes (and how to undo it)
 
 AgentBar is local-only — no telemetry, and it talks to three places, two of which stay
-silent until you switch them on: the daily update check against GitHub Releases, and
+silent until you switch them on: the update check every few hours against GitHub Releases, and
 — only if you tick **Settings ▸ Usage** — Claude's own quota, from `api.anthropic.com`
 using the login Claude Code already stored, or from `claude.ai` if you sign in there.
 That switch reports what came back, in a sentence under itself, including every way it
@@ -318,7 +318,7 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   waiting on you; `agentbar://new-task?cwd=…&agent=…&prompt=…` fills the launcher in
   (Return is still yours). No link can approve, deny or answer anything. See
   [docs/url-scheme.md](docs/url-scheme.md).
-- **Built-in updates** — a quiet daily check of GitHub Releases; a new version is
+- **Built-in updates** — a quiet check of GitHub Releases every few hours and after every wake; a new version is
   downloaded, checked against the running app's own signing certificate, and
   installed automatically once nothing is waiting on you and you have stepped away.
   Switch it off in Settings ▸ General to install from **Check for Updates…** instead.
@@ -474,7 +474,7 @@ If your projects live in Documents, Desktop or Downloads, macOS asks once whethe
 AgentBar may read them; that is for the git branch and changes shown on each row,
 and nothing leaves your Mac.
 
-**Updating:** the app checks GitHub Releases daily and updates itself automatically —
+**Updating:** the app checks GitHub Releases every few hours (and when the Mac wakes) and updates itself automatically —
 it downloads the new version, checks its signature against the running app's own
 certificate, and relaunches as it the next time nothing is waiting on you and you have
 been away for five minutes (or at the next launch). **Settings ▸ General ▸ Install

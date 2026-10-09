@@ -59,9 +59,11 @@ enum KeepAwakePrefs {
                 ? d.integer(forKey: Key.batteryFloor) : 20,
             nudge: d.bool(forKey: Key.nudge),
             pauseInLowPower: d.object(forKey: Key.lowPower) as? Bool ?? true,
-            // On unless switched off: a Mac held awake with its screen on would
-            // otherwise sit unlocked all night.
-            lockWhenAway: d.object(forKey: Key.lock) as? Bool ?? true,
+            // Off until switched on. It was on by default in 1.51–1.54, and a person
+            // who had asked for the screen to stay on watched it go dark ten
+            // minutes later, with no way to tell the agents were still working:
+            // a screen that locks itself is something to choose, not to discover.
+            lockWhenAway: d.object(forKey: Key.lock) as? Bool ?? false,
             lockAfter: TimeInterval(lockMinutes(d) * 60),
             sleepWhenDone: d.bool(forKey: Key.sleepWhenDone))
     }

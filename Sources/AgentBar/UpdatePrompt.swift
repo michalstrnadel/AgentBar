@@ -4,7 +4,7 @@ import Cocoa
 ///
 /// The menu row used to be the whole answer, but the click that asks also closes the
 /// menu, so the answer landed where nobody was looking: the person clicked and saw
-/// nothing happen. This window opens on that click and on nothing else — the daily
+/// nothing happen. This window opens on that click and on nothing else — the periodic
 /// check and the automatic install never show it (CLAUDE.md rule 2) — follows the
 /// check from "Checking…" to its result, and closes on OK, Esc or the close button.
 final class UpdatePrompt: NSObject, NSWindowDelegate {

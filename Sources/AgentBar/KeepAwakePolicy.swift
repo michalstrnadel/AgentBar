@@ -83,7 +83,7 @@ struct KeepAwakeSettings: Equatable {
     var pauseInLowPower = true
     /// Lock the screen after `lockAfter` without input, while AgentBar holds the
     /// screen on.
-    var lockWhenAway = true
+    var lockWhenAway = false
     var lockAfter: TimeInterval = 10 * 60
     /// "While agents work": put the Mac to sleep once they are done and you are away.
     var sleepWhenDone = false

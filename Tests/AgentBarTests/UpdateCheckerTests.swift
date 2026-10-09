@@ -347,3 +347,24 @@ import Testing
         #expect(UpdateSignature.check(a, against: try #require(pinned)) != nil)
     }
 }
+
+/// When an automatic check is due. A day on a `Timer` stopped while the Mac slept,
+/// and a laptop asleep every night ran a day of releases behind.
+@Suite struct UpdateCadenceTests {
+    private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+    @Test func neverCheckedIsDue() {
+        #expect(UpdateChecker.isDue(lastCheck: nil, now: t0))
+    }
+
+    @Test func dueOnTheWallClockAfterFourHours() {
+        #expect(!UpdateChecker.isDue(lastCheck: t0, now: t0.addingTimeInterval(3 * 3600)))
+        #expect(UpdateChecker.isDue(lastCheck: t0, now: t0.addingTimeInterval(UpdateChecker.checkEvery)))
+        // A night asleep counts: the wall clock moved even though no timer ran.
+        #expect(UpdateChecker.isDue(lastCheck: t0, now: t0.addingTimeInterval(10 * 3600)))
+    }
+
+    @Test func aClockThatWentBackwardsDoesNotHoldChecksOff() {
+        #expect(UpdateChecker.isDue(lastCheck: t0, now: t0.addingTimeInterval(-60)))
+    }
+}

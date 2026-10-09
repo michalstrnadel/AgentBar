@@ -16,7 +16,7 @@ guarantees worth knowing when auditing:
   **Settings ▸ Phone** is switched on (off by default; see "Approvals on the
   phone" below — the one destination on the approval path).
 - Three other destinations exist, all in the app and none on the approval path: the
-  daily update check against GitHub Releases (and the download of a newer release,
+  update check every few hours against GitHub Releases (and the download of a newer release,
   installed automatically only if its signature matches the running app's — see
   "Verifying a download"); and — **only** while
   **Settings ▸ Usage** is ticked, off by default — Claude's own quota, either a `GET`
@@ -284,7 +284,7 @@ Settings ▸ Keep Awake — and no `agentbar://` link, rule or schedule reaches 
   the selectors it has checked are there, and it uses `commit: false`, so your
   saved brightness is never written. It needs no permission. The level it
   darkened from is kept in AgentBar's preferences until it is given back.
-- **The screen lock.** On by default, and only while AgentBar holds the screen on
+- **The screen lock.** Off by default (on by default in 1.51–1.54), and only while AgentBar holds the screen on
   (Keep Screen On, or the chat-app nudge): after the minutes you chose without
   input, AgentBar locks the screen the way ⌃⌘Q does, through
   `SACLockScreenImmediate` in the private login framework, looked up rather than
