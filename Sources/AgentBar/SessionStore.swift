@@ -103,6 +103,12 @@ final class SessionStore {
                 live.state = .done
                 live.decayed = true // a watchdog guess, not a reported finish
             }
+            // A Claude Code turn whose Stop never landed (a full disk, a turn that
+            // died on an error): quiet row, quiet transcript, nothing still running.
+            if StalledTurn.check(live) {
+                live.state = .done
+                live.decayed = true
+            }
             sessions.append(live)
         }
         sessions.sort { ($0.priority, $0.ts) > ($1.priority, $1.ts) }

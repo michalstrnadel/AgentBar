@@ -203,6 +203,7 @@ enum Diagnostics {
         var out: [Check] = []
         out += nodeChecks(home: home)
         out += directoryChecks(base: base)
+        out += [diskCheck(free: freeBytes(at: base))]
         out += hookScriptChecks(base: base, home: home, off: off)
         out += integrations.flatMap { i -> [Check] in
             i.id == ClaudeModWiring.id
@@ -263,6 +264,36 @@ enum Diagnostics {
                                in: NSHomeDirectory(), timeout: 10)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return out.isEmpty ? nil : out
+    }
+
+    // MARK: - Room on the disk
+
+    /// What macOS will let an app write, not the raw free count: the figure
+    /// Finder shows, purgeable space included.
+    static func freeBytes(at url: URL) -> Int64? {
+        let probe = FileManager.default.fileExists(atPath: url.path) ? url : url.deletingLastPathComponent()
+        return (try? probe.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
+            .volumeAvailableCapacityForImportantUsage
+    }
+
+    /// A full disk is the one failure every hook hits at once and none can report:
+    /// each write of a session's row fails, the rows stop moving, and the island
+    /// shows work that ended long ago. Said here before it happens.
+    static func diskCheck(free: Int64?) -> Check {
+        let title = "Room on the disk"
+        guard let free else { return Check(id: "disk.free", title: title, status: .skipped) }
+        let gb = Double(free) / 1_000_000_000
+        let amount = gb >= 10 ? "\(Int(gb.rounded())) GB" : String(format: "%.1f GB", gb)
+        if gb < 1 {
+            return Check(id: "disk.free", title: title, status: .fail, detail: "\(amount) free.",
+                         fix: "Free some space: when the disk fills, hooks cannot record what your agents "
+                             + "do, and the agents themselves start failing.")
+        }
+        if gb < 5 {
+            return Check(id: "disk.free", title: title, status: .warn, detail: "\(amount) free.",
+                         fix: "Running low. A full disk stops hooks from recording anything, and agents fail too.")
+        }
+        return Check(id: "disk.free", title: title, status: .ok, detail: "\(amount) free.")
     }
 
     // MARK: - The protocol directories

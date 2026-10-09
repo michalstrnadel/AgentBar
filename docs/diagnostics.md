@@ -51,6 +51,7 @@ naming the next action is just a nicer way of saying nothing.
 | `dirs.state.d` | exists **and an actual write succeeds** |
 | `dirs.requests.d` | the same |
 | `dirs.answers.d` | the same |
+| `disk.free` | room on the disk, as macOS counts it for apps. **Warn** under 5 GB, **fail** under 1 GB: a full disk is the one failure every hook hits at once and none can report. App only |
 | `state.unreadable` | every row in `state.d` parses. **Warn** naming up to three that do not — each is a session shown nowhere. Absent when all parse. App only |
 
 Existence is not enough: a directory can be there and unusable, and this is the
