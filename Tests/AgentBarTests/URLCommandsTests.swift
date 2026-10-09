@@ -208,10 +208,12 @@ import Testing
     /// a web page would otherwise be able to hold a laptop up all night.
     @Test func noLinkKeepsTheMacAwake() {
         for s in ["agentbar://awake", "agentbar://keep-awake", "agentbar://caffeinate",
-                  "agentbar://keepawake?for=2h", "agentbar://sleep"] {
+                  "agentbar://keepawake?for=2h", "agentbar://sleep", "agentbar://lock",
+                  "agentbar://trigger?app=com.apple.dt.Xcode", "agentbar://awake-triggers"] {
             #expect(parse(s) == nil, "\(s)")
         }
         // Opening its Settings page is only a page.
         #expect(parse("agentbar://settings/keep-awake") == .settings(page: .keepAwake))
+        #expect(parse("agentbar://settings/awake-triggers") == .settings(page: .awakeTriggers))
     }
 }

@@ -245,6 +245,22 @@ Settings ▸ Keep Awake — and no `agentbar://` link, rule or schedule reaches 
   the selectors it has checked are there, and it uses `commit: false`, so your
   saved brightness is never written. It needs no permission. The level it
   darkened from is kept in AgentBar's preferences until it is given back.
+- **The screen lock.** On by default, and only while AgentBar holds the screen on
+  (Keep Screen On, or the chat-app nudge): after the minutes you chose without
+  input, AgentBar locks the screen the way ⌃⌘Q does, through
+  `SACLockScreenImmediate` in the private login framework, looked up rather than
+  linked. Nothing is unlocked by AgentBar, ever. While locked, the display
+  assertion is dropped so the screen may sleep, and the nudge stops.
+- **Sleep when the agents are done.** Off by default. With "While Agents Work",
+  once no local agent has worked for five minutes and nobody has touched the Mac
+  for five minutes, AgentBar asks macOS to sleep (`IOPMSleepSystem`, the Apple
+  menu's Sleep; `pmset sleepnow` as a fallback), after letting a closed-lid
+  session go so sleep is enabled again. It needs no administrator rights.
+- **Triggers.** Off until switched on in Settings ▸ Awake Triggers, and the only
+  things that start Keep Awake without a click: a local agent working, the
+  charger, an external display, or an app you picked (matched by bundle id). They
+  read only what they need — the power source, the screen list, the running app
+  list — and never start the closed-lid mode. No link, rule or agent can add one.
 - **The closed lid.** Off by default, and the only part that runs as root. Turning
   it on shows macOS's own administrator prompt, once per start, and runs
   `pmset -a disablesleep 1` together with a small shell loop that turns sleep back

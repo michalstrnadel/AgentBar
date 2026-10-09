@@ -18,10 +18,16 @@ struct KeyCombo: Equatable {
     static let defaultLaunch = KeyCombo(keyCode: UInt32(kVK_ANSI_N),
                                         carbonModifiers: UInt32(optionKey | cmdKey), display: "⌥⌘N")
 
+    /// The cup: Keep Mac Awake on or off. ⌃⌥⌘K — K for "keep", and a chord no
+    /// system shortcut claims.
+    static let defaultAwake = KeyCombo(keyCode: UInt32(kVK_ANSI_K),
+                                       carbonModifiers: UInt32(controlKey | optionKey | cmdKey), display: "⌃⌥⌘K")
+
     /// The currently configured combos (defaults when never customized).
     static var allow: KeyCombo { stored("allowHotKey", fallback: .defaultAllow) }
     static var deny: KeyCombo { stored("denyHotKey", fallback: .defaultDeny) }
     static var launch: KeyCombo { stored("launchHotKey", fallback: .defaultLaunch) }
+    static var awake: KeyCombo { stored("awakeHotKey", fallback: .defaultAwake) }
 
     static func stored(_ key: String, fallback: KeyCombo) -> KeyCombo {
         guard let d = UserDefaults.standard.dictionary(forKey: key),

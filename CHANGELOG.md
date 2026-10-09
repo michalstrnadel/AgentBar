@@ -3,6 +3,35 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.51.0 - 2026-10-09
+
+### Added
+
+- **The screen locks when you leave.** With the screen kept on, a Mac held
+  awake used to stay lit and unlocked all night. Now it locks after 10 minutes
+  without input (2 to 30, in Settings ▸ Keep Awake). Your agents keep working,
+  the locked screen is allowed to sleep, and the chat-app nudge stops, since a
+  locked Mac shows Away anyway. It acts only while AgentBar is the one keeping
+  the screen on, and it's on by default.
+- **Sleep when the agents are done.** For "While Agents Work": once the last
+  agent has finished and you've been away five minutes, the Mac goes to sleep
+  instead of waiting for its own timer. A closed-lid session is let go first.
+  It's in the cup's menu and in Settings ▸ Awake Triggers, and off by default.
+- **Awake Triggers.** Keep Mac Awake can start by itself in four cases: when an
+  agent starts working, while plugged in, while an external display is
+  connected, or while apps you pick are running. Each is off until you switch it
+  on. Every hold says what started it ("Awake while Xcode is running"), and
+  turning the cup off snoozes that trigger until its condition goes away. A
+  trigger never closes the lid for you. A Wi-Fi trigger is not included, because
+  reading the network name needs Location Services.
+- **A shortcut for the cup.** ⌃⌥⌘K turns Keep Mac Awake on or off from
+  anywhere, with a sound to say which. You can change the chord in Settings ▸
+  Shortcuts, and it's off until you switch it on.
+- **Pause on battery: Always.** Keep Awake can now hold only while plugged in,
+  and it pauses in Low Power Mode (you can switch that off).
+- **Your Day says how long the Mac was kept awake.** A "Mac kept awake" line,
+  for example "3 h 20 min, for your agents".
+
 ## 1.50.0 - 2026-10-09
 
 ### Added

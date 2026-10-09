@@ -1,8 +1,9 @@
 import Cocoa
 
 /// Settings ▸ Keep Awake. One switch that says what it is doing, the mode it
-/// starts, and — in a second card — what else holds while it is on. Rows that
-/// would only say "nothing to see" are hidden until they have something to say.
+/// starts, and — in a second card — what happens while it is on. Rows that would
+/// only say "nothing to see" are hidden until they have something to say. When it
+/// starts or pauses by itself lives on its own page (`KeepAwakeTriggersPage`).
 /// `SettingsWindow` hosts it.
 final class KeepAwakeSettingsPage: NSObject {
     /// Fired after a control wrote a preference.
@@ -16,9 +17,11 @@ final class KeepAwakeSettingsPage: NSObject {
     private var displayBox: NSSwitch!
     private var keyboardBox: NSSwitch!
     private var keyboardRow: NSView!
-    private var batteryBox: NSSwitch!
-    private let floorPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private var lockBox: NSSwitch!
+    private let lockPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private var lockRow: NSView!
     private var nudgeBox: NSSwitch!
+    private let header = SettingsChrome.header("")
     private var grantRow: NSView!
     private var lidBox: NSSwitch!
     private let lidStatus = SettingsChrome.caption("")
@@ -53,16 +56,18 @@ final class KeepAwakeSettingsPage: NSObject {
         keyboardRow = SettingsChrome.row("Keyboard light off while you're away",
                                          "Dark 30 seconds after your last keystroke, lit again at the next.",
                                          control: keyboardBox)
-        batteryBox = SettingsChrome.toggle(target: self, action: #selector(toggleBattery))
-        floorPopup.controlSize = .small
-        for p in KeepAwakePrefs.floorChoices {
-            floorPopup.addItem(withTitle: "Below \(p)%")
-            floorPopup.lastItem?.tag = p
+        lockBox = SettingsChrome.toggle(target: self, action: #selector(toggleLock))
+        lockPopup.controlSize = .small
+        for m in KeepAwakePrefs.lockChoices {
+            lockPopup.addItem(withTitle: "After \(m) min")
+            lockPopup.lastItem?.tag = m
         }
-        floorPopup.target = self
-        floorPopup.action = #selector(floorChanged)
-        let batteryControls = NSStackView(views: [floorPopup, batteryBox])
-        batteryControls.spacing = SettingsChrome.Space.tight
+        lockPopup.target = self
+        lockPopup.action = #selector(lockMinutesChanged)
+        let lockControls = NSStackView(views: [lockPopup, lockBox])
+        lockControls.spacing = SettingsChrome.Space.tight
+        lockRow = SettingsChrome.row("Lock the screen when you leave",
+                                     "Agents keep working; the locked screen may sleep.", control: lockControls)
 
         nudgeBox = SettingsChrome.toggle(target: self, action: #selector(toggleNudge))
         let grant = SettingsChrome.smallButton("Allow Accessibility…", target: self,
@@ -86,7 +91,7 @@ final class KeepAwakeSettingsPage: NSObject {
         return [
             SettingsChrome.card([
                 SettingsChrome.customRow(line(text, onBox), height: 56),
-                SettingsChrome.row("Mode", "What the switch and the cup start.", control: modePopup),
+                SettingsChrome.row("Mode", control: modePopup),
                 untilRow,
             ]),
             SettingsChrome.card([
@@ -94,19 +99,16 @@ final class KeepAwakeSettingsPage: NSObject {
                                    "Off: the screen dims and locks as usual; the Mac keeps working.",
                                    control: displayBox),
                 keyboardRow,
-                SettingsChrome.row("Pause on battery",
-                                   "Plugging in picks it up again.", control: batteryControls),
+                lockRow,
                 SettingsChrome.row("Stay available in chat apps",
                                    "Keeps Teams and Slack from showing you Away.", control: nudgeBox),
                 grantRow,
                 SettingsChrome.row("Stay awake with the lid closed",
-                                   "Close the lid and your agents keep working. Asks for your "
-                                   + "password; turns off when Keep Awake ends, after 12 hours, "
+                                   "Asks for your password. Ends with Keep Awake, after 12 hours, "
                                    + "or if the Mac runs hot.", control: lidBox),
                 lidStatusRow,
             ]),
-            SettingsChrome.header("Quickest: the cup in the island's footer — click to start or stop, "
-                                  + "right-click for every mode. Or Keep Mac Awake in the menu."),
+            header,
         ]
     }
 
@@ -147,14 +149,17 @@ final class KeepAwakeSettingsPage: NSObject {
         c.minute = untilMinutes % 60
         untilPicker.dateValue = Calendar.current.date(from: c) ?? Date()
 
+        header.stringValue = "Quickest: the cup in the island's footer; right-click it for every mode"
+            + (KeepAwakePrefs.shortcut() ? ", or press \(KeyCombo.awake.display) anywhere." : ".")
         let s = KeepAwakePrefs.settings()
         displayBox.state = s.keepDisplayOn ? .on : .off
         keyboardBox.state = KeepAwakePrefs.keyboardDark() ? .on : .off
         // An iMac or a Mac mini has no backlit keyboard to turn off.
         show(keyboardRow, KeyboardLight.isAvailable)
-        batteryBox.state = s.batteryGuard ? .on : .off
-        floorPopup.selectItem(withTag: s.batteryFloor)
-        floorPopup.isEnabled = s.batteryGuard
+        lockBox.state = s.lockWhenAway ? .on : .off
+        lockPopup.selectItem(withTag: Int(s.lockAfter / 60))
+        lockPopup.isEnabled = s.lockWhenAway
+        show(lockRow, ScreenLock.shared.canLock)
         nudgeBox.state = s.nudge ? .on : .off
         show(grantRow, s.nudge && !KeystrokeApprover.trusted)
 
@@ -211,15 +216,17 @@ final class KeepAwakeSettingsPage: NSObject {
         changed()
     }
 
-    @objc private func toggleBattery() {
-        KeepAwakePrefs.setBatteryGuard(batteryBox.state == .on)
+    @objc private func toggleLock() {
+        KeepAwakePrefs.setLockWhenAway(lockBox.state == .on)
         changed()
     }
 
-    @objc private func floorChanged() {
-        KeepAwakePrefs.setBatteryFloor(floorPopup.selectedTag())
+    @objc private func lockMinutesChanged() {
+        KeepAwakePrefs.setLockMinutes(lockPopup.selectedTag())
         changed()
     }
+
+
 
     @objc private func toggleNudge() {
         KeepAwakePrefs.setNudge(nudgeBox.state == .on)

@@ -298,6 +298,11 @@ enum WrapRenderer {
             out.append(Tile(caption: w.range == .today ? "Busiest hour" : "Busiest day", value: hourLabel(w, b),
                             detail: "\(HistoryDigest.duration(w.bins[b])) of agent work", color: S.ink))
         }
+        if w.keptAwake >= 60 {
+            let forAgents = w.keptAwakeForAgents >= w.keptAwake / 2
+            out.append(Tile(caption: "Mac kept awake", value: HistoryDigest.duration(w.keptAwake),
+                            detail: forAgents ? "for your agents" : "by Keep Mac Awake", color: S.ink))
+        }
         if let p = w.projects.first {
             let rest = w.projects.dropFirst().map(\.name)
             let detail = rest.isEmpty

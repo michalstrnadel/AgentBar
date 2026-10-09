@@ -73,6 +73,17 @@ import Testing
         #expect(left.first == "Top agent")
     }
 
+    @Test func keptAwakeIsATileOnlyWhenItHappened() {
+        #expect(!WrapRenderer.tileFacts(wrap).map(\.caption).contains("Mac kept awake") || wrap.keptAwake >= 60)
+        var w = wrap
+        w.keptAwake = 3 * 3600 + 20 * 60
+        w.keptAwakeForAgents = w.keptAwake
+        let tile = WrapRenderer.tileFacts(w).first { $0.caption == "Mac kept awake" }
+        #expect(tile?.detail == "for your agents")
+        w.keptAwake = 30
+        #expect(!WrapRenderer.tileFacts(w).map(\.caption).contains("Mac kept awake"))
+    }
+
     @Test func aSharedCardNamesNoProject() {
         let shared = WrapRenderer.tileFacts(wrap.shareSafe())
         let project = shared.first { $0.caption == "Top project" }

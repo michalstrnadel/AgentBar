@@ -67,6 +67,10 @@ struct DayWrap: Equatable {
     var busySeconds: TimeInterval = 0
     var tokens = 0
     var tokensMeasured = 0
+    /// How long Keep Mac Awake held the Mac up in the range (`AwakeLog`), and how
+    /// much of that was "while agents work".
+    var keptAwake: TimeInterval = 0
+    var keptAwakeForAgents: TimeInterval = 0
 
     /// Agent time per bin: 24 hours for a day, 7 days for a week. Equal length.
     var bins: [TimeInterval] = []
@@ -135,7 +139,7 @@ struct DayWrap: Equatable {
         a.range == b.range && a.start == b.start && a.end == b.end && a.sessions == b.sessions
             && a.agentSeconds == b.agentSeconds && a.agents == b.agents && a.projects == b.projects
             && a.longest == b.longest && a.waits == b.waits && a.peak == b.peak
-            && a.persona == b.persona && a.bins == b.bins
+            && a.persona == b.persona && a.bins == b.bins && a.keptAwake == b.keptAwake
     }
 
     /// Where bin `i` starts.
@@ -165,10 +169,15 @@ struct DayWrap: Equatable {
                      history: [HistoryStore.Record],
                      ledger: [DecisionLedger.Record],
                      work: [String: WorkSpans.Read] = [:],
+                     awake: [AwakeLog.Stretch] = [],
                      now: TimeInterval = Date().timeIntervalSince1970,
                      calendar: Calendar = .current) -> DayWrap {
         let (start, end) = span(range, now: now, calendar: calendar)
         var w = DayWrap(range: range, start: start, end: end)
+        let held = AwakeLog.total(awake, in: DateInterval(start: Date(timeIntervalSince1970: start),
+                                                          end: Date(timeIntervalSince1970: max(start, end))))
+        w.keptAwake = held.all
+        w.keptAwakeForAgents = held.agents
         let records = history.filter { $0.endedAt >= start && $0.endedAt <= end }
         let (summary, _) = HistoryDigest.digest(records, since: start, until: end)
         w.sessions = summary.sessions
@@ -307,7 +316,7 @@ struct DayWrap: Equatable {
             if let read = WorkSpans.claude(sessionId: r.sessionId, cwd: r.cwd) { work[r.sessionId] = read }
         }
         return make(range, history: history, ledger: DecisionLedger.read(), work: work,
-                    now: now, calendar: calendar)
+                    awake: AwakeLog.read(), now: now, calendar: calendar)
     }
 
     // MARK: - Persona

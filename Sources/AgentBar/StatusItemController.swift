@@ -106,6 +106,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if LauncherPanel.shortcutEnabled {
             bindings.append((KeyCombo.launch, { LauncherPanel.shared.toggle() }))
         }
+        if KeepAwakePrefs.shortcut() {
+            bindings.append((KeyCombo.awake, { KeepAwake.shared.toggleFromShortcut() }))
+        }
         HotKeyCenter.shared.apply(bindings)
     }
 

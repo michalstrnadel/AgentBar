@@ -2,10 +2,13 @@ import Cocoa
 
 /// Keep Mac Awake: gathers what `KeepAwakePolicy` needs, asks it, and applies the
 /// answer — the power assertion, the battery watch, the presence nudge, the
-/// keyboard's light and, when asked for, the closed-lid mode.
+/// keyboard's light, the screen lock, sleep when the agents are done and, when
+/// asked for, the closed-lid mode.
 ///
-/// Changed only by a click (the island's cup, the shared menu, Settings). No link,
-/// rule or schedule turns it on, and nothing about it appears on screen by itself.
+/// Turned on by a click (the island's cup, the shared menu, Settings), the
+/// shortcut, or a trigger the person set up in Settings ("Start by itself"). No
+/// link, rule or agent turns it on, and nothing about it appears on screen by
+/// itself.
 final class KeepAwake {
     static let shared = KeepAwake()
 
@@ -27,7 +30,19 @@ final class KeepAwake {
     private let nudge = PresenceNudge()
     private var battery: PowerSource.Watch?
     private var timer: Timer?
+    /// Polls the human idle clock while a lock or a sleep is waiting on it.
+    private var idleTimer: Timer?
     private var started = false
+    private let triggerWatch = KeepAwakeTriggerWatch()
+    /// Triggers turned off by a click while they held; each waits for its
+    /// condition to go away before it can hold again.
+    private var snoozed = Set<KeepAwakeTrigger>()
+    private var hold: TriggerHold?
+    /// The human idle time when AgentBar last locked the screen: no second lock
+    /// until the person has been back.
+    private var lockedAtIdle: TimeInterval?
+    /// A sleep was asked for; nothing more until the Mac wakes.
+    private var sleeping = false
     /// Closed-lid mode was asked for with the current mode. Cleared when it ends for
     /// any reason; only another click starts it again — the password dialog must
     /// never appear because, say, the charger was plugged back in.
@@ -49,10 +64,22 @@ final class KeepAwake {
                 mode = saved
             }
         }
+        AwakeLog.prune()
         let ws = NSWorkspace.shared.notificationCenter
         ws.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.sleeping = false
             self?.reevaluate()
         }
+        NotificationCenter.default.addObserver(forName: .NSProcessInfoPowerStateDidChange, object: nil,
+                                               queue: .main) { [weak self] _ in
+            self?.reevaluate()
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil,
+                                               queue: .main) { _ in
+            AwakeLog.shared.holding(nil)
+        }
+        ScreenLock.shared.onChange = { [weak self] in self?.reevaluate() }
+        triggerWatch.onChange = { [weak self] in self?.reevaluate() }
         ws.addObserver(forName: NSWorkspace.sessionDidResignActiveNotification, object: nil, queue: .main) {
             [weak self] _ in
             self?.userSessionActive = false
@@ -79,7 +106,8 @@ final class KeepAwake {
 
     // MARK: - What a click does
 
-    var isOn: Bool { mode != nil }
+    /// On by a click, or held by a trigger right now.
+    var isOn: Bool { mode != nil || decision.trigger != nil }
 
     /// The cup: off → the last choice, on → off.
     func toggle() {
@@ -104,10 +132,20 @@ final class KeepAwake {
         if currentChoice == choice { stop() } else { start(choice) }
     }
 
+    /// Off. A trigger holding the Mac up is snoozed until its condition goes away,
+    /// so off means off.
     func stop() {
+        if let t = decision.trigger?.trigger { snoozed.insert(t) }
         setMode(nil)
         lidRequested = false
         reevaluate()
+    }
+
+    /// The global shortcut: the cup's click, with a sound to say which way it
+    /// went, since nothing was clicked to look at.
+    func toggleFromShortcut() {
+        toggle()
+        NSSound(named: isOn ? "Purr" : "Pop")?.play()
     }
 
     var currentChoice: KeepAwakeChoice? {
@@ -154,12 +192,14 @@ final class KeepAwake {
     var signature: String {
         let minutes = decision.endsAt.map { Int($0.timeIntervalSinceNow / 60) } ?? -1
         return "\(currentChoice?.rawValue ?? "off")|\(decision.reason)|\(minutes)|\(LidSleep.shared.isOn)"
+            + "|\(KeepAwakePrefs.settings().sleepWhenDone)"
     }
 
     /// The menu badge: what is left, or where it is.
     var badge: String? {
         guard isOn else { return nil }
         if decision.paused != nil { return "paused" }
+        if decision.trigger != nil, decision.endsAt == nil { return "auto" }
         if let end = decision.endsAt { return KeepAwakePolicy.badge(end.timeIntervalSinceNow) }
         switch mode {
         case .indefinite:      return "∞"
@@ -179,7 +219,10 @@ final class KeepAwake {
         KeepAwakePolicy.Inputs(mode: mode, sessions: sessions, now: now, lastWorkAt: lastWorkAt,
                                battery: battery != nil ? PowerSource.reading() : nil,
                                userSessionActive: userSessionActive,
-                               settings: KeepAwakePrefs.settings())
+                               settings: KeepAwakePrefs.settings(),
+                               lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled,
+                               screenLocked: ScreenLock.shared.isLocked,
+                               trigger: hold)
     }
 
     func reevaluate() {
@@ -191,10 +234,24 @@ final class KeepAwake {
         if workingNow || wasWorking { lastWorkAt = now }
         wasWorking = workingNow
 
-        // The battery is watched only while a mode is on.
-        if mode != nil, battery == nil {
+        // Triggers: what holds, and which snoozes have run out.
+        let triggers = KeepAwakePrefs.triggers()
+        triggerWatch.update(triggers)
+        let conditions = triggerWatch.conditions(agentsWorking: workingNow)
+        let lifted = snoozed.subtracting(KeepAwakeTriggerPolicy.liftSnoozes(snoozed, conditions))
+        snoozed.subtract(lifted)
+        // The agents trigger snoozed during work comes back armed for the next
+        // agent, not holding the grace of the work that was turned off.
+        if lifted.contains(.agents), mode == nil { lastWorkAt = nil }
+        hold = triggers.any
+            ? KeepAwakeTriggerPolicy.hold(triggers, conditions, snoozed: snoozed,
+                                          appName: KeepAwakeTriggerWatch.appName)
+            : nil
+
+        // The battery is watched only while something could hold the Mac up.
+        if mode != nil || hold != nil, battery == nil {
             battery = PowerSource.Watch { [weak self] in self?.reevaluate() }
-        } else if mode == nil {
+        } else if mode == nil, hold == nil {
             battery = nil
         }
 
@@ -204,10 +261,15 @@ final class KeepAwake {
             lidRequested = false
             d = KeepAwakePolicy.decide(inputs(now))
         }
+        let settings = KeepAwakePrefs.settings()
+        let locked = ScreenLock.shared.isLocked
         assertion.apply(d.assertion, reason: d.reason)
-        nudge.setRunning(d.isOn && KeepAwakePrefs.settings().nudge)
+        AwakeLog.shared.holding(logKind(d))
+        // A locked Mac shows Away whatever moves the pointer.
+        nudge.setRunning(d.isOn && settings.nudge && !locked)
         KeyboardLight.shared.setActive(d.isOn && KeepAwakePrefs.keyboardDark())
         applyLid(d, now: now)
+        applyLockAndSleep(d, settings: settings, locked: locked, now: now)
 
         timer?.invalidate()
         timer = nil
@@ -229,6 +291,76 @@ final class KeepAwake {
         if changed { onChange?() }
     }
 
+    private func logKind(_ d: KeepAwakeDecision) -> AwakeLog.Stretch.Kind? {
+        guard d.isOn else { return nil }
+        if d.trigger != nil { return .trigger }
+        switch mode {
+        case .whileAgentsWork: return .agents
+        case .until:           return .timed
+        case .indefinite:      return .indefinite
+        case nil:              return nil
+        }
+    }
+
+    /// Locks the screen once you have been gone long enough, and puts the Mac to
+    /// sleep once the agents are done and you are gone. Both read the human idle
+    /// clock, which nothing announces, so a light poll runs while either waits.
+    private func applyLockAndSleep(_ d: KeepAwakeDecision, settings: KeepAwakeSettings, locked: Bool, now: Date) {
+        let idle = InputIdle.seconds()
+        if let at = lockedAtIdle, idle < at { lockedAtIdle = nil }  // back since the lock
+        if lockedAtIdle == nil, ScreenLock.shared.canLock,
+           KeepAwakePolicy.shouldLock(d, settings: settings, humanIdle: idle, locked: locked) {
+            lockedAtIdle = idle
+            ScreenLock.shared.lock()
+        }
+
+        let effective = mode ?? hold?.mode
+        if !sleeping, KeepAwakePolicy.shouldSleepNow(mode: effective, settings: settings, working: d.working,
+                                                     lastWorkAt: lastWorkAt, humanIdle: idle, now: now) {
+            sleepNow()
+            return
+        }
+
+        let lockWaits = d.assertion == .systemAndDisplay && settings.lockWhenAway && !locked
+            && ScreenLock.shared.canLock
+        var sleepWaits = false
+        if settings.sleepWhenDone, case .whileAgentsWork = effective, lastWorkAt != nil, d.working == 0 {
+            sleepWaits = !sleeping
+        }
+        if lockWaits || sleepWaits {
+            if idleTimer == nil {
+                let t = Timer(timeInterval: 15, repeats: true) { [weak self] _ in self?.reevaluate() }
+                t.tolerance = 5
+                RunLoop.main.add(t, forMode: .common)
+                idleTimer = t
+            }
+        } else {
+            idleTimer?.invalidate()
+            idleTimer = nil
+        }
+    }
+
+    /// The agents are done and nobody is here: end the mode and sleep. A closed-lid
+    /// session is let go first — sleep is disabled while it holds — and the Mac
+    /// sleeps once its watcher has turned sleep back on.
+    private func sleepNow() {
+        sleeping = true
+        if mode != nil {
+            setMode(nil)
+        } else {
+            lastWorkAt = nil  // a trigger stays armed for the next agent
+        }
+        lidRequested = false
+        let lid = LidSleep.shared
+        let delay: TimeInterval = lid.isOn ? 7 : 0.5
+        if lid.isOn { lid.stop() }
+        reevaluate()
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.sleeping else { return }
+            SystemSleep.now()
+        }
+    }
+
     /// While "while agents work" waits for its first agent after a click, the end
     /// of that wait; nil once work has been seen or the wait is over.
     private func lidWaitEnd(_ now: Date) -> Date? {
@@ -247,7 +379,8 @@ final class KeepAwake {
     private func applyLid(_ d: KeepAwakeDecision, now: Date) {
         let lid = LidSleep.shared
         let tooHot = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
-        let holding = d.isOn || (d.paused == nil && lidWaitEnd(now) != nil)
+        // Only a mode a click started: a trigger never holds the lid open.
+        let holding = mode != nil && (d.isOn || (d.paused == nil && lidWaitEnd(now) != nil))
         let wanted = lidRequested && holding && !tooHot
         if wanted, inClick, !lid.isOn, !lid.isStarting {
             let deadline: Date = {

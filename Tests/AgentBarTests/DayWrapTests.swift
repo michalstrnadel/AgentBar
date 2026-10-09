@@ -32,6 +32,19 @@ import Testing
         return HistoryStore.Record(jsonLine: line)!
     }
 
+    /// Keep Mac Awake's stretches, cut at the day's edges: yesterday's evening
+    /// that ran past midnight counts only from midnight.
+    @Test func keptAwakeIsClippedToTheDay() {
+        let d = { (t: TimeInterval) in Date(timeIntervalSince1970: t) }
+        let awake = [
+            AwakeLog.Stretch(id: "a", start: d(at(22, day: 6)), end: d(at(1)), kind: .indefinite),
+            AwakeLog.Stretch(id: "b", start: d(at(14)), end: d(at(15, 30)), kind: .agents),
+        ]
+        let w = DayWrap.make(.today, history: [], ledger: [], awake: awake, now: at(18), calendar: calendar)
+        #expect(w.keptAwake == 3600 + 5400)
+        #expect(w.keptAwakeForAgents == 5400)
+    }
+
     private func decision(_ ts: TimeInterval, waited: TimeInterval, via: String = "app") -> DecisionLedger.Record {
         var r = DecisionLedger.Record()
         r.ts = ts; r.waited = waited; r.via = via; r.decision = "allow"; r.shape = "bash:ls"

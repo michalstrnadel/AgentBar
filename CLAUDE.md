@@ -68,9 +68,16 @@ open "build/AgentBar.app"
    `RuleSheet` is a sheet on Settings, not a fourth surface: it is modal to a window
    the user already opened and it closes when it is answered.
    **Keep Mac Awake** (`KeepAwake`) is the cup in the island's footer and a row in
-   the shared menu, not a surface: it changes how the Mac sleeps, so only a click
-   turns it on, no link may, and its closed-lid mode — the one root command in the
-   app — asks for the password inside that click and never on its own (SECURITY.md).
+   the shared menu, not a surface: it changes how the Mac sleeps, so a click, its
+   shortcut (off until switched on) or a **trigger the person set up** turns it on,
+   and no link may. Since 1.51.0 the triggers in Settings ▸ Awake Triggers — an
+   agent working, the charger, an external display, an app running — may start it
+   without a click, the way a rule the human wrote may answer: each is off until
+   switched on there, every hold names its trigger in the menu and the cup's
+   tooltip, turning it off snoozes the trigger until its condition goes away, and
+   no link, rule or agent output can create one (`KeepAwakeTriggers`). Its
+   closed-lid mode — the one root command in the app — asks for the password inside
+   a click and never on its own, never from a trigger or the shortcut (SECURITY.md).
    **Hand a file to an agent** (`DropToAgent`) is the one place AgentBar puts text
    into a terminal, and it is fenced the way keystroke approval is: only on a drop
    the person made, only the dropped paths (escaped, no line breaks), pasted only

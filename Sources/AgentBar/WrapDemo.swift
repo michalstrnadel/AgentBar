@@ -56,7 +56,10 @@ enum WrapDemo {
         for r in records {
             work[r.sessionId] = WorkSpans.Read(spans: r.spans ?? [], prompts: (r.spans ?? []).map(\.start))
         }
-        return DayWrap.make(range, history: records, ledger: ledger, work: work,
+        // Keep Mac Awake held the Mac up for the afternoon's long run.
+        let awake = [AwakeLog.Stretch(id: "demo-awake", start: Date(timeIntervalSince1970: at(13.5)),
+                                      end: Date(timeIntervalSince1970: at(16.83)), kind: .agents)]
+        return DayWrap.make(range, history: records, ledger: ledger, work: work, awake: awake,
                             now: range == .today ? end : end, calendar: calendar)
     }
 }

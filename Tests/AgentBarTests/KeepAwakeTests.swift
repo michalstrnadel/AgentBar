@@ -17,10 +17,12 @@ private let t0 = Date(timeIntervalSince1970: 1_000)
 
 private func inputs(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Date = t0,
                     lastWorkAt: Date? = nil, battery: BatteryReading? = nil,
-                    active: Bool = true, settings: KeepAwakeSettings = KeepAwakeSettings())
+                    active: Bool = true, settings: KeepAwakeSettings = KeepAwakeSettings(),
+                    lowPower: Bool = false, locked: Bool = false, trigger: TriggerHold? = nil)
     -> KeepAwakePolicy.Inputs {
     KeepAwakePolicy.Inputs(mode: mode, sessions: sessions, now: now, lastWorkAt: lastWorkAt,
-                           battery: battery, userSessionActive: active, settings: settings)
+                           battery: battery, userSessionActive: active, settings: settings,
+                           lowPower: lowPower, screenLocked: locked, trigger: trigger)
 }
 
 /// Keep Mac Awake: what holds the Mac up, for how long, and what lets it go.
@@ -182,6 +184,12 @@ private func inputs(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Dat
         #expect(KeepAwakePrefs.untilMinutes(d) == 18 * 60)
         #expect(KeepAwakePrefs.settings(d) == KeepAwakeSettings(keepDisplayOn: false, batteryGuard: true,
                                                                 batteryFloor: 20, nudge: false))
+        #expect(KeepAwakePrefs.settings(d).pauseInLowPower)
+        #expect(KeepAwakePrefs.settings(d).lockWhenAway, "a Mac kept lit is locked when you leave")
+        #expect(KeepAwakePrefs.settings(d).lockAfter == 600)
+        #expect(!KeepAwakePrefs.settings(d).sleepWhenDone)
+        #expect(!KeepAwakePrefs.shortcut(d), "no chord is claimed until asked for")
+        #expect(KeepAwakePrefs.triggers(d) == KeepAwakeTriggerSettings(), "no trigger until switched on")
         #expect(!KeepAwakePrefs.lid(d))
         #expect(KeepAwakePrefs.mode(d) == nil)
         #expect(KeepAwakePrefs.keyboardDark(d), "the keys go dark unless that is switched off")
@@ -307,5 +315,194 @@ private func inputs(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Dat
         // Four minutes away, then the nudge resets the system clock to zero.
         let idle = InputIdle.humanIdle(system: 0.2, nudge: (Date(), 240), now: Date())
         #expect(KeyboardLightPolicy.shouldBeDark(active: true, humanIdle: idle, dark: true))
+    }
+}
+
+@Suite struct KeepAwakeBeyondTests {
+    private let xcode = TriggerHold(trigger: .app("com.apple.dt.Xcode"), mode: .indefinite, because: "Xcode is running")
+
+    @Test func onlyWhilePluggedInPausesOnAnyBattery() {
+        let always = KeepAwakeSettings(batteryFloor: KeepAwakePolicy.anyBattery)
+        let d = KeepAwakePolicy.decide(inputs(.indefinite, battery: .init(onBattery: true, percent: 98),
+                                              settings: always))
+        #expect(d.paused == .battery(98))
+        #expect(d.reason == "Paused — on battery")
+        #expect(KeepAwakePolicy.decide(inputs(.indefinite, battery: .init(onBattery: false, percent: 98),
+                                              settings: always)).assertion == .system)
+        #expect(KeepAwakePolicy.decide(inputs(.indefinite, battery: nil, settings: always)).assertion == .system,
+                "a desktop is always plugged in")
+    }
+
+    @Test func lowPowerModePausesOnlyWhenAskedTo() {
+        let d = KeepAwakePolicy.decide(inputs(.indefinite, lowPower: true))
+        #expect(d.paused == .lowPower)
+        #expect(d.reason == "Paused — Low Power Mode")
+        #expect(KeepAwakePolicy.decide(inputs(.indefinite, settings: .init(pauseInLowPower: false), lowPower: true))
+                .assertion == .system)
+    }
+
+    @Test func aLockedScreenMaySleepWhileTheMacWorks() {
+        let lit = KeepAwakeSettings(keepDisplayOn: true)
+        #expect(KeepAwakePolicy.decide(inputs(.indefinite, settings: lit)).assertion == .systemAndDisplay)
+        let locked = KeepAwakePolicy.decide(inputs(.indefinite, settings: lit, locked: true))
+        #expect(locked.assertion == .system)
+        #expect(locked.reason == "Awake until you turn it off · locked")
+    }
+
+    @Test func locksOnceWhenYouLeaveAndOnlyWhileTheScreenIsHeld() {
+        let lit = KeepAwakeSettings(keepDisplayOn: true)
+        let held = KeepAwakePolicy.decide(inputs(.indefinite, settings: lit))
+        #expect(!KeepAwakePolicy.shouldLock(held, settings: lit, humanIdle: 599, locked: false))
+        #expect(KeepAwakePolicy.shouldLock(held, settings: lit, humanIdle: 600, locked: false))
+        #expect(!KeepAwakePolicy.shouldLock(held, settings: lit, humanIdle: 3600, locked: true), "already locked")
+        var off = lit
+        off.lockWhenAway = false
+        #expect(!KeepAwakePolicy.shouldLock(held, settings: off, humanIdle: 3600, locked: false))
+        let dark = KeepAwakeSettings()
+        let systemOnly = KeepAwakePolicy.decide(inputs(.indefinite, settings: dark))
+        #expect(!KeepAwakePolicy.shouldLock(systemOnly, settings: dark, humanIdle: 3600, locked: false),
+                "the screen is macOS's to lock when AgentBar is not holding it on")
+        // Four minutes of absence, then our own nudge: the human clock still says away.
+        let idle = InputIdle.humanIdle(system: 1, nudge: (Date(), 600), now: Date())
+        #expect(KeepAwakePolicy.shouldLock(held, settings: lit, humanIdle: idle, locked: false))
+    }
+
+    @Test func sleepsOnlyWhenTheAgentsAreDoneAndNobodyIsHere() {
+        let on = KeepAwakeSettings(sleepWhenDone: true)
+        let done = t0.addingTimeInterval(-KeepAwakePolicy.grace)
+        func sleep(_ mode: KeepAwakeMode?, _ s: KeepAwakeSettings = on, working: Int = 0, last: Date? = done,
+                   idle: TimeInterval = 600) -> Bool {
+            KeepAwakePolicy.shouldSleepNow(mode: mode, settings: s, working: working, lastWorkAt: last,
+                                           humanIdle: idle, now: t0)
+        }
+        #expect(sleep(.whileAgentsWork))
+        #expect(!sleep(.whileAgentsWork, KeepAwakeSettings()), "off unless switched on")
+        #expect(!sleep(.whileAgentsWork, working: 1), "an agent still works")
+        #expect(!sleep(.whileAgentsWork, last: nil), "no work was ever seen")
+        #expect(!sleep(.whileAgentsWork, last: t0.addingTimeInterval(-60)), "still in the grace")
+        #expect(!sleep(.whileAgentsWork, idle: 30), "someone is using the Mac")
+        #expect(!sleep(.indefinite) && !sleep(.until(t0.addingTimeInterval(60))), "only while agents work")
+    }
+
+    @Test func aTriggerHoldsWithoutAClickAndSaysWhich() {
+        let d = KeepAwakePolicy.decide(inputs(nil, trigger: xcode))
+        #expect(d.assertion == .system)
+        #expect(d.trigger == xcode)
+        #expect(d.reason == "Awake while Xcode is running")
+        // A click beats a trigger: the mode speaks, and no trigger is named.
+        let clicked = KeepAwakePolicy.decide(inputs(.until(t0.addingTimeInterval(600)), trigger: xcode))
+        #expect(clicked.trigger == nil)
+        #expect(clicked.reason.hasPrefix("Awake until"))
+        // Pauses still apply to a trigger.
+        #expect(KeepAwakePolicy.decide(inputs(nil, lowPower: true, trigger: xcode)).paused == .lowPower)
+    }
+
+    @Test func theAgentsTriggerIsOffUntilAnAgentWorks() throws {
+        let agents = TriggerHold(trigger: .agents, mode: .whileAgentsWork, because: "an agent works")
+        let idle = KeepAwakePolicy.decide(inputs(nil, trigger: agents))
+        #expect(idle == KeepAwakeDecision(), "armed is not on: no cup, no row, no assertion")
+        let working = KeepAwakePolicy.decide(inputs(nil, [try session([:])], trigger: agents))
+        #expect(working.assertion == .system)
+        #expect(working.reason == "Awake while 1 agent works · started by itself")
+        let grace = KeepAwakePolicy.decide(inputs(nil, lastWorkAt: t0.addingTimeInterval(-60), trigger: agents))
+        #expect(grace.isOn, "the grace after the last turn holds too")
+    }
+}
+
+@Suite struct KeepAwakeTriggerPolicyTests {
+    private func name(_ id: String) -> String { id == "com.apple.dt.Xcode" ? "Xcode" : id }
+
+    @Test func eachConditionHoldsAndReleases() {
+        let s = KeepAwakeTriggerSettings(charger: true, display: true, apps: ["com.apple.dt.Xcode"])
+        var c = KeepAwakeTriggerConditions()
+        #expect(KeepAwakeTriggerPolicy.hold(s, c, snoozed: [], appName: name) == nil)
+        c.pluggedIn = true
+        #expect(KeepAwakeTriggerPolicy.hold(s, c, snoozed: [], appName: name)?.trigger == .charger)
+        c.externalDisplay = true
+        #expect(KeepAwakeTriggerPolicy.hold(s, c, snoozed: [], appName: name)?.trigger == .display)
+        c.runningApps = ["com.apple.dt.Xcode", "com.other"]
+        let app = KeepAwakeTriggerPolicy.hold(s, c, snoozed: [], appName: name)
+        #expect(app?.trigger == .app("com.apple.dt.Xcode"))
+        #expect(app?.because == "Xcode is running")
+        #expect(app?.mode == .indefinite)
+    }
+
+    @Test func switchedOffTriggersNeverHold() {
+        let c = KeepAwakeTriggerConditions(pluggedIn: true, externalDisplay: true, runningApps: ["x"],
+                                           agentsWorking: true)
+        #expect(KeepAwakeTriggerPolicy.hold(KeepAwakeTriggerSettings(), c, snoozed: [], appName: name) == nil)
+    }
+
+    @Test func theAgentsTriggerIsArmedAllTheTimeAndComesLast() {
+        let s = KeepAwakeTriggerSettings(agents: true, charger: true)
+        #expect(KeepAwakeTriggerPolicy.hold(s, .init(), snoozed: [], appName: name)?.mode == .whileAgentsWork)
+        #expect(KeepAwakeTriggerPolicy.hold(s, .init(pluggedIn: true), snoozed: [], appName: name)?.trigger
+                == .charger, "a condition that is true now speaks first")
+    }
+
+    @Test func aSnoozeLastsUntilItsConditionGoesAway() {
+        let s = KeepAwakeTriggerSettings(charger: true)
+        let plugged = KeepAwakeTriggerConditions(pluggedIn: true)
+        #expect(KeepAwakeTriggerPolicy.hold(s, plugged, snoozed: [.charger], appName: name) == nil)
+        #expect(KeepAwakeTriggerPolicy.liftSnoozes([.charger], plugged) == [.charger], "still plugged in")
+        #expect(KeepAwakeTriggerPolicy.liftSnoozes([.charger], .init()).isEmpty, "unplugged: armed again")
+        #expect(KeepAwakeTriggerPolicy.liftSnoozes([.agents], .init(agentsWorking: true)) == [.agents])
+    }
+
+    @Test func triggersRoundTripWithoutDuplicates() throws {
+        let d = try #require(UserDefaults(suiteName: "agentbar-triggers-\(UUID().uuidString)"))
+        KeepAwakePrefs.setTriggers(.init(agents: true, display: true, apps: ["a", "b", "a"]), d)
+        #expect(KeepAwakePrefs.triggers(d) == .init(agents: true, display: true, apps: ["a", "b"]))
+    }
+}
+
+@Suite struct AwakeLogTests {
+    private func file() -> URL {
+        URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("awake-\(UUID().uuidString).jsonl")
+    }
+
+    @Test func aStretchIsWrittenAtStartAndEndAndTheLastLineWins() throws {
+        let url = file()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let log = AwakeLog(url: url)
+        log.holding(.agents, now: t0)
+        log.holding(.agents, now: t0.addingTimeInterval(60))  // same kind, same stretch
+        log.holding(nil, now: t0.addingTimeInterval(3600))
+        let all = AwakeLog.read(url: url)
+        #expect(all.count == 1)
+        #expect(all.first?.start == t0)
+        #expect(all.first?.end == t0.addingTimeInterval(3600))
+        #expect(all.first?.kind == .agents)
+    }
+
+    @Test func aTornLineCostsOnlyItself() throws {
+        let url = file()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let ok = #"{"end":2000,"id":"a","kind":"timed","start":1000}"#
+        try (ok + "\n" + #"{"end":30"# + "\n").write(to: url, atomically: true, encoding: .utf8)
+        #expect(AwakeLog.read(url: url).map(\.id) == ["a"])
+    }
+
+    @Test func stretchesAreClippedToTheRange() {
+        let s = [AwakeLog.Stretch(id: "a", start: t0, end: t0.addingTimeInterval(7200), kind: .agents),
+                 AwakeLog.Stretch(id: "b", start: t0.addingTimeInterval(7200), end: t0.addingTimeInterval(9000),
+                                  kind: .timed)]
+        let range = DateInterval(start: t0.addingTimeInterval(3600), end: t0.addingTimeInterval(8000))
+        let total = AwakeLog.total(s, in: range)
+        #expect(total.all == 3600 + 800)
+        #expect(total.agents == 3600)
+    }
+
+    @Test func pruneDropsAMonthOldStretch() throws {
+        let url = file()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let now = t0.addingTimeInterval(40 * 86_400)
+        let log = AwakeLog(url: url)
+        log.holding(.timed, now: t0)
+        log.holding(nil, now: t0.addingTimeInterval(60))
+        log.holding(.agents, now: now.addingTimeInterval(-60))
+        log.holding(nil, now: now)
+        AwakeLog.prune(url: url, now: now)
+        #expect(AwakeLog.read(url: url).map(\.kind) == [.agents])
     }
 }

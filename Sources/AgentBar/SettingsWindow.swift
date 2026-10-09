@@ -25,6 +25,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     enum Page: String, CaseIterable {
         case general
         case keepAwake = "keep-awake"
+        case awakeTriggers = "awake-triggers"
         case agents, notifications, shortcuts, usage, approvals, rules
         // Spelled the way `agentbar://settings/claude-code` reads: links are lowercase.
         case claudeCode = "claude-code"
@@ -35,6 +36,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             switch self {
             case .general:     return "General"
             case .keepAwake:   return "Keep Awake"
+            case .awakeTriggers: return "Awake Triggers"
             case .agents:      return "Agents"
             case .notifications: return "Notifications"
             case .shortcuts:   return "Shortcuts"
@@ -55,6 +57,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             switch self {
             case .general:       return .systemGray
             case .keepAwake:     return .systemBrown
+            case .awakeTriggers: return .systemBrown
             // The one page that writes into other programs' files.
             case .agents:        return .systemTeal
             case .notifications: return .systemRed
@@ -75,6 +78,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             switch self {
             case .general:     return "gearshape"
             case .keepAwake:   return "cup.and.saucer"
+            case .awakeTriggers: return "bolt"
             case .agents:      return "point.3.connected.trianglepath.dotted"
             case .notifications: return "bell"
             case .shortcuts:   return "keyboard"
@@ -94,6 +98,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var denyRecorder: ShortcutRecorder!
     private var launchBox: NSSwitch!
     private var launchRecorder: ShortcutRecorder!
+    private var awakeBox: NSSwitch!
+    private var awakeRecorder: ShortcutRecorder!
     private var soundsBox: NSSwitch!
     private var volumeSlider: NSSlider!
     private var testButton: NSButton!
@@ -156,6 +162,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var rulesPageButton: NSButton!
     private var rulesView: RulesView!
     private let keepAwake = KeepAwakeSettingsPage()
+    private let awakeTriggers = KeepAwakeTriggersPage()
     private var decisionWeek: DecisionWeekView!
     private var notifySettingsButton: NSButton!
     private var notifyTestButton: NSButton!
@@ -195,7 +202,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     /// away keeps an app-wide key monitor swallowing keystrokes and every global
     /// shortcut suspended until something ends it.
     private func cancelCaptures() {
-        for recorder in [allowRecorder, denyRecorder, launchRecorder] { recorder?.cancelCapture() }
+        for recorder in [allowRecorder, denyRecorder, launchRecorder, awakeRecorder] { recorder?.cancelCapture() }
     }
 
     private func build() {
@@ -355,7 +362,9 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         allowRecorder = ShortcutRecorder(defaultsKey: "allowHotKey", fallback: .defaultAllow)
         denyRecorder = ShortcutRecorder(defaultsKey: "denyHotKey", fallback: .defaultDeny)
         launchRecorder = ShortcutRecorder(defaultsKey: "launchHotKey", fallback: .defaultLaunch)
-        for recorder in [allowRecorder!, denyRecorder!, launchRecorder!] {
+        awakeBox = SettingsChrome.toggle(target: self, action: #selector(toggleAwakeShortcut))
+        awakeRecorder = ShortcutRecorder(defaultsKey: "awakeHotKey", fallback: .defaultAwake)
+        for recorder in [allowRecorder!, denyRecorder!, launchRecorder!, awakeRecorder!] {
             recorder.onCaptureChange = { [weak self, weak recorder] capturing in
                 guard let self else { return }
                 if capturing {
@@ -363,7 +372,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                     // must reach the recorder, not the Carbon hotkey — suspend,
                     // then re-register on the way out.
                     let others: [ShortcutRecorder?] = [self.allowRecorder, self.denyRecorder,
-                                                       self.launchRecorder]
+                                                       self.launchRecorder, self.awakeRecorder]
                     for other in others where other !== recorder { other?.cancelCapture() }
                     HotKeyCenter.shared.suspend()
                 } else {
@@ -377,7 +386,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                 // only on the machine you are not building on.
                 guard let self else { return false }
                 let all: [ShortcutRecorder?] = [self.allowRecorder, self.denyRecorder,
-                                                self.launchRecorder]
+                                                self.launchRecorder, self.awakeRecorder]
                 return all.contains { $0 !== recorder && $0?.combo == combo }
             }
             recorder.onRecord = { [weak self] in self?.onChange?() }
@@ -438,6 +447,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         rulesPageButton = SettingsChrome.smallButton("Open Rules", target: self,
                                                      action: #selector(showRulesPage))
         keepAwake.onChange = { [weak self] in self?.onChange?() }
+        awakeTriggers.onChange = { [weak self] in self?.onChange?() }
         rulesView = RulesView()
         // A rule changed on the Rules page is a rule the week reads, so the week
         // is redrawn with it.
@@ -578,6 +588,12 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                        control: launchBox),
                     SettingsChrome.row("Open the launcher", control: launchRecorder),
                 ]),
+                SettingsChrome.card([
+                    SettingsChrome.row("Keep Mac Awake",
+                                       "The cup in the island's footer, from anywhere: on with "
+                                       + "your last mode, or off.", control: awakeBox),
+                    SettingsChrome.row("Turn it on or off", control: awakeRecorder),
+                ]),
             ])
         case .usage:
             add([
@@ -639,6 +655,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             ])
         case .keepAwake:
             add(keepAwake.views)
+        case .awakeTriggers:
+            add(awakeTriggers.views)
         case .rules:
             add([
                 SettingsChrome.card([
@@ -765,6 +783,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         allowRecorder.reload()
         denyRecorder.reload()
         launchRecorder.reload()
+        awakeBox.state = KeepAwakePrefs.shortcut() ? .on : .off
+        awakeRecorder.reload()
         soundsBox.state = SoundCenter.enabled ? .on : .off
         volumeSlider.doubleValue = SoundCenter.volume
         hideIslandBox.state = IslandVisibility.Prefs.hideWhenEmpty ? .on : .off
@@ -781,6 +801,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         rulesView.reload()
         decisionWeek.reload()
         keepAwake.reload()
+        awakeTriggers.reload()
         notifyApprovalsBox.state = Notifier.Prefs.approvals ? .on : .off
         notifyFailuresBox.state = Notifier.Prefs.failures ? .on : .off
         notifyQuietBox.state = Notifier.Prefs.quiet ? .on : .off
@@ -794,6 +815,14 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         syncRecorderState()
         syncSoundControls()
         syncSoundPack()
+    }
+
+    @objc private func toggleAwakeShortcut() {
+        KeepAwakePrefs.setShortcut(awakeBox.state == .on)
+        if awakeBox.state == .off { awakeRecorder.cancelCapture() }
+        syncRecorderState()
+        keepAwake.reload()
+        onChange?()
     }
 
     @objc private func toggleLauncher() {
@@ -1307,6 +1336,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         allowRecorder.isEnabled = on
         denyRecorder.isEnabled = on
         launchRecorder.isEnabled = launchBox.state == .on
+        awakeRecorder.isEnabled = awakeBox.state == .on
     }
 
     private func syncSoundControls() {

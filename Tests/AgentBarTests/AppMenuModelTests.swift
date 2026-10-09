@@ -196,7 +196,8 @@ import Testing
         #expect(off.state == .off)
         #expect(off.children.filter { !$0.separator }.map(\.title) == [
             "Off", "While Agents Work", "For 15 Minutes", "For 30 Minutes", "For 1 Hour", "For 2 Hours", "Until 18:00", "Indefinitely",
-            "Keep Screen On", "Stay Awake With Lid Closed…", "Keep Awake Settings…",
+            "Keep Screen On", "Sleep When Agents Are Done", "Stay Awake With Lid Closed…",
+            "Keep Awake Settings…",
         ])
         // The status line says what is happening and does nothing when clicked.
         #expect(off.children.first?.command == nil)
@@ -229,6 +230,22 @@ import Testing
         let lid = try #require(row.children.first { $0.command == .keepAwakeToggleLid })
         #expect(display.state == .on)
         #expect(lid.state == .off)
+        #expect(Self.snapshot(Self.menuBar(i)) == Self.snapshot(Self.island(i)))
+    }
+
+    /// A trigger holding the Mac up is on, with no mode ticked — no click chose
+    /// one — and Turn Off says it waits for the trigger to go away.
+    @Test func keepAwakeHeldByATrigger() throws {
+        var i = Self.inputs(.idle)
+        i.keepAwake = KeepAwakeMenu(current: nil, reason: "Awake while Xcode is running", badge: "auto",
+                                    held: true, sleepWhenDone: true)
+        let row = Self.snapshot(Self.island(i))[2]
+        #expect(row.state == .on)
+        #expect(row.children.allSatisfy { if case .keepAwake = $0.command { return $0.state == .off }; return true })
+        let off = try #require(row.children.first { $0.command == .keepAwakeOff })
+        #expect(off.toolTip == "Off until what started it goes away")
+        let sleep = try #require(row.children.first { $0.command == .keepAwakeToggleSleepWhenDone })
+        #expect(sleep.state == .on)
         #expect(Self.snapshot(Self.menuBar(i)) == Self.snapshot(Self.island(i)))
     }
 }

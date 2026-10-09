@@ -76,8 +76,20 @@ struct BatteryReading: Equatable {
 struct KeepAwakeSettings: Equatable {
     var keepDisplayOn = false
     var batteryGuard = true
+    /// Pause below this percent on battery; `KeepAwakePolicy.anyBattery` pauses
+    /// on battery at all — "only while plugged in".
     var batteryFloor = 20
     var nudge = false
+    var pauseInLowPower = true
+    /// Lock the screen after `lockAfter` without input, while AgentBar holds the
+    /// screen on.
+    var lockWhenAway = true
+    var lockAfter: TimeInterval = 10 * 60
+    /// "While agents work": put the Mac to sleep once they are done and you are away.
+    var sleepWhenDone = false
+
+    /// AgentBar, not macOS, decides whether the screen stays on.
+    var holdsDisplay: Bool { keepDisplayOn || nudge }
 }
 
 enum KeepAwakeAssertion: Equatable {
@@ -92,6 +104,7 @@ struct KeepAwakeDecision: Equatable {
     enum Pause: Equatable {
         case battery(Int)
         case otherUser
+        case lowPower
     }
 
     var assertion: KeepAwakeAssertion = .none
@@ -104,6 +117,8 @@ struct KeepAwakeDecision: Equatable {
     var expired = false
     /// Local sessions working (or waiting on you, within the cap) right now.
     var working = 0
+    /// The trigger holding the Mac up, when no click did.
+    var trigger: TriggerHold?
 
     var isOn: Bool { assertion != .none }
 }
@@ -117,6 +132,8 @@ enum KeepAwakePolicy {
     /// A request waiting on you is mid-work — the agent is blocked, not finished —
     /// but one nobody answers must not hold the Mac up all night.
     static let humanWaitCap: TimeInterval = 30 * 60
+    /// The battery floor that means "pause on battery at all".
+    static let anyBattery = 100
 
     struct Inputs {
         var mode: KeepAwakeMode?
@@ -127,6 +144,10 @@ enum KeepAwakePolicy {
         var battery: BatteryReading?
         var userSessionActive = true
         var settings = KeepAwakeSettings()
+        var lowPower = false
+        var screenLocked = false
+        /// A trigger that would hold the Mac up; used only with no `mode`.
+        var trigger: TriggerHold?
     }
 
     /// Work on this Mac. A cloud or ssh row (`entrypoint: "cloud"`) runs on a
@@ -142,8 +163,10 @@ enum KeepAwakePolicy {
 
     static func decide(_ i: Inputs) -> KeepAwakeDecision {
         var d = KeepAwakeDecision()
-        guard let mode = i.mode else { return d }
-        let kind: KeepAwakeAssertion = i.settings.keepDisplayOn || i.settings.nudge
+        let trigger = i.mode == nil ? i.trigger : nil
+        guard let mode = i.mode ?? trigger?.mode else { return d }
+        // Locked, the screen has nothing to show: it may sleep while the Mac works.
+        let kind: KeepAwakeAssertion = i.settings.holdsDisplay && !i.screenLocked
             ? .systemAndDisplay : .system
         d.working = i.sessions.filter { isLocalWork($0, now: i.now) }.count
 
@@ -156,7 +179,7 @@ enum KeepAwakePolicy {
             d.endsAt = end
             d.reason = "Awake until \(clock(end)) · \(left(end.timeIntervalSince(i.now)))"
         case .indefinite:
-            d.reason = "Awake until you turn it off"
+            d.reason = trigger.map { "Awake while \($0.because)" } ?? "Awake until you turn it off"
         case .whileAgentsWork:
             if d.working > 0 {
                 d.reason = d.working == 1 ? "Awake while 1 agent works" : "Awake while \(d.working) agents work"
@@ -165,11 +188,16 @@ enum KeepAwakePolicy {
                 d.endsAt = end
                 d.reason = "Agents done · sleeps in \(span(end.timeIntervalSince(i.now)))"
             } else {
+                // Armed by a trigger and nothing to hold up: that is simply off —
+                // the trigger is a setting, not a session.
+                if trigger != nil { return KeepAwakeDecision() }
                 // Armed, nothing to hold up: the Mac sleeps as usual until an agent starts.
                 d.reason = "Waiting for an agent to start"
                 return d
             }
         }
+        d.trigger = trigger
+        if trigger != nil, case .whileAgentsWork = mode { d.reason += " · started by itself" }
 
         // Paused, not ended: the mode stays, and comes back by itself.
         if !i.userSessionActive {
@@ -177,12 +205,20 @@ enum KeepAwakePolicy {
             d.reason = "Paused — another user is signed in"
             return d
         }
-        if i.settings.batteryGuard, let b = i.battery, b.onBattery, b.percent < i.settings.batteryFloor {
+        if i.settings.batteryGuard, let b = i.battery, b.onBattery,
+           i.settings.batteryFloor >= anyBattery || b.percent < i.settings.batteryFloor {
             d.paused = .battery(b.percent)
-            d.reason = "Paused — battery at \(b.percent)%"
+            d.reason = i.settings.batteryFloor >= anyBattery
+                ? "Paused — on battery" : "Paused — battery at \(b.percent)%"
+            return d
+        }
+        if i.settings.pauseInLowPower, i.lowPower {
+            d.paused = .lowPower
+            d.reason = "Paused — Low Power Mode"
             return d
         }
         d.assertion = kind
+        if i.screenLocked { d.reason += " · locked" }
         return d
     }
 
@@ -190,7 +226,7 @@ enum KeepAwakePolicy {
     /// deadline, the end of the grace, a waiting request reaching its cap, and —
     /// while a countdown shows — the next minute, so "42 min left" stays true.
     static func nextEvaluation(_ i: Inputs) -> Date? {
-        guard let mode = i.mode else { return nil }
+        guard let mode = i.mode ?? i.trigger?.mode else { return nil }
         var candidates: [Date] = []
         let d = decide(i)
         if let end = d.endsAt {
@@ -203,6 +239,24 @@ enum KeepAwakePolicy {
             }
         }
         return candidates.filter { $0 > i.now }.min()
+    }
+
+    /// Lock the screen now? Only while AgentBar holds the screen on — otherwise
+    /// macOS's own display sleep and password settings decide — and only once per
+    /// absence: a locked screen is not locked again.
+    static func shouldLock(_ d: KeepAwakeDecision, settings: KeepAwakeSettings,
+                           humanIdle: TimeInterval, locked: Bool) -> Bool {
+        d.assertion == .systemAndDisplay && settings.lockWhenAway && !locked && humanIdle >= settings.lockAfter
+    }
+
+    /// Put the Mac to sleep now? "While agents work" with Sleep When Done: work
+    /// was seen, none is left, the grace is over, and nobody has touched the Mac
+    /// for as long as the grace — it never sleeps a Mac someone is using.
+    static func shouldSleepNow(mode: KeepAwakeMode?, settings: KeepAwakeSettings, working: Int,
+                               lastWorkAt: Date?, humanIdle: TimeInterval, now: Date) -> Bool {
+        guard settings.sleepWhenDone, case .whileAgentsWork = mode, working == 0,
+              let last = lastWorkAt else { return false }
+        return now.timeIntervalSince(last) >= grace && humanIdle >= grace
     }
 
     // MARK: - Words

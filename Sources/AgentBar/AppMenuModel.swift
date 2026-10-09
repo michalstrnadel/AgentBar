@@ -96,8 +96,9 @@ enum AppMenuModel {
     /// cup is the one-click toggle.
     static func keepAwakeEntry(_ k: KeepAwakeMenu) -> AppMenuEntry {
         // What it is doing, first: the one line that answers "is it on, and why".
+        let on = k.current != nil || k.held
         var children = [AppMenuEntry(id: "awake.status", title: k.reason,
-                                     symbol: k.current == nil ? "moon.zzz" : "cup.and.saucer.fill")]
+                                     symbol: on ? "cup.and.saucer.fill" : "moon.zzz")]
         children += KeepAwakeChoice.allCases.map { c in
             AppMenuEntry(id: "awake.\(c.rawValue)", title: c.title(untilMinutes: k.untilMinutes),
                          action: .keepAwake(c), on: k.current == c,
@@ -108,6 +109,10 @@ enum AppMenuModel {
                                      action: .keepAwakeToggleDisplay, on: k.display,
                                      toolTip: k.display ? "On — the screen stays lit while Keep Awake is on"
                                         : "Off — the screen dims and locks as usual; the Mac keeps working"))
+        children.append(AppMenuEntry(id: "awake.sleepdone", title: "Sleep When Agents Are Done",
+                                     action: .keepAwakeToggleSleepWhenDone, on: k.sleepWhenDone,
+                                     toolTip: "While Agents Work: once they finish and you've been away five "
+                                        + "minutes, the Mac goes to sleep"))
         // The ellipsis says what macOS convention says it says: another step
         // follows, here the password.
         children.append(AppMenuEntry(id: "awake.lid",
@@ -117,8 +122,9 @@ enum AppMenuModel {
                                         : "Close the lid and your agents keep working. Asks for your password; "
                                           + "turns off by itself when Keep Awake ends."))
         children.append(.separator("awake.sep2"))
-        if k.current != nil {
-            children.append(AppMenuEntry(id: "awake.off", title: "Turn Off", action: .keepAwakeOff))
+        if on {
+            children.append(AppMenuEntry(id: "awake.off", title: "Turn Off", action: .keepAwakeOff,
+                                         toolTip: k.held ? "Off until what started it goes away" : nil))
         }
         if k.lidLeftover {
             children.append(AppMenuEntry(
@@ -129,8 +135,8 @@ enum AppMenuModel {
         children.append(AppMenuEntry(id: "awake.settings", title: "Keep Awake Settings…",
                                      action: .openKeepAwakeSettings))
         return AppMenuEntry(id: "awake", title: "Keep Mac Awake",
-                            symbol: k.current == nil ? "cup.and.saucer" : "cup.and.saucer.fill",
-                            on: k.current != nil, toolTip: k.reason, badge: k.badge,
+                            symbol: on ? "cup.and.saucer.fill" : "cup.and.saucer",
+                            on: on, toolTip: k.reason, badge: k.badge,
                             children: children)
     }
 
@@ -253,6 +259,7 @@ enum AppMenuAction: Equatable {
     case keepAwakeRestoreLid
     case keepAwakeToggleDisplay
     case keepAwakeToggleLid
+    case keepAwakeToggleSleepWhenDone
     case openKeepAwakeSettings
 
     func perform() {
@@ -300,6 +307,10 @@ enum AppMenuAction: Equatable {
         case .keepAwakeToggleLid:
             KeepAwake.shared.setLid(!KeepAwakePrefs.lid())
             SettingsWindow.shared.refreshIfVisible()
+        case .keepAwakeToggleSleepWhenDone:
+            KeepAwakePrefs.setSleepWhenDone(!KeepAwakePrefs.settings().sleepWhenDone)
+            KeepAwake.shared.settingsChanged()
+            SettingsWindow.shared.refreshIfVisible()
         case .openKeepAwakeSettings:
             SettingsWindow.shared.show(page: .keepAwake)
         }
@@ -337,6 +348,9 @@ struct KeepAwakeMenu: Equatable {
     var display = false
     var lid = false
     var lidLeftover = false
+    /// A trigger holds the Mac up (no click did).
+    var held = false
+    var sleepWhenDone = false
 
     static var current: KeepAwakeMenu {
         let k = KeepAwake.shared
@@ -344,7 +358,9 @@ struct KeepAwakeMenu: Equatable {
                              reason: k.isOn ? k.decision.reason : "Off — the Mac sleeps as usual",
                              badge: k.badge, display: KeepAwakePrefs.settings().keepDisplayOn,
                              lid: KeepAwakePrefs.lid() || LidSleep.shared.isOn,
-                             lidLeftover: LidSleep.shared.hasLeftover)
+                             lidLeftover: LidSleep.shared.hasLeftover,
+                             held: k.decision.trigger != nil,
+                             sleepWhenDone: KeepAwakePrefs.settings().sleepWhenDone)
     }
 }
 

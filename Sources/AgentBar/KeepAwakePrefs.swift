@@ -4,7 +4,11 @@ import Foundation
 /// menu and the Settings page all read them. The defaults store is passed in so a
 /// test can use a suite of its own instead of the person's settings.
 enum KeepAwakePrefs {
-    static let floorChoices = [10, 20, 30, 50]
+    /// The battery pause's choices, as the popup lists them: 100 is "always"
+    /// (`KeepAwakePolicy.anyBattery`), the rest are "below N %".
+    static let floorChoices = [KeepAwakePolicy.anyBattery, 50, 30, 20, 10]
+    /// "Lock the screen when you leave": after this many minutes.
+    static let lockChoices = [2, 5, 10, 15, 30]
 
     private enum Key {
         static let lastChoice = "keepAwakeLastChoice"
@@ -16,6 +20,15 @@ enum KeepAwakePrefs {
         static let lid = "keepAwakeLid"
         static let mode = "keepAwakeMode"
         static let keyboard = "keepAwakeKeyboardDark"
+        static let lowPower = "keepAwakePauseLowPower"
+        static let lock = "keepAwakeLockWhenAway"
+        static let lockMinutes = "keepAwakeLockMinutes"
+        static let sleepWhenDone = "keepAwakeSleepWhenDone"
+        static let shortcut = "keepAwakeShortcut"
+        static let triggerAgents = "keepAwakeTriggerAgents"
+        static let triggerCharger = "keepAwakeTriggerCharger"
+        static let triggerDisplay = "keepAwakeTriggerDisplay"
+        static let triggerApps = "keepAwakeTriggerApps"
     }
 
     /// What one click on the cup starts. "While agents work" until something else
@@ -43,7 +56,43 @@ enum KeepAwakePrefs {
             batteryGuard: d.object(forKey: Key.batteryGuard) as? Bool ?? true,
             batteryFloor: floorChoices.contains(d.integer(forKey: Key.batteryFloor))
                 ? d.integer(forKey: Key.batteryFloor) : 20,
-            nudge: d.bool(forKey: Key.nudge))
+            nudge: d.bool(forKey: Key.nudge),
+            pauseInLowPower: d.object(forKey: Key.lowPower) as? Bool ?? true,
+            // On unless switched off: a Mac held awake with its screen on would
+            // otherwise sit unlocked all night.
+            lockWhenAway: d.object(forKey: Key.lock) as? Bool ?? true,
+            lockAfter: TimeInterval(lockMinutes(d) * 60),
+            sleepWhenDone: d.bool(forKey: Key.sleepWhenDone))
+    }
+
+    static func lockMinutes(_ d: UserDefaults = .standard) -> Int {
+        lockChoices.contains(d.integer(forKey: Key.lockMinutes)) ? d.integer(forKey: Key.lockMinutes) : 10
+    }
+    static func setLockMinutes(_ m: Int, _ d: UserDefaults = .standard) {
+        d.set(lockChoices.contains(m) ? m : 10, forKey: Key.lockMinutes)
+    }
+    static func setLockWhenAway(_ on: Bool, _ d: UserDefaults = .standard) { d.set(on, forKey: Key.lock) }
+    static func setPauseInLowPower(_ on: Bool, _ d: UserDefaults = .standard) { d.set(on, forKey: Key.lowPower) }
+    static func setSleepWhenDone(_ on: Bool, _ d: UserDefaults = .standard) { d.set(on, forKey: Key.sleepWhenDone) }
+
+    /// The global shortcut for the cup. Off until switched on: a chord claimed
+    /// system-wide by an app you did not ask to claim it is a chord stolen.
+    static func shortcut(_ d: UserDefaults = .standard) -> Bool { d.bool(forKey: Key.shortcut) }
+    static func setShortcut(_ on: Bool, _ d: UserDefaults = .standard) { d.set(on, forKey: Key.shortcut) }
+
+    /// "Start by itself". All off until the person switches one on.
+    static func triggers(_ d: UserDefaults = .standard) -> KeepAwakeTriggerSettings {
+        KeepAwakeTriggerSettings(agents: d.bool(forKey: Key.triggerAgents),
+                                 charger: d.bool(forKey: Key.triggerCharger),
+                                 display: d.bool(forKey: Key.triggerDisplay),
+                                 apps: d.stringArray(forKey: Key.triggerApps) ?? [])
+    }
+    static func setTriggers(_ t: KeepAwakeTriggerSettings, _ d: UserDefaults = .standard) {
+        d.set(t.agents, forKey: Key.triggerAgents)
+        d.set(t.charger, forKey: Key.triggerCharger)
+        d.set(t.display, forKey: Key.triggerDisplay)
+        var seen = Set<String>()
+        d.set(t.apps.filter { seen.insert($0).inserted }, forKey: Key.triggerApps)
     }
 
     static func setKeepDisplayOn(_ on: Bool, _ d: UserDefaults = .standard) { d.set(on, forKey: Key.display) }
