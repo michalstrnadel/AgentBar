@@ -3,6 +3,24 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.51.1 - 2026-10-09
+
+### Fixed
+
+- **A Claude Code session no longer shows "working" after its turn has ended.**
+  When the disk filled up, or a turn died on an error, the hook could never
+  record the end. The island then kept showing "Running command" for as long as
+  the terminal stayed open, and "While Agents Work" kept the Mac awake for it.
+  Now a row that hasn't changed for ten minutes is checked against its
+  transcript. If the transcript hasn't moved either and no tool call is still
+  waiting for its result, the row turns to done. A long build or test run is a
+  tool still waiting, so it's never mistaken for a stall.
+
+### Added
+
+- **Diagnostics checks the free space on the disk.** It warns under 5 GB and
+  fails under 1 GB, because a full disk stops every hook from recording at once.
+
 ## 1.51.0 - 2026-10-09
 
 ### Added
