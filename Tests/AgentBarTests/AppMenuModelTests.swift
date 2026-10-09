@@ -248,4 +248,29 @@ import Testing
         #expect(sleep.state == .on)
         #expect(Self.snapshot(Self.menuBar(i)) == Self.snapshot(Self.island(i)))
     }
+
+    /// A timed choice opens its menu with the countdown and offers more time; the
+    /// row is the live view on both surfaces, and "while agents work" — which has
+    /// no deadline to move — offers none.
+    @Test func keepAwakeCountsDownAndOffersMoreTime() throws {
+        let end = Date().addingTimeInterval(12 * 60)
+        var i = Self.inputs(.idle)
+        i.keepAwake = KeepAwakeMenu(current: .fifteenMinutes, reason: "Awake until 17:10 · 12 min left",
+                                    status: KeepAwakeStatusLine(title: "Awake until 17:10 · 12 min left",
+                                                                detail: "Until 17:10, then the Mac sleeps as usual",
+                                                                clock: .remaining(end: end, from: end.addingTimeInterval(-900)),
+                                                                on: true),
+                                    badge: "12m")
+        for items in [Self.menuBar(i), Self.island(i)] {
+            let sub = try #require(items[2].submenu)
+            let status = try #require(sub.items.first?.view as? KeepAwakeStatusView)
+            #expect(status.line.headline(now: end.addingTimeInterval(-61)) == "1:01 left")
+            #expect(sub.items.dropFirst().first.map(AppMenuRenderer.action(of:)) == .keepAwakeExtend)
+        }
+        #expect(Self.snapshot(Self.menuBar(i)) == Self.snapshot(Self.island(i)))
+
+        i.keepAwake.current = .whileAgentsWork
+        let agents = Self.snapshot(Self.island(i))[2]
+        #expect(!agents.children.contains { $0.command == .keepAwakeExtend })
+    }
 }

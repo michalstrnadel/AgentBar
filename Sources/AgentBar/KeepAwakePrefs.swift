@@ -19,6 +19,7 @@ enum KeepAwakePrefs {
         static let nudge = "keepAwakeNudge"
         static let lid = "keepAwakeLid"
         static let mode = "keepAwakeMode"
+        static let since = "keepAwakeSince"
         static let keyboard = "keepAwakeKeyboardDark"
         static let lowPower = "keepAwakePauseLowPower"
         static let lock = "keepAwakeLockWhenAway"
@@ -124,6 +125,16 @@ enum KeepAwakePrefs {
             d.set(data, forKey: Key.mode)
         } else {
             d.removeObject(forKey: Key.mode)
+            d.removeObject(forKey: Key.since)
         }
+    }
+
+    /// When the live mode was clicked on, kept with it so the countdown's bar and
+    /// "On for 1:02:03" survive a relaunch too.
+    static func since(_ d: UserDefaults = .standard) -> Date? {
+        d.object(forKey: Key.since) as? Date
+    }
+    static func setSince(_ date: Date?, _ d: UserDefaults = .standard) {
+        if let date { d.set(date, forKey: Key.since) } else { d.removeObject(forKey: Key.since) }
     }
 }

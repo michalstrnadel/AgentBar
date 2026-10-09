@@ -95,10 +95,20 @@ enum AppMenuModel {
     /// left on the badge. Picking the ticked mode again turns it off; the island's
     /// cup is the one-click toggle.
     static func keepAwakeEntry(_ k: KeepAwakeMenu) -> AppMenuEntry {
-        // What it is doing, first: the one line that answers "is it on, and why".
+        // What it is doing, first: the one line that answers "is it on, and why" —
+        // and, whenever it will stop by itself, a countdown that ticks while the
+        // menu is open (`KeepAwakeStatusView`).
         let on = k.current != nil || k.held
         var children = [AppMenuEntry(id: "awake.status", title: k.reason,
-                                     symbol: on ? "cup.and.saucer.fill" : "moon.zzz")]
+                                     symbol: on ? "cup.and.saucer.fill" : "moon.zzz", status: k.status)]
+        if let end = k.status.endsAt, k.current != nil, k.current != .whileAgentsWork {
+            let lid = k.lidEndsAt.map { " Closed-lid mode still ends at \(KeepAwakePolicy.clock($0))." } ?? ""
+            children.append(AppMenuEntry(
+                id: "awake.extend", title: "Add 15 Minutes", symbol: "plus.circle", action: .keepAwakeExtend,
+                toolTip: "Awake until \(KeepAwakePolicy.clock(end.addingTimeInterval(KeepAwake.extendStep))) "
+                    + "instead of \(KeepAwakePolicy.clock(end)).\(lid)"))
+        }
+        children.append(.separator("awake.sep0"))
         children += KeepAwakeChoice.allCases.map { c in
             AppMenuEntry(id: "awake.\(c.rawValue)", title: c.title(untilMinutes: k.untilMinutes),
                          action: .keepAwake(c), on: k.current == c,
@@ -256,6 +266,7 @@ enum AppMenuAction: Equatable {
     case quit
     case keepAwake(KeepAwakeChoice)
     case keepAwakeOff
+    case keepAwakeExtend
     case keepAwakeRestoreLid
     case keepAwakeToggleDisplay
     case keepAwakeToggleLid
@@ -296,6 +307,8 @@ enum AppMenuAction: Equatable {
             SettingsWindow.shared.refreshIfVisible()
         case .keepAwakeOff:
             KeepAwake.shared.stop()
+        case .keepAwakeExtend:
+            KeepAwake.shared.extend()
             SettingsWindow.shared.refreshIfVisible()
         case .keepAwakeRestoreLid:
             LidSleep.shared.restoreLeftover { _ in
@@ -331,6 +344,8 @@ struct AppMenuEntry: Equatable {
     var on: Bool?
     var toolTip: String?
     var badge: String?
+    /// Drawn as Keep Mac Awake's live status row instead of a plain title.
+    var status: KeepAwakeStatusLine?
     var keyEquivalent = ""
     var children: [AppMenuEntry] = []
     var isSeparator = false
@@ -345,6 +360,8 @@ struct KeepAwakeMenu: Equatable {
     var current: KeepAwakeChoice?
     var untilMinutes = 18 * 60
     var reason = "Off"
+    /// The status row's countdown; `.off` until something is on.
+    var status = KeepAwakeStatusLine.off
     var badge: String?
     var display = false
     var lid = false
@@ -352,16 +369,21 @@ struct KeepAwakeMenu: Equatable {
     /// A trigger holds the Mac up (no click did).
     var held = false
     var sleepWhenDone = false
+    /// When the running closed-lid session ends by itself, which "Add 15 Minutes"
+    /// cannot move.
+    var lidEndsAt: Date?
 
     static var current: KeepAwakeMenu {
         let k = KeepAwake.shared
         return KeepAwakeMenu(current: k.currentChoice, untilMinutes: KeepAwakePrefs.untilMinutes(),
                              reason: k.isOn ? k.decision.reason : "Off — the Mac sleeps as usual",
+                             status: k.statusLine,
                              badge: k.badge, display: KeepAwakePrefs.settings().keepDisplayOn,
                              lid: KeepAwakePrefs.lid() || LidSleep.shared.isOn,
                              lidLeftover: LidSleep.shared.hasLeftover,
                              held: k.decision.trigger != nil,
-                             sleepWhenDone: KeepAwakePrefs.settings().sleepWhenDone)
+                             sleepWhenDone: KeepAwakePrefs.settings().sleepWhenDone,
+                             lidEndsAt: k.lidEndsAt)
     }
 }
 

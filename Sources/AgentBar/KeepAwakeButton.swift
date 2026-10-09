@@ -2,7 +2,9 @@ import Cocoa
 
 /// The cup in the island's footer. A click turns Keep Mac Awake on with the last
 /// choice, or off; a right-click, a control-click or holding the button opens the
-/// list of modes. A plain NSButton runs its own tracking loop on mouse-down, which
+/// list of modes. Whenever it will stop by itself — a timed choice, or the five
+/// minutes after the agents finish — the time left counts down beside it, so a
+/// glance at the island answers "how long has it got". A plain NSButton runs its own tracking loop on mouse-down, which
 /// leaves no clean way to tell a hold from a click, so this is a small view that
 /// reads the mouse itself.
 final class KeepAwakeButton: NSView {
@@ -12,10 +14,14 @@ final class KeepAwakeButton: NSView {
     var onMenu: ((NSView) -> Void)?
 
     private let image = NSImageView()
+    private let countdown = NSTextField(labelWithString: "")
+    private let end: Date?
+    private lazy var ticker = SecondTicker { [weak self] in self?.tick() }
     private var holdTimer: Timer?
     private var heldOpen = false
 
-    init(on: Bool, paused: Bool, toolTip: String) {
+    init(on: Bool, paused: Bool, toolTip: String, countdownTo end: Date? = nil) {
+        self.end = end
         super.init(frame: NSRect(x: 0, y: 0, width: 20, height: 18))
         let symbol = on ? "cup.and.saucer.fill" : "cup.and.saucer"
         image.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
@@ -28,11 +34,26 @@ final class KeepAwakeButton: NSView {
         addSubview(image)
         translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: 20),
             heightAnchor.constraint(equalToConstant: 18),
-            image.centerXAnchor.constraint(equalTo: centerXAnchor),
+            image.leadingAnchor.constraint(equalTo: leadingAnchor),
+            image.widthAnchor.constraint(equalToConstant: 20),
             image.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+        if end != nil {
+            // Tabular digits, so the footer does not shuffle every second.
+            countdown.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+            countdown.textColor = image.contentTintColor
+            countdown.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(countdown)
+            NSLayoutConstraint.activate([
+                countdown.leadingAnchor.constraint(equalTo: image.trailingAnchor, constant: 1),
+                countdown.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
+                countdown.firstBaselineAnchor.constraint(equalTo: centerYAnchor, constant: 4),
+            ])
+            tick()
+        } else {
+            image.trailingAnchor.constraint(equalTo: trailingAnchor).isActive = true
+        }
         self.toolTip = toolTip
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
@@ -49,6 +70,19 @@ final class KeepAwakeButton: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        ticker.run(end != nil && window != nil, anchor: end)
+        if end != nil { tick() }
+    }
+
+    private func tick() {
+        guard let end else { return }
+        let text = KeepAwakePolicy.countdown(end.timeIntervalSinceNow)
+        countdown.stringValue = text
+        setAccessibilityValue("On, \(text) left")
+    }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 

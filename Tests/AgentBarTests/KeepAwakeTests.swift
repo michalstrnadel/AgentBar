@@ -506,3 +506,75 @@ private func inputs(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Dat
         #expect(AwakeLog.read(url: url).map(\.kind) == [.agents])
     }
 }
+
+/// The countdown: picking "For 15 Minutes" has to show, to the second, how long
+/// is left — 1.48.0 to 1.52.0 showed it nowhere you would look.
+@Suite struct KeepAwakeStatusLineTests {
+    private func line(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Date = t0,
+                      since: Date? = t0, lastWorkAt: Date? = nil, battery: BatteryReading? = nil,
+                      trigger: TriggerHold? = nil) -> KeepAwakeStatusLine {
+        let d = KeepAwakePolicy.decide(inputs(mode, sessions, now: now, lastWorkAt: lastWorkAt,
+                                              battery: battery, trigger: trigger))
+        return KeepAwakeStatusLine.make(mode: mode, decision: d, since: since, lastWorkAt: lastWorkAt)
+    }
+
+    @Test func aClockFace() {
+        #expect(KeepAwakePolicy.countdown(15 * 60) == "15:00")
+        #expect(KeepAwakePolicy.countdown(14 * 60 + 59.2) == "15:00", "rounded up: never 0:00 while it holds")
+        #expect(KeepAwakePolicy.countdown(65) == "1:05")
+        #expect(KeepAwakePolicy.countdown(0.4) == "0:01")
+        #expect(KeepAwakePolicy.countdown(-3) == "0:00")
+        #expect(KeepAwakePolicy.countdown(3723) == "1:02:03")
+    }
+
+    @Test func aTimedChoiceCountsDownWithABar() {
+        let end = t0.addingTimeInterval(15 * 60)
+        let l = line(.until(end), now: t0.addingTimeInterval(5 * 60))
+        #expect(l.on)
+        #expect(l.endsAt == end)
+        #expect(l.headline(now: t0.addingTimeInterval(5 * 60)) == "10:00 left")
+        #expect(l.headline(now: t0.addingTimeInterval(5 * 60 + 1)) == "9:59 left")
+        #expect(l.remainingFraction(now: t0.addingTimeInterval(5 * 60)) == 2.0 / 3)
+        #expect(l.detail.hasPrefix("Until "))
+        // No start (a relaunch from an older build): still counts, draws no bar.
+        let noStart = line(.until(end), since: nil)
+        #expect(noStart.headline(now: t0) == "15:00 left")
+        #expect(noStart.remainingFraction(now: t0) == nil)
+    }
+
+    @Test func indefiniteCountsUp() {
+        let l = line(.indefinite, now: t0.addingTimeInterval(3723))
+        #expect(l.headline(now: t0.addingTimeInterval(3723.9)) == "On for 1:02:03")
+        #expect(l.endsAt == nil)
+        #expect(l.remainingFraction(now: t0) == nil)
+        #expect(l.detail == "Until you turn it off")
+    }
+
+    @Test func agentsWorkingSayWhyAndTheGraceCountsDown() throws {
+        let working = line(.whileAgentsWork, [try session([:])])
+        #expect(working.clock == .none)
+        #expect(working.headline(now: t0) == "Awake while 1 agent works")
+
+        let done = line(.whileAgentsWork, [try session(["state": "done"])],
+                        now: t0.addingTimeInterval(60), lastWorkAt: t0)
+        #expect(done.title == "Agents done")
+        #expect(done.headline(now: t0.addingTimeInterval(60)) == "4:00 left")
+        #expect(done.remainingFraction(now: t0.addingTimeInterval(60)) == 0.8)
+
+        let armed = line(.whileAgentsWork, now: t0.addingTimeInterval(3600))
+        #expect(armed.headline(now: t0) == "Waiting for an agent to start")
+    }
+
+    @Test func pausedOffAndTriggersCountNothing() {
+        let paused = line(.until(t0.addingTimeInterval(600)), battery: BatteryReading(onBattery: true, percent: 5))
+        #expect(paused.paused)
+        #expect(paused.clock == .none)
+        #expect(paused.headline(now: t0) == "Paused — battery at 5%")
+        #expect(line(nil) == .off)
+        let held = line(nil, since: nil,
+                        trigger: TriggerHold(trigger: .charger, mode: .indefinite, because: "the charger is in"))
+        #expect(held.on)
+        #expect(held.clock == .none, "no click started it, so there is nothing to count from")
+        #expect(held.headline(now: t0) == "Awake while the charger is in")
+    }
+}

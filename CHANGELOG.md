@@ -3,6 +3,24 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.53.0 - 2026-10-09
+
+### Added
+
+- **Keep Mac Awake counts down.** Pick "For 15 Minutes" and the time left now
+  shows to the second: in large digits at the top of the Keep Awake menu, with
+  when it ends and a bar that empties as it runs, and beside the cup in the
+  island's footer. The five minutes after your agents finish count down the
+  same way, and "Indefinitely" shows how long it has been on. Before, the time
+  left sat in a grey line that only changed when the menu was rebuilt.
+- **Add 15 Minutes.** A timed choice offers more time right under the
+  countdown, without starting over.
+
+### Changed
+
+- The cup's menu in the island opens straight on the status line instead of
+  a "Keep Mac Awake" header that said nothing the cup didn't.
+
 ## 1.52.0 - 2026-10-09
 
 ### Changed

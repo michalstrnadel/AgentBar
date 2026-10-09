@@ -280,6 +280,14 @@ enum KeepAwakePolicy {
         return m == 0 ? "\(h) h" : "\(h) h \(m) min"
     }
 
+    /// A clock face for a countdown: "4:05", "12:34", "1:02:03". Rounded up, so
+    /// "For 15 Minutes" starts at 15:00 and a second still to go reads 0:01.
+    static func countdown(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded(.up)))
+        let h = total / 3600, m = total % 3600 / 60, s = total % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    }
+
     /// "42 min left".
     static func left(_ seconds: TimeInterval) -> String { "\(span(seconds)) left" }
 

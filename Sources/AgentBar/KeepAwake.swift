@@ -62,6 +62,7 @@ final class KeepAwake {
                 KeepAwakePrefs.setMode(nil)
             } else {
                 mode = saved
+                startedAt = KeepAwakePrefs.since()
             }
         }
         AwakeLog.prune()
@@ -119,12 +120,36 @@ final class KeepAwake {
         let now = Date()
         setMode(choice.mode(now: now, untilMinutes: KeepAwakePrefs.untilMinutes()))
         startedAt = now
+        KeepAwakePrefs.setSince(now)
         lastWorkAt = nil
         wasWorking = false
         lidRequested = KeepAwakePrefs.lid()
         inClick = true
         reevaluate()
         inClick = false
+    }
+
+    /// What "Add 15 Minutes" adds.
+    static let extendStep: TimeInterval = 15 * 60
+
+    /// "Add 15 Minutes": a running countdown gets longer instead of starting over,
+    /// so the bar keeps its beginning and simply has more left. Only a deadline
+    /// can be extended. A closed-lid session keeps the end its root watcher was
+    /// started with — moving that would take the password again.
+    func extend(by seconds: TimeInterval = KeepAwake.extendStep) {
+        guard case .until(let end) = mode else { return }
+        setMode(.until(max(end, Date()).addingTimeInterval(seconds)))
+        reevaluate()
+    }
+
+    /// The deadline closed-lid mode was started with, when it runs.
+    var lidEndsAt: Date? { LidSleep.shared.isOn ? LidSleep.shared.deadline : nil }
+
+    /// The status line every Keep Mac Awake menu opens with and the cup counts.
+    var statusLine: KeepAwakeStatusLine {
+        guard isOn else { return .off }
+        return KeepAwakeStatusLine.make(mode: mode, decision: decision, since: startedAt,
+                                        lastWorkAt: lastWorkAt)
     }
 
     /// A menu pick of the mode already on turns it off — the menu's toggle.

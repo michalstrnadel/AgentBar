@@ -76,6 +76,15 @@ enum AppMenuRenderer {
             item.image = image
         }
         item.toolTip = e.toolTip
+        if let status = e.status {
+            if let view = item.view as? KeepAwakeStatusView {
+                view.update(status)
+            } else {
+                item.view = KeepAwakeStatusView(status)
+            }
+        } else if item.view is KeepAwakeStatusView {
+            item.view = nil
+        }
         if #available(macOS 14.0, *) {
             item.badge = e.badge.map { NSMenuItemBadge(string: $0) }
         } else if let badge = e.badge {

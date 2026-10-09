@@ -25,6 +25,8 @@ final class LidSleep {
     static let pollSeconds = 5
 
     private(set) var isOn = false
+    /// When the root watcher turns sleep back on by itself, while it runs.
+    private(set) var deadline: Date?
     private(set) var isStarting = false
     /// Why the last start did not happen ("" when it did, or nothing was tried).
     private(set) var lastError = ""
@@ -73,6 +75,7 @@ final class LidSleep {
                 guard let self else { return }
                 self.isStarting = false
                 self.isOn = ok
+                self.deadline = ok ? end : nil
                 self.lastError = ok ? "" : message
                 if !ok { try? FileManager.default.removeItem(at: self.marker) }
                 completion(ok)
@@ -84,6 +87,7 @@ final class LidSleep {
     func stop() {
         guard isOn else { return }
         isOn = false
+        deadline = nil
         try? "stop".write(to: stopFile, atomically: true, encoding: .utf8)
         try? FileManager.default.removeItem(at: marker)
     }

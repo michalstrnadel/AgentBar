@@ -58,14 +58,16 @@ extension IslandController {
     }
 
     /// Keep Mac Awake, one click from the corner like Take a break. The tooltip
-    /// says what is happening and how to reach the other modes.
+    /// says what is happening and how to reach the other modes; whenever it will
+    /// stop by itself, the time left counts down beside the cup.
     private func keepAwakeButton() -> NSView {
         let k = KeepAwake.shared
         let hint = k.isOn
             ? "\(k.decision.reason) — click to stop · right-click or hold for options"
             : "Keep Mac awake \(KeepAwakePrefs.lastChoice().title(untilMinutes: KeepAwakePrefs.untilMinutes()).lowercased())"
               + " — click to start · right-click or hold for options"
-        let b = KeepAwakeButton(on: k.isOn, paused: k.decision.paused != nil, toolTip: hint)
+        let b = KeepAwakeButton(on: k.isOn, paused: k.decision.paused != nil, toolTip: hint,
+                                countdownTo: k.statusLine.endsAt)
         b.onClick = { KeepAwake.shared.toggle() }
         b.onMenu = { [weak self] view in self?.showKeepAwakeMenu(from: view) }
         return b
@@ -74,10 +76,8 @@ extension IslandController {
     /// The same mode list the shared menu's "Keep Mac Awake ▸" shows, rendered
     /// from the same entries, so the two can never offer different modes.
     private func showKeepAwakeMenu(from view: NSView) {
+        // No "Keep Mac Awake" header: the status row is one, and it counts.
         let menu = NSMenu()
-        let header = NSMenuItem(title: "Keep Mac Awake", action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        menu.addItem(header)
         let entry = AppMenuModel.keepAwakeEntry(.current)
         for item in AppMenuRenderer.items(entry.children, target: self, action: Self.appMenuAction) {
             menu.addItem(item)
