@@ -3,6 +3,16 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Changed
+
+- **Check for Updates… now answers where you can see it.** The click closed the
+  menu, so the result landed in a row nobody was looking at. A small window now
+  opens on the click, shows the check running, and then says you're up to date,
+  offers the new version, or names what went wrong. Only that click opens it:
+  the daily check and the automatic install stay silent.
+
 ## 1.51.1 - 2026-10-09
 
 ### Fixed

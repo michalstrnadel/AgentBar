@@ -280,7 +280,8 @@ enum AppMenuAction: Equatable {
         case .openSettings:
             SettingsWindow.shared.show()
         case .checkForUpdates:
-            UpdateChecker.shared.check(manual: true)
+            // The click closes the menu that would have shown the answer.
+            UpdatePrompt.shared.check()
         case .installUpdate:
             UpdateChecker.shared.installAvailable()
         case .openWhatsNew:

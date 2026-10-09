@@ -38,7 +38,10 @@ open "build/AgentBar.app"
    Windows are the exception, not the pattern: only `WelcomeWindow`,
    `SettingsWindow` and `WrapWindow` (Your Day), all small, all opened by the user —
    Your Day from a menu row or an `agentbar://day|week` link, never on a schedule:
-   a recap nobody asked for is a window unfolding on its own. Settings is a
+   a recap nobody asked for is a window unfolding on its own. `UpdatePrompt`
+   answers a click on **Check for Updates…** (the click closes the menu that would
+   have shown the answer) and nothing else: the daily check and the automatic
+   install never open it. Settings is a
    sidebar of pages (`SettingsChrome` is its furniture), not a scroll: a new
    preference joins a page or earns one, and never lengthens a column until the
    last section falls off the screen.

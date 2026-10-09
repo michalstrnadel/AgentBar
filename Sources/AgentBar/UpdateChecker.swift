@@ -7,7 +7,8 @@ import Cocoa
 /// human, and nobody at the keyboard for five minutes. Installing swaps the app bundle
 /// in place and relaunches. All state surfaces as that single menu row, and its
 /// notes as one more beside it (`ReleaseNotes`, Settings ▸ What's New) — nothing
-/// appears on screen to announce an update, before or after.
+/// appears on screen to announce an update, before or after. The one window is
+/// `UpdatePrompt`, and only a click on "Check for Updates…" opens it.
 final class UpdateChecker {
     enum Status: Equatable {
         case idle
