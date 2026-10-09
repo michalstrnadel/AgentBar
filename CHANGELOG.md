@@ -3,6 +3,25 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.54.0 - 2026-10-09
+
+### Added
+
+- **Answer from your phone.** Settings ▸ Phone sends what waits on you to your
+  phone through ntfy, with Allow and Deny on the notification, and you answer it
+  there. Scan the code on the page with the ntfy app and press Send a Test to see
+  it work. Off by default, and by default only while you are away: the screen
+  locked, or two minutes without the keyboard or mouse.
+- Allow comes only with a shell command short enough to read whole. An edit, a
+  plan, a long command, or anything with Include the command switched off gets
+  Deny only. Questions stay on the Mac.
+- A tap answers exactly the request it was sent for, once, and the ledger records
+  it as your decision, from the phone.
+- The topic name works like a password: anyone who knows it can read what is sent
+  and answer it. New Topic… replaces it, and Change… points AgentBar at your own
+  ntfy server with an access token. On iPhone, ntfy shows the buttons inside its
+  app rather than on the banner.
+
 ## 1.53.0 - 2026-10-09
 
 ### Added
