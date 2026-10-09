@@ -316,11 +316,16 @@ final class ApprovalAction: NSObject {
     let session: Session
     /// What to do instead, typed next to Deny. Ignored on every other verb.
     let note: String?
-    init(request: ApprovalRequest, behavior: String, session: Session, note: String? = nil) {
+    /// Where the person answered, for the ledger: "app" for every surface on the
+    /// Mac, "phone" for a tap in ntfy (`PhoneRelay`).
+    let via: String
+    init(request: ApprovalRequest, behavior: String, session: Session, note: String? = nil,
+         via: String = "app") {
         self.request = request
         self.behavior = behavior
         self.session = session
         self.note = note
+        self.via = via
     }
 }
 

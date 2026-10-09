@@ -82,8 +82,7 @@ can fail; **Check now** asks again on the spot. The simplest way in is **Sign in
 page in a window and keeps the session in AgentBar — no terminal, no token, and no
 reading of your browser's cookies, which AgentBar does not do. If your sessions run under their own `CLAUDE_CONFIG_DIR`, that login is somewhere
 AgentBar cannot read — **Use a token…** takes one from `claude setup-token` and keeps it
-in AgentBar's own Keychain item, which is the only secret this app stores and the same
-button removes. Everything else, including every token count
+in AgentBar's own Keychain item, which the same button removes. Everything else, including every token count
 and every other provider's quota, is read from files already on your disk.
 The install touches exactly these, all reversible (see [Uninstall](#uninstall)):
 
@@ -849,6 +848,26 @@ It needs Accessibility, and a terminal AgentBar can aim (iTerm2, Terminal.app,
 WezTerm); anywhere else the button hands you the dialog instead of typing into
 a tab it cannot verify. **Keep planning** needs none of that — it goes through
 the hook as an explicit "refine this first".
+
+### On your phone
+
+**Settings ▸ Phone** sends what waits on you to your phone through
+[ntfy](https://ntfy.sh), and you answer it there. Off by default. Install the ntfy
+app, scan the code on the page, and press **Send a Test**: it measures the way
+there and back. By default a push goes out only while you are away — the screen
+locked, or two minutes without the keyboard or mouse.
+
+Allow comes only with a shell command short enough to read whole on a phone. An
+edit, a plan, a long command, or anything with **Include the command** off gets
+Deny only, and the rest is answered at the Mac. Questions are never pushed. A tap
+answers exactly the request it was sent for, once, and is written down as your
+decision (`via: "phone"`).
+
+The topic name is the key — anyone who knows it can read what is sent and answer
+it. It is 130 random bits; **New Topic…** replaces it, and **Change…** points
+AgentBar at your own ntfy server with an access token. Nothing leaves the Mac while
+the switch is off. On iPhone, ntfy shows the buttons inside its app rather than on
+the banner. Details in [SECURITY.md](SECURITY.md#approvals-on-the-phone).
 
 ## How it works
 

@@ -23,8 +23,8 @@ import Security
 ///   crash report. The one exception is a token *you* hand over on purpose —
 ///   `claude setup-token`, pasted into Settings — which is kept, because there is
 ///   no other way to hold onto something the CLI did not store for us. It goes in
-///   AgentBar's own Keychain item, it is the only secret this app has ever
-///   stored, and **Remove** takes it out again. Nothing is ever written to a file.
+///   AgentBar's own Keychain item (the ntfy token of `PhoneRelay` is the only
+///   other one), and **Remove** takes it out again. Nothing is ever written to a file.
 ///   This exists because a machine whose sessions run under their own
 ///   `CLAUDE_CONFIG_DIR` keeps its login somewhere AgentBar cannot read, and
 ///   "switch it on and get nothing forever" is not an answer.

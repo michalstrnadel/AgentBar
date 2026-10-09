@@ -26,7 +26,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         case general
         case keepAwake = "keep-awake"
         case awakeTriggers = "awake-triggers"
-        case agents, notifications, shortcuts, usage, approvals, rules
+        case agents, notifications, shortcuts, usage, approvals, rules, phone
         // Spelled the way `agentbar://settings/claude-code` reads: links are lowercase.
         case claudeCode = "claude-code"
         case diagnostics
@@ -43,6 +43,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             case .usage:       return "Usage"
             case .approvals:   return "Approvals"
             case .rules:       return "Rules"
+            case .phone:       return "Phone"
             case .claudeCode:  return "Claude Code"
             case .diagnostics: return "Diagnostics"
             case .whatsNew:    return "What's New"
@@ -67,6 +68,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             // The one page where something acts on your behalf, so it does not
             // share a colour with the page that only remembers.
             case .rules:         return .systemIndigo
+            // The one page that sends anything off the Mac.
+            case .phone:         return .systemPurple
             // Claude's own colour: the one page about one vendor says whose it is.
             case .claudeCode:    return Agent.byID("claude").brand
             case .diagnostics:   return .systemOrange
@@ -85,6 +88,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             case .usage:       return "speedometer"
             case .approvals:   return "checkmark.shield"
             case .rules:       return "list.bullet.rectangle"
+            case .phone:       return "iphone"
             case .claudeCode:  return "sparkle"
             case .diagnostics: return "stethoscope"
             case .whatsNew:    return "sparkles"
@@ -163,6 +167,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var rulesView: RulesView!
     private let keepAwake = KeepAwakeSettingsPage()
     private let awakeTriggers = KeepAwakeTriggersPage()
+    private let phone = PhonePage()
     private var decisionWeek: DecisionWeekView!
     private var notifySettingsButton: NSButton!
     private var notifyTestButton: NSButton!
@@ -448,6 +453,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                                      action: #selector(showRulesPage))
         keepAwake.onChange = { [weak self] in self?.onChange?() }
         awakeTriggers.onChange = { [weak self] in self?.onChange?() }
+        phone.onChange = { [weak self] in self?.onChange?() }
         rulesView = RulesView()
         // A rule changed on the Rules page is a rule the week reads, so the week
         // is redrawn with it.
@@ -657,6 +663,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             add(keepAwake.views)
         case .awakeTriggers:
             add(awakeTriggers.views)
+        case .phone:
+            add(phone.views)
         case .rules:
             add([
                 SettingsChrome.card([
@@ -802,6 +810,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         decisionWeek.reload()
         keepAwake.reload()
         awakeTriggers.reload()
+        phone.reload()
         notifyApprovalsBox.state = Notifier.Prefs.approvals ? .on : .off
         notifyFailuresBox.state = Notifier.Prefs.failures ? .on : .off
         notifyQuietBox.state = Notifier.Prefs.quiet ? .on : .off
@@ -888,7 +897,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                    : "Use a token of your own"
         alert.informativeText =
             "Run `claude setup-token` in a terminal and paste what it prints. It is kept in "
-            + "AgentBar's own Keychain item — the only secret this app stores — and used for "
+            + "AgentBar's own Keychain item and used for "
             + "nothing but the five-minute request to api.anthropic.com for your quota.\n\n"
             + "You need this only when Claude Code signs in under its own CLAUDE_CONFIG_DIR, "
             + "because that login is kept where AgentBar cannot read it."

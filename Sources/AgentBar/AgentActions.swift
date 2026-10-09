@@ -163,7 +163,7 @@ enum AgentActions {
     @discardableResult
     private static func remember(_ decision: String, _ a: ApprovalAction, _ written: Bool) -> Bool {
         if written {
-            DecisionLedger.shared.record(decision, request: a.request, session: a.session)
+            DecisionLedger.shared.record(decision, request: a.request, session: a.session, via: a.via)
         }
         return written
     }

@@ -35,6 +35,14 @@ open "build/AgentBar.app"
    user was away**. That last one is a rule, not a preference — 1.17.0 fired on every
    `done`, Claude Code enters `done` after every turn, and a fifty-turn conversation
    posted fifty banners. An agent finishing is not news. See `Notifier`.
+   **Approvals on the phone** (`PhoneRelay`) are a surface off the Mac and the one
+   thing that sends work off it, so they are fenced harder than banners: off until
+   switched on in Settings ▸ Phone (no link, rule or agent output may), only what
+   wants an answer, by default only while the person is away, **Allow only with a
+   shell command that went along whole and readable** (everything else is Deny or
+   the Mac), and a reply answers exactly the one request its push was for, once. A
+   tap is the person's own answer through `AgentActions.answer`, written
+   `via: "phone"` — a click made elsewhere, not a rule 3 exception.
    Windows are the exception, not the pattern: only `WelcomeWindow`,
    `SettingsWindow` and `WrapWindow` (Your Day), all small, all opened by the user —
    Your Day from a menu row or an `agentbar://day|week` link, never on a schedule:

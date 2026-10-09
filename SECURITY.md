@@ -12,8 +12,10 @@ AgentBar's remote-approval feature is security-relevant by nature. Design
 guarantees worth knowing when auditing:
 
 - Everything is same-user, local filesystem — the app ↔ hook protocol is JSON
-  files under `~/.agentbar/`, and nothing about a session ever leaves the machine.
-- Three destinations exist, all in the app and none on the approval path: the
+  files under `~/.agentbar/`, and nothing about a session leaves the machine unless
+  **Settings ▸ Phone** is switched on (off by default; see "Approvals on the
+  phone" below — the one destination on the approval path).
+- Three other destinations exist, all in the app and none on the approval path: the
   daily update check against GitHub Releases (and the download of a newer release,
   installed automatically only if its signature matches the running app's — see
   "Verifying a download"); and — **only** while
@@ -37,8 +39,9 @@ guarantees worth knowing when auditing:
   where AgentBar cannot read it; **Settings ▸ Usage ▸ Use a token…** takes one from
   `claude setup-token` instead. That token *is* stored — in AgentBar's own Keychain
   item (`AgentBar-claude-quota`), never in a file, never logged, used for nothing but
-  that one request, and removed by the same button. It is the only secret this app
-  stores, and nothing is stored unless somebody pastes it in.
+  that one request, and removed by the same button. Besides it, the app stores one
+  other secret — an ntfy access token, only if one is typed into Settings ▸ Phone —
+  and nothing is stored unless somebody pastes it in.
   The third way in is **Settings ▸ Usage ▸ Sign in to Claude…**, which opens
   claude.ai's login page in a WebKit window and leaves the session cookie in
   AgentBar's own cookie store. Two GETs to `claude.ai/api/organizations` and
@@ -223,6 +226,42 @@ rule, and plans and questions never batch (`ApprovalBatch`).
 never written to `requests.d`, never reaches the history, the ledger, the
 notifications or a rule, and answering it writes no answer file: the answer path
 hands it back before anything is written.
+
+## Approvals on the phone
+
+**Settings ▸ Phone** (`PhoneRelay`) is the only feature that sends anything about
+your work off the Mac, and the only answer that does not come from a click on the
+Mac. It is held to that:
+
+- **Off by default, and off means silent** — no request, no timer, no poll. It is
+  switched on only on its own Settings page; no link, rule or agent output can.
+- **What goes out:** for each request that waits on you (never a question, never
+  the demo), one push to the ntfy server you chose — `https://ntfy.sh` unless you
+  change it — with the agent, the project and, unless *Include the command* is off,
+  the command. ntfy.sh keeps a message for 12 hours. Plain `http` is refused except
+  to this machine, a private range or a tailnet. By default only while you are
+  away (screen locked, or two minutes without input).
+- **You cannot approve what you cannot read.** Allow is offered only for a shell
+  command that went along whole — at most 1 200 characters, no control or invisible
+  format characters, and not from a request file whose JSON had a BOM stripped
+  (`ApprovalRequest.droppedInvisible`). Edits, writes, plans, longer commands and
+  everything with the command switched off get **Deny** only. There is never an
+  **Always**.
+- **The topic is the key.** ntfy topics are readable and writable by whoever knows
+  the name, so the name is 130 random bits, minted on the Mac, and the page says to
+  treat it like a password. Anyone holding it can read what is pushed and answer
+  it — which is why a server of your own with an access token (kept in the
+  Keychain) is supported, and **New Topic…** rotates it.
+- **A reply answers exactly one request, once.** Each push carries a fresh 128-bit
+  nonce; a reply is honoured only if this Mac issued that nonce and has not spent
+  it, the verb is one that push offered, and the file still holds the same request
+  (`identity`) — a file name reused by the next tool is a request nobody read.
+  Anything else answers nothing. The nonce is spent on first use, whatever happens.
+- **Replies are polled, not pushed to the Mac**: every three seconds, only while a
+  pushed request is still waiting, from a second topic the phone never subscribes to.
+- A tap goes through the same `AgentActions.answer` every click does and is written
+  to the ledger as the person's own decision, `via: "phone"`.
+- On iPhone, ntfy shows the buttons inside its app, not on the banner.
 
 ## Keeping the Mac awake
 

@@ -419,7 +419,9 @@ decisions about the same command are two decisions, and counting them is the poi
   would be if one were ever typed into a command.
 - `display` is the request's own one-line summary, already capped by the hook, kept
   so a count can be shown next to what it refers to.
-- `via` names what answered: `app` | `cli` | **`rule`** | **`claude`**. `rule` means
+- `via` names what answered: `app` | `cli` | `phone` | **`rule`** | **`claude`**.
+  `phone` is the person's own tap on a phone notification (Settings ▸ Phone), and
+  counts as theirs exactly as `app` does. `rule` means
   nobody was asked — a rule the user wrote answered on their behalf (see `rules.json`
   below). `claude` means Claude Code decided the call itself, before any prompt existed,
   and the AgentBar mod saw it (see `mods.d` below); such a row also carries `by`

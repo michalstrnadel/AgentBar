@@ -96,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.controller.requestsChanged()
             Notifier.shared.requestsChanged(self.requestStore.requests, sessions: self.sessions)
+            PhoneRelay.shared.requestsChanged()
             if self.islandRunning {
                 self.island.apply(sessions: DemoApproval.shared.merged(self.sessions),
                                   requests: DemoApproval.shared.merged(self.requestStore.requests))
@@ -108,6 +109,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Notifier.shared.requests = { [weak self] in self?.requestStore.requests ?? [] }
         Notifier.shared.sessions = { [weak self] in self?.sessions ?? [] }
         Notifier.shared.start()
+        // The real requests only: the demo must never reach a phone. Off until
+        // Settings ▸ Phone switches it on, and silent while off.
+        PhoneRelay.shared.requests = { [weak self] in self?.requestStore.requests ?? [] }
+        PhoneRelay.shared.sessions = { [weak self] in self?.sessions ?? [] }
 
         // Keep Mac Awake reaches both surfaces the way a setting does.
         KeepAwake.shared.onChange = { [weak self] in
