@@ -14,11 +14,17 @@ import IOKit
 ///   itself as soon as AgentBar's process is gone (quit, crash, update), a stop
 ///   file appears in `~/.agentbar`, or a hard deadline passes — at most 12 hours.
 ///   Turning it off is writing that file, so it needs no second password.
+///   Killed instead — a shutdown or restart sends it TERM — it turns sleep back
+///   on as it goes, because a reboot would otherwise keep the setting.
 /// - A marker records that it was started. If the Mac rebooted while it was on
 ///   (the watcher dies, the setting stays), the next launch sees marker + sleep
 ///   still disabled and offers **Restore…** in the menu and Settings. It never
 ///   asks for a password by itself: a dialog that appears unasked is a surface
 ///   opening on its own.
+/// - Sleep disabled with no marker at all is not provably ours — another app, a
+///   `pmset` in a terminal, or a watcher that died without a trace — so it is not
+///   called a leftover, but it is still said: a Mac that never sleeps is worth a
+///   menu row (`sleepOffElsewhere`), and the same click restores it.
 /// - Whenever sleep comes back on with the lid closed, the watcher puts the Mac to
 ///   sleep. The lid closed while sleep was off, and macOS sleeps on the lid's
 ///   event, not its state: left alone, the Mac would stay up in the bag.
@@ -100,6 +106,16 @@ final class LidSleep {
                         sleepDisabled: Self.sleepDisabled(), ownSession: isOn || isStarting)
     }
 
+    /// Sleep is disabled on this Mac and nothing says by whom.
+    static func isSleepOffElsewhere(markerExists: Bool, sleepDisabled: Bool, ownSession: Bool) -> Bool {
+        !markerExists && sleepDisabled && !ownSession
+    }
+
+    var sleepOffElsewhere: Bool {
+        Self.isSleepOffElsewhere(markerExists: FileManager.default.fileExists(atPath: marker.path),
+                                 sleepDisabled: Self.sleepDisabled(), ownSession: isOn || isStarting)
+    }
+
     /// Starts it: one password dialog, then sleep disabled under the watcher.
     /// `completion` runs on the main queue with whether it is now on.
     func start(until deadline: Date, completion: @escaping (Bool) -> Void) {
@@ -141,7 +157,8 @@ final class LidSleep {
     /// because nothing of ours is running as root to do it.
     func restoreLeftover(completion: @escaping (Bool) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let (ok, _) = Self.runAsAdmin("/usr/bin/pmset -a disablesleep 0")
+            let (ok, _) = Self.runAsAdmin("/usr/bin/pmset -a disablesleep 0",
+                                          prompt: "AgentBar wants to let this Mac sleep again.")
             DispatchQueue.main.async {
                 if ok, let self { try? FileManager.default.removeItem(at: self.marker) }
                 completion(ok)
@@ -168,7 +185,8 @@ final class LidSleep {
     /// path inside AgentBar's own folder — and the path is quoted all the same.
     static func rootScript(pid: Int32, stopFile: String, deadline: Int) -> String {
         let stop = shellQuote(stopFile)
-        let loop = "while :; do sleep \(pollSeconds); "
+        let loop = "trap \"/usr/bin/pmset -a disablesleep 0; exit 0\" TERM INT; "
+            + "while :; do sleep \(pollSeconds); "
             + "if ! /bin/kill -0 \(pid) 2>/dev/null || [ -e \(stop) ] || [ $(/bin/date +%s) -ge \(deadline) ]; "
             + "then /usr/bin/pmset -a disablesleep 0; \(sleepIfLidClosed); exit 0; fi; done"
         return "/usr/bin/pmset -a disablesleep 1 && "
@@ -181,9 +199,11 @@ final class LidSleep {
             .replacingOccurrences(of: "\"", with: "\\\"") + "\""
     }
 
-    private static func runAsAdmin(_ shell: String) -> (Bool, String) {
+    private static func runAsAdmin(_ shell: String,
+                                   prompt: String = "AgentBar wants to keep this Mac awake with the lid closed.")
+        -> (Bool, String) {
         let source = "do shell script \(appleScriptLiteral(shell)) with administrator privileges "
-            + "with prompt \"AgentBar wants to keep this Mac awake with the lid closed.\""
+            + "with prompt \(appleScriptLiteral(prompt))"
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         p.arguments = ["-e", source]

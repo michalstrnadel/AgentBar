@@ -168,6 +168,8 @@ final class KeepAwakeSettingsPage: NSObject {
         var note = ""
         if lid.hasLeftover {
             note = "Sleep is still disabled from an earlier session."
+        } else if lid.sleepOffElsewhere {
+            note = "Sleep is disabled on this Mac (pmset disablesleep), so it never sleeps — not even closed."
         } else if lid.isStarting {
             note = "Waiting for your password…"
         } else if lid.isOn {
@@ -178,7 +180,7 @@ final class KeepAwakeSettingsPage: NSObject {
             note = "Not started: \(lid.lastError)."
         }
         lidStatus.stringValue = note
-        restoreButton.isHidden = !lid.hasLeftover
+        restoreButton.isHidden = !lid.hasLeftover && !lid.sleepOffElsewhere
         show(lidStatusRow, !note.isEmpty)
     }
 

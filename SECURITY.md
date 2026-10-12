@@ -319,11 +319,14 @@ Settings ▸ Keep Awake — and no `agentbar://` link, rule or schedule reaches 
   something else turns sleep back on underneath it (another keep-awake app,
   `pmset` in a terminal), AgentBar does not put it back — that would need the
   password — but ends the session and says so in the menu and Settings, where a
-  click starts it again. If the Mac
-  restarts while it is on, the setting survives the restart but the loop does not,
-  so `~/.agentbar/awake-lid.json` marks that it was started. On the next launch,
-  the menu and Settings offer **Restore…**, which asks for the password once. It
-  never asks by itself.
+  click starts it again. A shutdown or restart kills the loop with TERM, and the
+  loop turns sleep back on as it goes. If it dies some way it cannot catch, the
+  setting survives the restart but the loop does not, so `~/.agentbar/awake-lid.json`
+  marks that it was started. On the next launch, the menu and Settings offer
+  **Restore…**, which asks for the password once. Sleep disabled with no such
+  marker (another app, `pmset` in a terminal, a loop that left no trace) is not
+  claimed as AgentBar's, but the menu and Settings still say the Mac never sleeps
+  and offer the same restore. It never asks by itself.
 
 ## Handing a file to an agent
 

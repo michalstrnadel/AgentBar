@@ -3,6 +3,21 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Fixed
+
+- **A Mac that never sleeps now says so.** Sleep disabled (`pmset disablesleep`)
+  with no closed-lid session of AgentBar's behind it went unmentioned, so a Mac
+  could stay up for days without anyone noticing. The Keep Mac Awake menu and
+  Settings now show **This Mac Never Sleeps — Turn Sleep On…**, which asks for
+  your password once.
+- **A shutdown or restart during closed-lid mode turns sleep back on.** The
+  watcher now restores sleep when it is killed, not only when it notices the end
+  itself, so a reboot no longer keeps sleep disabled.
+- The password dialog for restoring sleep no longer says AgentBar wants to keep
+  the Mac awake.
+
 ## 1.55.0 - 2026-10-12
 
 ### Added

@@ -151,6 +151,12 @@ enum AppMenuModel {
                 id: "awake.restore", title: "Sleep Still Disabled — Restore…",
                 symbol: "exclamationmark.triangle", action: .keepAwakeRestoreLid,
                 toolTip: "An earlier closed-lid session left sleep off. Asks for your password once."))
+        } else if k.sleepOffElsewhere {
+            children.append(AppMenuEntry(
+                id: "awake.restore", title: "This Mac Never Sleeps — Turn Sleep On…",
+                symbol: "exclamationmark.triangle", action: .keepAwakeRestoreLid,
+                toolTip: "Sleep is disabled (pmset disablesleep), so the Mac stays up even with the lid "
+                    + "closed. Asks for your password once."))
         }
         children.append(AppMenuEntry(id: "awake.settings", title: "Keep Awake Settings…",
                                      action: .openKeepAwakeSettings))
@@ -376,6 +382,8 @@ struct KeepAwakeMenu: Equatable {
     var display = false
     var lid = false
     var lidLeftover = false
+    /// Sleep is disabled with no closed-lid session of ours behind it.
+    var sleepOffElsewhere = false
     /// The running closed-lid session ended because something else turned sleep
     /// back on.
     var lidInterrupted = false
@@ -394,6 +402,7 @@ struct KeepAwakeMenu: Equatable {
                              badge: k.badge, display: KeepAwakePrefs.settings().keepDisplayOn,
                              lid: KeepAwakePrefs.lid() || LidSleep.shared.isOn,
                              lidLeftover: LidSleep.shared.hasLeftover,
+                             sleepOffElsewhere: LidSleep.shared.sleepOffElsewhere,
                              lidInterrupted: LidSleep.shared.interrupted,
                              held: k.decision.trigger != nil,
                              sleepWhenDone: KeepAwakePrefs.settings().sleepWhenDone,

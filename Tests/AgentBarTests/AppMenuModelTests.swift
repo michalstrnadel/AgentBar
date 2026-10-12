@@ -219,6 +219,12 @@ import Testing
         i.keepAwake.lidLeftover = true
         let leftover = Self.snapshot(Self.island(i))[2]
         #expect(leftover.children.contains { $0.command == .keepAwakeRestoreLid })
+
+        i.keepAwake.lidLeftover = false
+        i.keepAwake.sleepOffElsewhere = true
+        let elsewhere = Self.snapshot(Self.island(i))[2]
+        #expect(elsewhere.children.first { $0.command == .keepAwakeRestoreLid }?.title
+            == "This Mac Never Sleeps — Turn Sleep On…")
     }
 
     /// The two switches that matter most sit in the menu itself, ticked as they are.

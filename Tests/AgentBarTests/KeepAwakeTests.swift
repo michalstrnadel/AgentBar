@@ -318,6 +318,25 @@ private func inputs(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Dat
         #expect(!LidSleep.isLeftover(markerExists: false, sleepDisabled: true, ownSession: false),
                 "somebody else's disablesleep is not ours to undo")
     }
+
+    /// Regression: sleep stayed disabled for four days with no marker and no
+    /// watcher, and nothing said so. Not ours to call a leftover — but said.
+    @Test func sleepOffWithNoMarkerIsStillSaid() {
+        #expect(LidSleep.isSleepOffElsewhere(markerExists: false, sleepDisabled: true, ownSession: false))
+        #expect(!LidSleep.isSleepOffElsewhere(markerExists: true, sleepDisabled: true, ownSession: false),
+                "that one is a leftover")
+        #expect(!LidSleep.isSleepOffElsewhere(markerExists: false, sleepDisabled: true, ownSession: true))
+        #expect(!LidSleep.isSleepOffElsewhere(markerExists: false, sleepDisabled: false, ownSession: false))
+    }
+
+    /// A shutdown kills the watcher before its next poll; the setting would
+    /// survive the reboot.
+    @Test func aKilledWatcherTurnsSleepBackOn() throws {
+        let script = LidSleep.rootScript(pid: 4242, stopFile: "/s", deadline: 1)
+        let trap = try #require(script.range(of: #"trap "/usr/bin/pmset -a disablesleep 0; exit 0" TERM INT"#))
+        let loop = try #require(script.range(of: "while :"))
+        #expect(trap.upperBound <= loop.lowerBound)
+    }
 }
 
 @Suite struct KeyboardLightPolicyTests {
