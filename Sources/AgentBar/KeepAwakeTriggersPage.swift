@@ -11,6 +11,7 @@ final class KeepAwakeTriggersPage: NSObject {
     private var agentsBox: NSSwitch!
     private var chargerBox: NSSwitch!
     private var displayBox: NSSwitch!
+    private var askingBox: NSSwitch!
     private let appList = NSStackView()
     private var batteryBox: NSSwitch!
     private let floorPopup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -23,6 +24,7 @@ final class KeepAwakeTriggersPage: NSObject {
         agentsBox = SettingsChrome.toggle(target: self, action: #selector(triggersChanged))
         chargerBox = SettingsChrome.toggle(target: self, action: #selector(triggersChanged))
         displayBox = SettingsChrome.toggle(target: self, action: #selector(triggersChanged))
+        askingBox = SettingsChrome.toggle(target: self, action: #selector(triggersChanged))
         appList.orientation = .vertical
         appList.alignment = .leading
         appList.spacing = SettingsChrome.Space.tight
@@ -56,6 +58,9 @@ final class KeepAwakeTriggersPage: NSObject {
                                    "Awake while one works, asleep five minutes after.", control: agentsBox),
                 SettingsChrome.row("While plugged in", control: chargerBox),
                 SettingsChrome.row("While an external display is connected", control: displayBox),
+                SettingsChrome.row("While an app asks the Mac to stay awake",
+                                   "An export, a download, caffeinate in a terminal.",
+                                   control: askingBox),
                 SettingsChrome.customRow(apps),
             ]),
             SettingsChrome.header("Pause or stop by itself."),
@@ -64,7 +69,7 @@ final class KeepAwakeTriggersPage: NSObject {
                                    control: batteryControls),
                 SettingsChrome.row("Pause in Low Power Mode", control: lowPowerBox),
                 SettingsChrome.row("Sleep when the agents are done",
-                                   "Once they finish and you've been away five minutes.", control: sleepBox),
+                                   "Once they finish, you've been away five minutes and no app asks to stay awake.", control: sleepBox),
             ]),
         ]
     }
@@ -84,6 +89,7 @@ final class KeepAwakeTriggersPage: NSObject {
         agentsBox.state = t.agents ? .on : .off
         chargerBox.state = t.charger ? .on : .off
         displayBox.state = t.display ? .on : .off
+        askingBox.state = t.asking ? .on : .off
         appList.arrangedSubviews.forEach { $0.removeFromSuperview() }
         appList.isHidden = t.apps.isEmpty
         for id in t.apps {
@@ -127,6 +133,7 @@ final class KeepAwakeTriggersPage: NSObject {
         t.agents = agentsBox.state == .on
         t.charger = chargerBox.state == .on
         t.display = displayBox.state == .on
+        t.asking = askingBox.state == .on
         save(t)
     }
 

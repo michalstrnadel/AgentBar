@@ -294,20 +294,32 @@ Settings ▸ Keep Awake — and no `agentbar://` link, rule or schedule reaches 
   once no local agent has worked for five minutes and nobody has touched the Mac
   for five minutes, AgentBar asks macOS to sleep (`IOPMSleepSystem`, the Apple
   menu's Sleep; `pmset sleepnow` as a fallback), after letting a closed-lid
-  session go so sleep is enabled again. It needs no administrator rights.
+  session go so sleep is enabled again. It waits while another app asks macOS to
+  stay awake (an export, a download), read from the power manager's list of
+  assertions. It needs no administrator rights.
 - **Triggers.** Off until switched on in Settings ▸ Awake Triggers, and the only
   things that start Keep Awake without a click: a local agent working, the
-  charger, an external display, or an app you picked (matched by bundle id). They
-  read only what they need — the power source, the screen list, the running app
-  list — and never start the closed-lid mode. No link, rule or agent can add one.
+  charger, an external display, an app you picked (matched by bundle id), or an
+  app asking macOS to stay awake. They read only what they need — the power
+  source, the screen list, the running app list, the power manager's assertions
+  and the path of the process holding each (system daemons, AgentBar and an agent
+  CLI's own `caffeinate` are not counted) — and never start the closed-lid mode. No link, rule or agent can add one.
 - **The closed lid.** Off by default, and the only part that runs as root. Turning
   it on shows macOS's own administrator prompt, once per start, and runs
   `pmset -a disablesleep 1` together with a small shell loop that turns sleep back
   on (`pmset -a disablesleep 0`) within five seconds of any of: AgentBar's process
   ending, a stop file appearing at `~/.agentbar/awake-lid.stop`, or a deadline
-  passing (the mode's end, at most 12 hours). Every value in that command is
+  passing (the mode's end, at most 12 hours). If the lid is closed when it turns
+  sleep back on (and the Mac is not running closed on an external display), it
+  then runs `pmset sleepnow`: macOS sleeps on the lid's event, which came while
+  sleep was off, so otherwise the Mac would stay up in a bag. It reads the lid
+  through `ioreg` and writes no file. Every value in that command is
   AgentBar's own — a pid, an epoch second and a path in its folder, single-quoted.
-  Turning it off writes the stop file, so it needs no second password. If the Mac
+  Turning it off writes the stop file, so it needs no second password. If
+  something else turns sleep back on underneath it (another keep-awake app,
+  `pmset` in a terminal), AgentBar does not put it back — that would need the
+  password — but ends the session and says so in the menu and Settings, where a
+  click starts it again. If the Mac
   restarts while it is on, the setting survives the restart but the loop does not,
   so `~/.agentbar/awake-lid.json` marks that it was started. On the next launch,
   the menu and Settings offer **Restore…**, which asks for the password once. It

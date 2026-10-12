@@ -172,6 +172,8 @@ final class KeepAwakeSettingsPage: NSObject {
             note = "Waiting for your password…"
         } else if lid.isOn {
             note = "On — a closed Mac stays awake until the mode ends."
+        } else if lid.interrupted {
+            note = "Turned off by another app or pmset, which turned sleep back on. Switch it on again to resume."
         } else if !lid.lastError.isEmpty {
             note = "Not started: \(lid.lastError)."
         }

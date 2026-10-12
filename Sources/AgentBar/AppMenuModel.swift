@@ -125,12 +125,22 @@ enum AppMenuModel {
                                         + "minutes, the Mac goes to sleep"))
         // The ellipsis says what macOS convention says it says: another step
         // follows, here the password.
-        children.append(AppMenuEntry(id: "awake.lid",
-                                     title: k.lid ? "Stay Awake With Lid Closed" : "Stay Awake With Lid Closed…",
-                                     action: .keepAwakeToggleLid, on: k.lid,
-                                     toolTip: k.lid ? "On — closing the lid won't stop your agents. Click to turn off."
-                                        : "Close the lid and your agents keep working. Asks for your password; "
-                                          + "turns off by itself when Keep Awake ends."))
+        if k.lidInterrupted, !k.lid {
+            // Saying "off" would be true and useless: the person turned it on, and
+            // a closed lid would now sleep the Mac without them knowing why.
+            children.append(AppMenuEntry(
+                id: "awake.lid", title: "Lid Mode Turned Off by Another App — Turn On Again…",
+                symbol: "exclamationmark.triangle", action: .keepAwakeToggleLid, on: false,
+                toolTip: "Something else turned sleep back on — another keep-awake app, or pmset in a terminal. "
+                    + "Closing the lid would put the Mac to sleep. Asks for your password."))
+        } else {
+            children.append(AppMenuEntry(id: "awake.lid",
+                                         title: k.lid ? "Stay Awake With Lid Closed" : "Stay Awake With Lid Closed…",
+                                         action: .keepAwakeToggleLid, on: k.lid,
+                                         toolTip: k.lid ? "On — closing the lid won't stop your agents. Click to turn off."
+                                            : "Close the lid and your agents keep working. Asks for your password; "
+                                              + "turns off by itself when Keep Awake ends."))
+        }
         children.append(.separator("awake.sep2"))
         if on {
             children.append(AppMenuEntry(id: "awake.off", title: "Turn Off", action: .keepAwakeOff,
@@ -366,6 +376,9 @@ struct KeepAwakeMenu: Equatable {
     var display = false
     var lid = false
     var lidLeftover = false
+    /// The running closed-lid session ended because something else turned sleep
+    /// back on.
+    var lidInterrupted = false
     /// A trigger holds the Mac up (no click did).
     var held = false
     var sleepWhenDone = false
@@ -381,6 +394,7 @@ struct KeepAwakeMenu: Equatable {
                              badge: k.badge, display: KeepAwakePrefs.settings().keepDisplayOn,
                              lid: KeepAwakePrefs.lid() || LidSleep.shared.isOn,
                              lidLeftover: LidSleep.shared.hasLeftover,
+                             lidInterrupted: LidSleep.shared.interrupted,
                              held: k.decision.trigger != nil,
                              sleepWhenDone: KeepAwakePrefs.settings().sleepWhenDone,
                              lidEndsAt: k.lidEndsAt)

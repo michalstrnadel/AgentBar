@@ -233,6 +233,19 @@ import Testing
         #expect(Self.snapshot(Self.menuBar(i)) == Self.snapshot(Self.island(i)))
     }
 
+    /// Something else turned sleep back on under a closed-lid session: the row says
+    /// so and is the one click that starts it again.
+    @Test func keepAwakeSaysWhenLidModeWasTurnedOffUnderneath() throws {
+        var i = Self.inputs(.idle)
+        i.keepAwake = KeepAwakeMenu(current: .indefinite, reason: "Awake until you turn it off", lid: false,
+                                    lidInterrupted: true)
+        let row = Self.snapshot(Self.island(i))[2]
+        let lid = try #require(row.children.first { $0.command == .keepAwakeToggleLid })
+        #expect(lid.title.contains("Turned Off by Another App"))
+        #expect(lid.state == .off)
+        #expect(Self.snapshot(Self.menuBar(i)) == Self.snapshot(Self.island(i)))
+    }
+
     /// A trigger holding the Mac up is on, with no mode ticked — no click chose
     /// one — and Turn Off says it waits for the trigger to go away.
     @Test func keepAwakeHeldByATrigger() throws {

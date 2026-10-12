@@ -12,6 +12,8 @@ enum KeepAwakeTrigger: Hashable {
     case display
     /// An app, by bundle id.
     case app(String)
+    /// Any app that has asked macOS not to sleep (`AppSleepRequests`).
+    case asking
 }
 
 /// What the triggers are set to.
@@ -21,8 +23,10 @@ struct KeepAwakeTriggerSettings: Equatable {
     var display = false
     /// Bundle ids, in the order they were added.
     var apps: [String] = []
+    /// "When an app asks the Mac to stay awake".
+    var asking = false
 
-    var any: Bool { agents || charger || display || !apps.isEmpty }
+    var any: Bool { agents || charger || display || !apps.isEmpty || asking }
 }
 
 /// What the Mac looks like right now, as far as triggers care.
@@ -33,6 +37,8 @@ struct KeepAwakeTriggerConditions: Equatable {
     var runningApps: Set<String> = []
     /// A local session is working (`KeepAwakePolicy.isLocalWork`).
     var agentsWorking = false
+    /// Names of the apps asking macOS not to sleep, sorted.
+    var asking: [String] = []
 }
 
 /// A trigger holding the Mac up, and how to say so.
@@ -52,6 +58,7 @@ enum KeepAwakeTriggerPolicy {
         case .charger:     return c.pluggedIn
         case .display:     return c.externalDisplay
         case .app(let id): return c.runningApps.contains(id)
+        case .asking:      return !c.asking.isEmpty
         }
     }
 
@@ -62,6 +69,10 @@ enum KeepAwakeTriggerPolicy {
                      snoozed: Set<KeepAwakeTrigger>, appName: (String) -> String) -> TriggerHold? {
         for id in s.apps where !snoozed.contains(.app(id)) && c.runningApps.contains(id) {
             return TriggerHold(trigger: .app(id), mode: .indefinite, because: "\(appName(id)) is running")
+        }
+        if s.asking, !snoozed.contains(.asking), let first = c.asking.first {
+            let more = c.asking.count > 1 ? " and \(c.asking.count - 1) more" : ""
+            return TriggerHold(trigger: .asking, mode: .indefinite, because: "\(first)\(more) asks to stay awake")
         }
         if s.display, !snoozed.contains(.display), c.externalDisplay {
             return TriggerHold(trigger: .display, mode: .indefinite, because: "a display is connected")
@@ -82,17 +93,18 @@ enum KeepAwakeTriggerPolicy {
     }
 }
 
-/// Watches what the triggers need: the charger (through `PowerSource`), displays
-/// and running apps. Agents come from `KeepAwake`'s own sessions. Only watches
+/// Watches what the triggers need: the charger (through `PowerSource`), displays,
+/// running apps and the sleep requests other apps hold. Agents come from `KeepAwake`'s own sessions. Only watches
 /// while a trigger that needs it is switched on.
 final class KeepAwakeTriggerWatch {
     var onChange: (() -> Void)?
     private var observers: [NSObjectProtocol] = []
     private var power: PowerSource.Watch?
+    private var requests: AppSleepRequests.Watch?
     private var watching = KeepAwakeTriggerSettings()
 
     func update(_ s: KeepAwakeTriggerSettings) {
-        guard s != watching || (observers.isEmpty && power == nil && s.any) else { return }
+        guard s != watching || (observers.isEmpty && power == nil && requests == nil && s.any) else { return }
         watching = s
         observers.forEach {
             NotificationCenter.default.removeObserver($0)
@@ -100,6 +112,7 @@ final class KeepAwakeTriggerWatch {
         }
         observers = []
         power = s.charger ? PowerSource.Watch { [weak self] in self?.onChange?() } : nil
+        requests = s.asking ? AppSleepRequests.Watch { [weak self] in self?.onChange?() } : nil
         if s.display {
             observers.append(NotificationCenter.default.addObserver(
                 forName: NSApplication.didChangeScreenParametersNotification, object: nil,
@@ -124,6 +137,7 @@ final class KeepAwakeTriggerWatch {
         if !watching.apps.isEmpty {
             c.runningApps = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
         }
+        if watching.asking { c.asking = AppSleepRequests.asking() }
         return c
     }
 

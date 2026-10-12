@@ -280,6 +280,30 @@ private func inputs(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Dat
         #expect(script.contains("/Users/me/.agentbar/awake-lid.stop"))
     }
 
+    /// Regression: the session ended (battery, heat, deadline, a crash) with the lid
+    /// closed and the Mac stayed up in the bag — macOS sleeps on the lid's event,
+    /// which came while sleep was off. The watcher now sleeps it as it lets go.
+    @Test func theWatcherSleepsAClosedMacAsItTurnsSleepBackOn() throws {
+        let script = LidSleep.rootScript(pid: 4242, stopFile: "/s", deadline: 1)
+        let restore = try #require(script.range(of: "pmset -a disablesleep 0"))
+        let sleep = try #require(script.range(of: "pmset sleepnow"))
+        #expect(restore.upperBound <= sleep.lowerBound, "sleep comes back on first")
+        #expect(script.contains("AppleClamshellState..=.Yes"))
+        #expect(script.contains("AppleClamshellCausesSleep..=.Yes"),
+                "a Mac running closed on an external display is left alone")
+        #expect(!script.contains("/tmp"), "root writes no file at a guessable path")
+    }
+
+    @Test func sleepTurnedBackOnUnderneathIsNoticedBeforeTheDeadlineOnly() {
+        let now = Date()
+        let later = now.addingTimeInterval(600)
+        #expect(LidSleep.wasTurnedOffUnderneath(isOn: true, deadline: later, now: now, sleepDisabled: false))
+        #expect(!LidSleep.wasTurnedOffUnderneath(isOn: true, deadline: later, now: now, sleepDisabled: true))
+        #expect(!LidSleep.wasTurnedOffUnderneath(isOn: true, deadline: now, now: later, sleepDisabled: false),
+                "past the deadline the watcher did it")
+        #expect(!LidSleep.wasTurnedOffUnderneath(isOn: false, deadline: later, now: now, sleepDisabled: false))
+    }
+
     /// A path with a quote in it cannot break out of its quoting.
     @Test func pathsAreQuotedForTheShell() {
         #expect(LidSleep.shellQuote("/Users/o'neil/x") == #"'/Users/o'\''neil/x'"#)
@@ -455,8 +479,56 @@ private func inputs(_ mode: KeepAwakeMode?, _ sessions: [Session] = [], now: Dat
 
     @Test func triggersRoundTripWithoutDuplicates() throws {
         let d = try #require(UserDefaults(suiteName: "agentbar-triggers-\(UUID().uuidString)"))
-        KeepAwakePrefs.setTriggers(.init(agents: true, display: true, apps: ["a", "b", "a"]), d)
-        #expect(KeepAwakePrefs.triggers(d) == .init(agents: true, display: true, apps: ["a", "b"]))
+        KeepAwakePrefs.setTriggers(.init(agents: true, display: true, apps: ["a", "b", "a"], asking: true), d)
+        #expect(KeepAwakePrefs.triggers(d) == .init(agents: true, display: true, apps: ["a", "b"], asking: true))
+    }
+
+    @Test func anAppAskingToStayAwakeHoldsAndNamesIt() {
+        let s = KeepAwakeTriggerSettings(charger: true, asking: true)
+        var c = KeepAwakeTriggerConditions(pluggedIn: true)
+        #expect(KeepAwakeTriggerPolicy.hold(s, c, snoozed: [], appName: name)?.trigger == .charger)
+        c.asking = ["Final Cut Pro"]
+        let one = KeepAwakeTriggerPolicy.hold(s, c, snoozed: [], appName: name)
+        #expect(one?.trigger == .asking)
+        #expect(one?.because == "Final Cut Pro asks to stay awake")
+        c.asking = ["caffeinate", "Safari"]
+        #expect(KeepAwakeTriggerPolicy.hold(s, c, snoozed: [], appName: name)?.because
+                == "caffeinate and 1 more asks to stay awake")
+        #expect(KeepAwakeTriggerPolicy.hold(s, c, snoozed: [.asking], appName: name)?.trigger == .charger)
+        #expect(KeepAwakeTriggerPolicy.liftSnoozes([.asking], .init()).isEmpty, "the export ended: armed again")
+        #expect(KeepAwakeTriggerPolicy.hold(.init(), c, snoozed: [], appName: name) == nil, "off until switched on")
+    }
+}
+
+@Suite struct AppSleepRequestsTests {
+    private let idle = ["AssertType": "PreventUserIdleSystemSleep"]
+    private let display = ["AssertType": "PreventUserIdleDisplaySleep"]
+
+    @Test func systemDaemonsDoNotCountAppleAppsDo() {
+        #expect(AppSleepRequests.owner(path: "/usr/sbin/coreaudiod") == nil)
+        #expect(AppSleepRequests.owner(path: "/System/Library/CoreServices/powerd.bundle/powerd") == nil)
+        #expect(AppSleepRequests.owner(path: "/System/Applications/Photos.app/Contents/MacOS/Photos")
+                == "/System/Applications/Photos.app")
+        #expect(AppSleepRequests.owner(path: "/Applications/Safari.app/Contents/XPCServices/x.xpc/Contents/MacOS/x")
+                == "/Applications/Safari.app", "a helper stands for its app")
+        #expect(AppSleepRequests.owner(path: "/usr/bin/caffeinate") == "/usr/bin/caffeinate")
+        #expect(AppSleepRequests.owner(path: "") == nil)
+    }
+
+    @Test func onlySleepRequestsFromOthersCount() {
+        let paths: [Int32: String] = [1: "/Applications/Final Cut Pro.app/Contents/MacOS/Final Cut Pro",
+                                      2: "/usr/bin/caffeinate", 3: "/usr/sbin/coreaudiod",
+                                      4: "/Applications/IINA.app/Contents/MacOS/IINA",
+                                      5: "/Applications/AgentBar.app/Contents/MacOS/AgentBar",
+                                      6: "/usr/bin/caffeinate"]
+        let parents: [Int32: String] = [2: "/bin/zsh", 6: "/Users/me/.local/share/claude/versions/2.1.296"]
+        let names = AppSleepRequests.asking([1: [idle], 2: [idle], 3: [idle], 4: [display], 5: [idle], 6: [idle]],
+                                            ownPID: 5, path: { paths[$0] ?? "" },
+                                            parentPath: { parents[$0] ?? "/sbin/launchd" })
+        #expect(names == ["caffeinate", "Final Cut Pro"], "a video holding only the screen is not work")
+        #expect(AppSleepRequests.asking([6: [idle]], ownPID: 5, path: { paths[$0] ?? "" },
+                                        parentPath: { parents[$0] ?? "" }).isEmpty,
+                "Claude Code's own caffeinate is agent work, which the hooks already see")
     }
 }
 

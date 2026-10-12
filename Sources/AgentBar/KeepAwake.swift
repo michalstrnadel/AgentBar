@@ -32,6 +32,8 @@ final class KeepAwake {
     private var timer: Timer?
     /// Polls the human idle clock while a lock or a sleep is waiting on it.
     private var idleTimer: Timer?
+    /// Polls whether closed-lid mode still has sleep disabled, while it runs.
+    private var lidCheck: Timer?
     private var started = false
     private let triggerWatch = KeepAwakeTriggerWatch()
     /// Triggers turned off by a click while they held; each waits for its
@@ -163,6 +165,7 @@ final class KeepAwake {
         if let t = decision.trigger?.trigger { snoozed.insert(t) }
         setMode(nil)
         lidRequested = false
+        LidSleep.shared.clearInterrupted()
         reevaluate()
     }
 
@@ -340,8 +343,11 @@ final class KeepAwake {
         }
 
         let effective = mode ?? hold?.mode
+        // Not while an app asked to keep the Mac up: a forced sleep would cut an
+        // export or a download short. Read last — it walks every process's requests.
         if !sleeping, KeepAwakePolicy.shouldSleepNow(mode: effective, settings: settings, working: d.working,
-                                                     lastWorkAt: lastWorkAt, humanIdle: idle, now: now) {
+                                                     lastWorkAt: lastWorkAt, humanIdle: idle, now: now),
+           AppSleepRequests.asking().isEmpty {
             sleepNow()
             return
         }
@@ -378,8 +384,12 @@ final class KeepAwake {
         lidRequested = false
         let lid = LidSleep.shared
         let delay: TimeInterval = lid.isOn ? 7 : 0.5
+        // With the lid closed the watcher sleeps the Mac as it turns sleep back on;
+        // a second request would land after the wake.
+        let watcherSleeps = lid.isOn && LidSleep.lidClosedSleeps()
         if lid.isOn { lid.stop() }
         reevaluate()
+        guard !watcherSleeps else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard let self, self.sleeping else { return }
             SystemSleep.now()
@@ -403,6 +413,16 @@ final class KeepAwake {
     /// the usual order — start it, start the agent, close the lid — works.
     private func applyLid(_ d: KeepAwakeDecision, now: Date) {
         let lid = LidSleep.shared
+        defer { watchLid() }
+        if lid.checkStillHeld(now: now) {
+            // Something else turned sleep back on. Putting it back takes the
+            // password, which only a click may ask for: the switch goes off and
+            // the menu says why.
+            lidRequested = false
+            KeepAwakePrefs.setLid(false)
+            onChange?()
+            return
+        }
         let tooHot = ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue
         // Only a mode a click started: a trigger never holds the lid open.
         let holding = mode != nil && (d.isOn || (d.paused == nil && lidWaitEnd(now) != nil))
@@ -419,6 +439,7 @@ final class KeepAwake {
                     self?.lidRequested = false
                     KeepAwakePrefs.setLid(false)
                 }
+                self?.reevaluate()  // starts the watch on it
                 self?.onChange?()
             }
             return
@@ -429,6 +450,23 @@ final class KeepAwake {
                 lid.stop()
                 onChange?()
             }
+        }
+    }
+
+    /// Nothing announces `SleepDisabled` changing, so while closed-lid mode runs a
+    /// light poll reads it — one registry property every few seconds.
+    private func watchLid() {
+        if LidSleep.shared.isOn {
+            guard lidCheck == nil else { return }
+            let t = Timer(timeInterval: TimeInterval(LidSleep.pollSeconds), repeats: true) { [weak self] _ in
+                self?.reevaluate()
+            }
+            t.tolerance = 1
+            RunLoop.main.add(t, forMode: .common)
+            lidCheck = t
+        } else {
+            lidCheck?.invalidate()
+            lidCheck = nil
         }
     }
 }

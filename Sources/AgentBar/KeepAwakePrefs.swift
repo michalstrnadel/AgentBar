@@ -30,6 +30,7 @@ enum KeepAwakePrefs {
         static let triggerCharger = "keepAwakeTriggerCharger"
         static let triggerDisplay = "keepAwakeTriggerDisplay"
         static let triggerApps = "keepAwakeTriggerApps"
+        static let triggerAsking = "keepAwakeTriggerAsking"
     }
 
     /// What one click on the cup starts. "While agents work" until something else
@@ -88,12 +89,14 @@ enum KeepAwakePrefs {
         KeepAwakeTriggerSettings(agents: d.bool(forKey: Key.triggerAgents),
                                  charger: d.bool(forKey: Key.triggerCharger),
                                  display: d.bool(forKey: Key.triggerDisplay),
-                                 apps: d.stringArray(forKey: Key.triggerApps) ?? [])
+                                 apps: d.stringArray(forKey: Key.triggerApps) ?? [],
+                                 asking: d.bool(forKey: Key.triggerAsking))
     }
     static func setTriggers(_ t: KeepAwakeTriggerSettings, _ d: UserDefaults = .standard) {
         d.set(t.agents, forKey: Key.triggerAgents)
         d.set(t.charger, forKey: Key.triggerCharger)
         d.set(t.display, forKey: Key.triggerDisplay)
+        d.set(t.asking, forKey: Key.triggerAsking)
         var seen = Set<String>()
         d.set(t.apps.filter { seen.insert($0).inserted }, forKey: Key.triggerApps)
     }

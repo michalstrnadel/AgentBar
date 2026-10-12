@@ -3,6 +3,30 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Awake while an app asks.** A new trigger in Settings ▸ Awake Triggers holds
+  the Mac up while another app asks macOS not to sleep: an export, a download,
+  `caffeinate` in a terminal. The menu names the app. System services and an
+  agent's own `caffeinate` don't count. Off until you switch it on.
+
+### Fixed
+
+- **A closed Mac now sleeps when the closed-lid mode ends.** When it ended with
+  the lid already shut (battery, heat, the end of a countdown, AgentBar quitting),
+  sleep came back on but macOS never got the lid's event again, so the Mac stayed
+  up in the bag. It now goes to sleep at that moment, unless it runs closed on an
+  external display.
+- **Closed-lid mode says when something else turned it off.** If another
+  keep-awake app or `pmset` turned sleep back on, the menu kept saying the lid
+  was covered. Now the session ends, the menu and Settings say what happened,
+  and one click starts it again.
+- **Sleep When Agents Are Done waits for other apps.** It no longer puts the Mac
+  to sleep while another app asks it to stay awake, which would have cut an
+  export or a download short.
+
 ## 1.54.1 - 2026-10-09
 
 ### Fixed

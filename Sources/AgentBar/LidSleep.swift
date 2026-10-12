@@ -19,6 +19,12 @@ import IOKit
 ///   still disabled and offers **Restore…** in the menu and Settings. It never
 ///   asks for a password by itself: a dialog that appears unasked is a surface
 ///   opening on its own.
+/// - Whenever sleep comes back on with the lid closed, the watcher puts the Mac to
+///   sleep. The lid closed while sleep was off, and macOS sleeps on the lid's
+///   event, not its state: left alone, the Mac would stay up in the bag.
+/// - Another app or a `pmset` in a terminal can turn sleep back on underneath it.
+///   Putting it back would take the password again, so the session ends instead
+///   and says so (`interrupted`), and a click starts it again.
 final class LidSleep {
     static let shared = LidSleep()
     static let maxDuration: TimeInterval = 12 * 3600
@@ -30,6 +36,9 @@ final class LidSleep {
     private(set) var isStarting = false
     /// Why the last start did not happen ("" when it did, or nothing was tried).
     private(set) var lastError = ""
+    /// The last session ended because something else turned sleep back on. Cleared
+    /// by the next start, or `clearInterrupted`.
+    private(set) var interrupted = false
 
     var stopFile: URL { AgentBarHome.url("awake-lid.stop") }
     var marker: URL { AgentBarHome.url("awake-lid.json") }
@@ -44,6 +53,38 @@ final class LidSleep {
             .takeRetainedValue()
         return (value as? Bool) ?? (value as? NSNumber)?.boolValue ?? false
     }
+
+    /// The lid is closed and that puts the Mac to sleep — not a Mac running closed
+    /// on an external display.
+    static func lidClosedSleeps() -> Bool {
+        let root = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+        guard root != 0 else { return false }
+        defer { IOObjectRelease(root) }
+        func flag(_ key: String) -> Bool {
+            let value = IORegistryEntryCreateCFProperty(root, key as CFString, kCFAllocatorDefault, 0)?
+                .takeRetainedValue()
+            return (value as? Bool) ?? (value as? NSNumber)?.boolValue ?? false
+        }
+        return flag("AppleClamshellState") && flag("AppleClamshellCausesSleep")
+    }
+
+    /// A running session whose sleep was turned back on by something else: before
+    /// the deadline, when the watcher itself would do it.
+    static func wasTurnedOffUnderneath(isOn: Bool, deadline: Date?, now: Date, sleepDisabled: Bool) -> Bool {
+        guard isOn, let deadline else { return false }
+        return now < deadline && !sleepDisabled
+    }
+
+    /// Ends the session if something else turned sleep back on. True when it did.
+    func checkStillHeld(now: Date = Date()) -> Bool {
+        guard Self.wasTurnedOffUnderneath(isOn: isOn, deadline: deadline, now: now,
+                                          sleepDisabled: Self.sleepDisabled()) else { return false }
+        stop()
+        interrupted = true
+        return true
+    }
+
+    func clearInterrupted() { interrupted = false }
 
     /// Sleep is still off from a session this process did not start — after a
     /// reboot, or a watcher that never ran.
@@ -62,6 +103,7 @@ final class LidSleep {
         guard !isOn, !isStarting else { completion(isOn); return }
         isStarting = true
         lastError = ""
+        interrupted = false
         let end = min(deadline, Date().addingTimeInterval(Self.maxDuration))
         try? FileManager.default.createDirectory(at: AgentBarHome.root(), withIntermediateDirectories: true)
         try? FileManager.default.removeItem(at: stopFile)
@@ -112,13 +154,20 @@ final class LidSleep {
         "'" + s.replacingOccurrences(of: "'", with: #"'\''"#) + "'"
     }
 
+    /// Sleeps the Mac if its lid is closed and that would sleep it. Unquoted
+    /// patterns (`.` for the `" ` around `=`) keep it free of quotes to escape.
+    /// No temporary file: root writing to a guessable path is a hole of its own.
+    static let sleepIfLidClosed = "{ /usr/sbin/ioreg -r -k AppleClamshellState -d 1 "
+        + "| /usr/bin/grep -q AppleClamshellState..=.Yes && /usr/sbin/ioreg -r -k AppleClamshellState -d 1 "
+        + "| /usr/bin/grep -q AppleClamshellCausesSleep..=.Yes && /usr/bin/pmset sleepnow; }"
+
     /// What runs as root. Every value in it is ours — a pid, an epoch second, a
     /// path inside AgentBar's own folder — and the path is quoted all the same.
     static func rootScript(pid: Int32, stopFile: String, deadline: Int) -> String {
         let stop = shellQuote(stopFile)
         let loop = "while :; do sleep \(pollSeconds); "
             + "if ! /bin/kill -0 \(pid) 2>/dev/null || [ -e \(stop) ] || [ $(/bin/date +%s) -ge \(deadline) ]; "
-            + "then /usr/bin/pmset -a disablesleep 0; exit 0; fi; done"
+            + "then /usr/bin/pmset -a disablesleep 0; \(sleepIfLidClosed); exit 0; fi; done"
         return "/usr/bin/pmset -a disablesleep 1 && "
             + "(/usr/bin/nohup /bin/sh -c \(shellQuote(loop)) >/dev/null 2>&1 &)"
     }

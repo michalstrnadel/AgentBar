@@ -82,7 +82,8 @@ open "build/AgentBar.app"
    the shared menu, not a surface: it changes how the Mac sleeps, so a click, its
    shortcut (off until switched on) or a **trigger the person set up** turns it on,
    and no link may. Since 1.51.0 the triggers in Settings ▸ Awake Triggers — an
-   agent working, the charger, an external display, an app running — may start it
+   agent working, the charger, an external display, an app running, an app asking
+   macOS to stay awake — may start it
    without a click, the way a rule the human wrote may answer: each is off until
    switched on there, every hold names its trigger in the menu and the cup's
    tooltip, turning it off snoozes the trigger until its condition goes away, and
