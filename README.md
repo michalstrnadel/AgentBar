@@ -383,6 +383,44 @@ glance and made to be shared. **This week** switches it to the last seven days.
   or Space builds it again, Esc closes — and Reduce Motion shows it finished.
 - `agentbar://day` and `agentbar://week` open it from Shortcuts or Raycast.
 
+## Keep Mac Awake
+
+<p align="center">
+  <img src="docs/assets/keep-awake.gif?v=2026-10-12" width="640" alt="Settings ▸ Awake Triggers: the pointer switches on 'While an app asks the Mac to stay awake — an export, a download, caffeinate in a terminal', next to 'When an agent starts working', 'While plugged in' and 'While an external display is connected'. Then Settings ▸ Keep Awake, where 'Stay awake with the lid closed' is off and the note under it reads 'Turned off by another app or pmset, which turned sleep back on. Switch it on again to resume.'">
+</p>
+
+The cup in the island's footer keeps the Mac up **while your agents work** and
+lets it sleep five minutes after their last turn. One click starts it, and a
+right-click or hold picks 15 or 30 minutes, an hour, two, until a time, or until
+you turn it off. No second keep-awake app to keep, and this one knows when
+the agents are done.
+
+- **Starts by itself, if you set it up.** In Settings ▸ Awake Triggers you can
+  start it when an agent starts working, while the Mac is plugged in, while an
+  external display is connected, while an app you picked runs, or **while an app
+  asks the Mac to stay awake**: an editor exporting, a browser downloading,
+  `caffeinate` in a terminal. The menu names the app holding it. System services
+  and an agent's own `caffeinate` don't count. Every trigger is off until you
+  switch it on, and turning the cup off snoozes a trigger until its condition
+  goes away.
+- **With the lid closed.** Off unless you switch it on, and it asks for your
+  password each time. When it ends (the agents finish, the battery runs low, the
+  Mac gets hot, a countdown runs out, AgentBar quits), sleep comes back on. If the
+  lid is shut by then, **the Mac goes to sleep instead of staying up in your
+  bag**, unless it is running closed on an external display. If another app or
+  `pmset` turns sleep back on underneath it, the menu and Settings say so, and
+  one click starts it again.
+- **Sleeps when the agents are done**, if you switch that on: once they finish
+  and you've been away five minutes. It waits while another app asks the Mac to
+  stay awake, so it never cuts an export or a download short.
+- **Pauses by itself**: on battery below the level you set, in Low Power Mode,
+  or while another user is signed in. While you're away the keyboard's light goes
+  dark, and the screen can lock if you switch that on.
+
+<p align="center">
+  <img src="docs/assets/keep-awake-triggers.png?v=2026-10-12" width="560" alt="Settings ▸ Awake Triggers. Start by itself: When an agent starts working (on), While plugged in, While an external display is connected, While an app asks the Mac to stay awake (on), While these apps run with Add App…. Pause or stop by itself: Pause on battery below 20% (on), Pause in Low Power Mode (on), Sleep when the agents are done — once they finish, you've been away five minutes and no app asks to stay awake.">
+</p>
+
 ## Take a break
 
 Two small games live in the island, one click away on the joystick beside ⋯. They

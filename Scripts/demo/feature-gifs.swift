@@ -18,6 +18,10 @@
 //                        row lands, escaped, in its prompt with no Return; a
 //                        working session gone silent asks "quiet 12m?"; and the
 //                        footer's meter says when the limit runs out at this pace.
+//   keep-awake.gif     — Settings ▸ Awake Triggers: "While an app asks the Mac to
+//                        stay awake" switched on, then Keep Awake's closed-lid
+//                        section after another app turned sleep back on. Also
+//                        .mp4, a .jpg poster and keep-awake-triggers.png.
 //
 // Run: Scripts/demo/make-gifs.sh [out-dir] [scene]. The optional scene (the
 // output's name without extension, e.g. `hand-a-file`) renders only that one. How it works and how to add a GIF:
@@ -39,6 +43,7 @@ enum FeatureGIFs {
             ("rules-try-it", { RulesTryIt.write(to: out.appendingPathComponent("rules-try-it.gif")) }),
             ("agentbar-tour", { Tour.write(to: out.appendingPathComponent("agentbar-tour")) }),
             ("hand-a-file", { HandAFile.write(to: out.appendingPathComponent("hand-a-file.gif")) }),
+            ("keep-awake", { KeepAwakeScene.write(to: out.appendingPathComponent("keep-awake")) }),
         ]
         guard only == nil || scenes.contains(where: { $0.0 == only }) else {
             fatalError("no scene \(only!) — one of \(scenes.map(\.0).joined(separator: ", "))")
@@ -1317,5 +1322,157 @@ struct Poke {
             return NSValue(caTransform3D: r)
         }
         return u < 0.5 ? a : b
+    }
+}
+
+// MARK: - GIF 5: Keep Mac Awake — an app asking, and a lid mode turned off underneath
+
+enum KeepAwakeScene {
+    static let W: CGFloat = 1200, H: CGFloat = 900
+
+    /// `base` without an extension: `.gif`, `.mp4`, a `.jpg` poster and a still of
+    /// the triggers page, `-triggers.png`.
+    /// The menu bar's clock reads the day it was rendered.
+    static var clock: String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_GB"); f.dateFormat = "EEE d MMM   H:mm"
+        return f.string(from: Date())
+    }
+
+    /// An offscreen window is never key, so AppKit draws a switch that is on in
+    /// grey. Repainted as an active window shows it: the accent track, knob right.
+    static func paintOn(_ switches: [(frame: NSRect, on: Bool)], _ r: NSRect, _ k: CGFloat) {
+        for s in switches where s.on {
+            let f = s.frame
+            let track = NSRect(x: r.minX + f.minX * k, y: r.minY + f.minY * k, width: f.width * k, height: f.height * k)
+                .insetBy(dx: 1, dy: 1)
+            NSColor.controlAccentColor.usingColorSpace(.deviceRGB)!.setFill()
+            Stage.rounded(track, track.height / 2).fill()
+            let d = track.height - 4
+            let knob = NSRect(x: track.maxX - 2 - d, y: track.minY + 2, width: d, height: d)
+            NSGraphicsContext.saveGraphicsState()
+            let sh = NSShadow(); sh.shadowBlurRadius = 2; sh.shadowOffset = NSSize(width: 0, height: -1)
+            sh.shadowColor = NSColor.black.withAlphaComponent(0.25); sh.set()
+            NSColor.white.setFill(); NSBezierPath(ovalIn: knob).fill()
+            NSGraphicsContext.restoreGraphicsState()
+        }
+    }
+
+    static func write(to base: URL) {
+        NSApp.appearance = NSAppearance(named: .aqua)
+        if let icon = NSImage(contentsOfFile: "Resources/AppIcon.icns") { NSApp.applicationIconImage = icon }
+        // This process's own defaults domain, not AgentBar's; cleared afterwards.
+        defer {
+            KeepAwakePrefs.setTriggers(.init())
+            KeepAwakePrefs.setLid(false)
+            LidSleep.shared.setInterruptedForVerification(false)
+        }
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("agentbar-gifs")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        func render(_ page: SettingsWindow.Page, _ name: String) -> (NSBitmapImageRep, [(frame: NSRect, on: Bool)]) {
+            let file = dir.appendingPathComponent("awake-\(name).png")
+            _ = SettingsWindow.shared.renderPageForVerification(page, to: file)
+            guard let d = try? Data(contentsOf: file), let rep = NSBitmapImageRep(data: d)
+            else { fatalError("no render of \(page)") }
+            return (rep, SettingsWindow.shared.switchFramesForVerification())
+        }
+
+        KeepAwakePrefs.setTriggers(.init(agents: true))
+        let (off, offSwitches) = render(.awakeTriggers, "off")
+        KeepAwakePrefs.setTriggers(.init(agents: true, asking: true))
+        let (on, onSwitches) = render(.awakeTriggers, "on")
+        guard offSwitches.count >= 4 else { fatalError("the triggers page has \(offSwitches.count) switches") }
+        let askingSwitch = offSwitches[3].frame   // agents, charger, display, then the app asking
+        let keepSide = SettingsWindow.shared.sidebarFrame(of: .keepAwake)
+        LidSleep.shared.setInterruptedForVerification(true)
+        let (lid, lidSwitches) = render(.keepAwake, "lid")
+        // The still: the page alone, at its true size, with the switches as an
+        // active window draws them.
+        let still = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: on.pixelsWide, pixelsHigh: on.pixelsHigh,
+                                     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                     colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: still)
+        let full = NSRect(x: 0, y: 0, width: on.pixelsWide, height: on.pixelsHigh)
+        on.draw(in: full)
+        paintOn(onSwitches, full, 2)
+        NSGraphicsContext.restoreGraphicsState()
+        if let png = still.representation(using: .png, properties: [:]) {
+            let url = URL(fileURLWithPath: base.path + "-triggers.png")
+            try? png.write(to: url)
+            print("wrote \(url.path)")
+        }
+
+        func caption(_ s: String) {
+            let t = Stage.text(s, 27, .white, weight: .semibold)
+            let r = NSRect(x: (W - t.size().width) / 2 - 20, y: H - Stage.barH - 72, width: t.size().width + 40, height: 54)
+            Stage.rgb(0x000000, 0.38).setFill(); Stage.rounded(r, 16).fill()
+            t.draw(at: NSPoint(x: r.minX + 20, y: r.midY - t.size().height / 2))
+        }
+        func window(_ rep: NSBitmapImageRep) -> (NSRect, CGFloat) {
+            let px = NSSize(width: rep.pixelsWide, height: rep.pixelsHigh)
+            let scale = min(1, 1080 / px.width, (H - 210) / px.height)
+            let size = NSSize(width: px.width * scale, height: px.height * scale)
+            let r = NSRect(x: (W - size.width) / 2, y: (H - Stage.barH - 90 - size.height) / 2,
+                           width: size.width, height: size.height)
+            NSGraphicsContext.saveGraphicsState()
+            let sh = NSShadow(); sh.shadowBlurRadius = 36; sh.shadowOffset = NSSize(width: 0, height: -12)
+            sh.shadowColor = NSColor.black.withAlphaComponent(0.32); sh.set()
+            NSColor.windowBackgroundColor.setFill(); Stage.rounded(r, 22).fill()
+            NSGraphicsContext.restoreGraphicsState()
+            NSGraphicsContext.saveGraphicsState()
+            Stage.rounded(r, 22).addClip()
+            rep.draw(in: r)
+            NSGraphicsContext.restoreGraphicsState()
+            return (r, scale * 2)
+        }
+        func at(_ f: NSRect, _ r: NSRect, _ k: CGFloat, dx: CGFloat = 0) -> NSPoint {
+            NSPoint(x: r.minX + f.midX * k + dx, y: r.minY + f.midY * k)
+        }
+
+        // 0–14 the pointer travels to the new switch, 15–17 the click, then the
+        // page with it on is held; 52–66 to Keep Awake in the sidebar, then the
+        // lid section as it reads after another app turned sleep back on.
+        let delay = 0.08
+        let click = 16, cut = 66, end = 116
+        var frames: [CGImage] = []
+        var poster: CGImage?
+        for f in 0..<end {
+            let img = Stage.frame(W, H) {
+                Stage.wallpaper(W, H)
+                Stage.menuBar(W, H, app: "AgentBar", notch: true, clock: clock)
+                var cur: NSPoint
+                var pressed = false
+                if f < cut {
+                    caption("Stay awake while an app asks: an export, a download")
+                    let (r, k) = window(f < click ? off : on)
+                    paintOn(f < click ? offSwitches : onSwitches, r, k)
+                    let target = at(askingSwitch, r, k)
+                    let start = NSPoint(x: W - 140, y: 140)
+                    cur = Stage.lerp(start, target, Stage.smooth(CGFloat(f) / CGFloat(click - 2)))
+                    pressed = (click - 2...click).contains(f)
+                    // Off the switch once it is clicked, so the result shows.
+                    let aside = NSPoint(x: target.x + 34, y: target.y - 70)
+                    if f > click { cur = Stage.lerp(target, aside, Stage.smooth(CGFloat(f - click) / 10)) }
+                    if let side = keepSide, f > cut - 16 {
+                        let aim = at(side, r, k, dx: -side.width * k / 2 + 70)
+                        cur = Stage.lerp(aside, aim, Stage.smooth(CGFloat(f - (cut - 16)) / 12))
+                        pressed = f >= cut - 3
+                    }
+                } else {
+                    caption("Another app turned the lid mode off? It says so")
+                    let (r, k) = window(lid)
+                    paintOn(lidSwitches, r, k)
+                    let from = keepSide.map { at($0, r, k, dx: -$0.width * k / 2 + 70) } ?? NSPoint(x: 200, y: 400)
+                    let aim = lidSwitches.last.map { at($0.frame, r, k, dx: -40) } ?? from
+                    cur = Stage.lerp(from, aim, Stage.smooth(CGFloat(f - cut - 6) / 18))
+                }
+                Stage.cursor(at: cur, pressed: pressed)
+            }
+            frames.append(img)
+            if f == cut - 20 { poster = img }
+        }
+        Stage.writeGIF(frames, delay: delay, to: base.appendingPathExtension("gif"))
+        Stage.writeMP4(frames, delay: delay, to: base.appendingPathExtension("mp4"))
+        if let poster { Stage.writeJPEG(poster, to: base.appendingPathExtension("jpg")) }
     }
 }

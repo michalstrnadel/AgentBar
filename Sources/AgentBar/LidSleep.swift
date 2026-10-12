@@ -86,6 +86,9 @@ final class LidSleep {
 
     func clearInterrupted() { interrupted = false }
 
+    /// For the demo generator: the page as it reads after an interruption.
+    func setInterruptedForVerification(_ on: Bool) { interrupted = on }
+
     /// Sleep is still off from a session this process did not start — after a
     /// reboot, or a watcher that never ran.
     static func isLeftover(markerExists: Bool, sleepDisabled: Bool, ownSession: Bool) -> Bool {

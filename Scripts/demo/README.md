@@ -7,7 +7,7 @@ recording permission.
 
 | Output | Generator | How it draws |
 |---|---|---|
-| `agentbar-tour.gif` / `.mp4` / `.jpg`, `deny-with-note.gif`, `rules-try-it.gif`, `hand-a-file.gif` | `feature-gifs.swift` via `make-gifs.sh` | **the app's own views**, compiled in |
+| `agentbar-tour.gif` / `.mp4` / `.jpg`, `deny-with-note.gif`, `rules-try-it.gif`, `hand-a-file.gif`, `keep-awake.gif` / `.mp4` / `.jpg` / `-triggers.png` | `feature-gifs.swift` via `make-gifs.sh` | **the app's own views**, compiled in |
 | `demo-claude-codex.gif` | `demo-gif.swift` | hand-drawn stage, mascot frames from the sprite sources |
 | `demo-island.gif` | `demo-island-gif.swift` | hand-drawn stage and island |
 | `social-preview.png` | `social-preview.swift` | the banner, from the 1024 icon master and the Your Day card (`--render-wrap … --demo`) |
@@ -57,6 +57,13 @@ working session whose `ts` is 12½ minutes old, and the footer's amber
 *out ~HH:MM* is the real `UsagePace` fit, fed forty minutes of samples into
 `UsagePace.shared` (this process's, not the app's). The forecast is read against
 the real clock, so the scene's menu bar shows the time it was rendered.
+
+`keep-awake.gif` (`KeepAwakeScene`) renders two real Settings pages through
+`renderPageForVerification` and puts the pointer on a switch found by
+`switchFramesForVerification()`. An offscreen window is never key, so AppKit draws
+a switch that is on in grey; `paintOn` repaints those in the accent colour, the
+way an active window shows them. The lid note is the real page after
+`LidSleep.setInterruptedForVerification(true)`.
 
 ### Outputs and encoding
 

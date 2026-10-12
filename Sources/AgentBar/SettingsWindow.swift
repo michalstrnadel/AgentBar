@@ -1420,6 +1420,23 @@ extension SettingsWindow {
     /// Where a page's sidebar entry sits in the same root `renderPageForVerification`
     /// draws, bottom-left origin, points — so the demo generator can put a pointer
     /// on it. Nil before the window has been built.
+    /// Every visible switch on the rendered page, top to bottom, in the same
+    /// coordinates as `sidebarFrame(of:)` — for a demo's pointer to land on one.
+    func switchFramesForVerification() -> [(frame: NSRect, on: Bool)] {
+        guard let root = window?.contentView?.superview ?? window?.contentView else { return [] }
+        var out: [(frame: NSRect, on: Bool)] = []
+        func walk(_ v: NSView) {
+            if let s = v as? NSSwitch, !s.isHiddenOrHasHiddenAncestor {
+                var r = s.convert(s.bounds, to: root)
+                if root.isFlipped { r.origin.y = root.bounds.height - r.maxY }
+                out.append((r, s.state == .on))
+            }
+            v.subviews.forEach(walk)
+        }
+        walk(root)
+        return out.sorted { $0.frame.midY > $1.frame.midY }
+    }
+
     func sidebarFrame(of page: Page) -> NSRect? {
         guard let root = window?.contentView?.superview ?? window?.contentView,
               let item = sidebarItems.first(where: { $0.page == page }) else { return nil }
