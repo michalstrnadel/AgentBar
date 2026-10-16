@@ -264,6 +264,37 @@ struct SharedFixtureTests {
         }
     }
 
+    // MARK: - Hook wiring
+
+    /// The installer's event table and the doctor's verdict, held to the same JSON the
+    /// CLI half reads — so `install-hooks` and the app cannot wire different events,
+    /// and `doctor` and Diagnostics cannot call the same config different things.
+    @Test func hookWiringAgreesWithTheFixture() throws {
+        let f = try Self.load("hook-wiring")
+        let events = try #require(f["events"] as? [String: [[String: Any]]])
+        #expect(Set(events.keys) == Set(HookWiring.agents.keys))
+        for (agent, rows) in events {
+            let fromFixture = rows.map { r in
+                HookWiring.Event(event: r["event"] as? String ?? "", script: r["script"] as? String ?? "",
+                                 arg: r["arg"] as? String, matcher: r["matcher"] as? Bool ?? false,
+                                 timeout: r["timeout"] as? Int)
+            }
+            #expect(fromFixture == HookWiring.events(for: agent), "\(agent): the event table")
+        }
+        let cases = Self.cases(f)
+        #expect(cases.count >= 20)
+        for c in cases {
+            let name = c["name"] as? String ?? "?"
+            let expect = try #require(c["expect"] as? [String: Any])
+            let v = HookWiring.verdict(agent: c["agent"] as? String ?? "", text: c["config"] as? String ?? "")
+            if expect["status"] as? String == "unparseable" { #expect(v == nil, "\(name)"); continue }
+            let verdict = try #require(v, "\(name): parses")
+            #expect(verdict.status.rawValue == expect["status"] as? String, "\(name): status")
+            #expect(verdict.missing == expect["missing"] as? [String], "\(name): missing")
+            #expect(verdict.misplaced == expect["misplaced"] as? [String], "\(name): misplaced")
+        }
+    }
+
     /// `$LIVE`, `$DEAD`, `$NOW` and `$NOW-N`, exactly as the CLI half fills them.
     static func filled(_ row: String, now: Int, live: Int) -> String {
         var out = row.replacingOccurrences(of: "$LIVE", with: "\(live)")

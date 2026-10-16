@@ -274,6 +274,10 @@ import Testing
         #expect(wired.wired == [agent])
         let during = try #require(home.read(file))
         #expect(Diagnostics.unescapingSlashes(during).contains(marker), "\(agent) was not wired")
+        // …and wired whole, by the same table Diagnostics reads it with.
+        if HookWiring.agents[agent] != nil {
+            #expect(HookWiring.verdict(agent: agent, text: during)?.status == .ok, "\(agent): not every event")
+        }
 
         // The preview of switching it off is the diff the sheet shows, tagged.
         let planned = HookInstaller.runPass(home.ctx(off: [agent]), preview: true, only: agent).planned

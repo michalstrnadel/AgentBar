@@ -6,7 +6,8 @@ way `install-hooks` is — `Sources/AgentBar/Diagnostics.swift` and the `doctor`
 function in `Scripts/cli/agentbar`. This file is what keeps them in step: **the
 check ids below are the contract.** The wording is free to change; an id is not.
 
-Adding an agent adds `agent.<id>.*` rows on both sides — see rule 5 in `CLAUDE.md`.
+Adding an agent adds `agent.<id>.*` rows on both sides, and its events to the event
+table on both sides and in the fixture (see *The event table*) — see rule 5 in `CLAUDE.md`.
 
 ## Why this exists at all
 
@@ -71,12 +72,12 @@ Repeated for each entry in the integration table, `<id>` being the agent id.
 | id | asserts |
 |---|---|
 | `agent.<id>` | emitted **only** as `skipped`: when the agent is absent ("Not installed"), or when you turned it off — listed in `~/.agentbar/wire-disabled` by the Settings switch, `agentbar unwire <id>` or `install-hooks --skip/--only` ("Turned off by you — AgentBar leaves its settings alone."). A turned-off agent gets no `wired`, `lastSeen` or other per-agent row and is never a failure: unwired on purpose, there is nothing to repair |
-| `agent.<id>.wired` | AgentBar's marker is in its config |
+| `agent.<id>.wired` | every event AgentBar needs in that agent's config runs the script AgentBar puts there — read **event by event** against the installer's own table (below), never by searching the text. `ok`: all of them, and AgentBar's script nowhere else. `warn`: some are wired but at least one needed event runs nothing of AgentBar's, or AgentBar's script sits under an event it does not use (a hook moved, renamed or copied by hand) — the detail names both lists. `fail`: nothing in the config runs AgentBar's scripts at all; the path in a comment, a note or another key does not count. Codex counts its `notify` bridge as wired, so `notify` without the hooks block is a `warn` (sessions show, approvals cannot reach them). OpenCode has no events: its plugin file being AgentBar's is the whole check. **Fix it** on `warn` and `fail`: re-install |
 | `agent.<id>.parseable` | the config parses (JSON configs only), emitted only when it does not |
 | `agent.<id>.interpreter` | the node path *inside that config* still exists, emitted only when it does not |
 | `agent.<id>.lastSeen` | when this agent last reported, from `history.jsonl`. **No record is `ok`**, not a warning — history only starts when a frontend starts keeping it, so every agent is blank on a freshly updated machine and flagging that would bury the one row that matters under eight that don't. Wired and silent for 14 days *is* a warning: that is the shape of a broken integration every other check passes |
 | `claude.configDir` | the `~/.agentbar/claude-config-dir` hint agrees with the live `CLAUDE_CONFIG_DIR`. App only, emitted only when the hint exists; the CLI reads the hint for wiring and does not check it |
-| `codex.hooks` | Codex has accepted its hooks. Codex runs none until a human says yes, and an unaccepted hook is skipped in silence — so the wired row, which the older `notify` key alone satisfies, cannot tell you. `warn` until the answer lands in `[hooks.state]` |
+| `codex.hooks` | Codex has accepted its hooks. Codex runs none until a human says yes, and an unaccepted hook is skipped in silence — so the wired row, which reads what is written and not what Codex agreed to run, cannot tell you. `warn` until the answer lands in `[hooks.state]` |
 | `copilot.exec` | Copilot's hook runs node directly. A `bash` wrapper makes the hook's parent a shell that exits at once — and that pid is what prunes dead rows, so every Copilot row would vanish on the next refresh |
 
 ### The Claude Code mod
@@ -105,19 +106,40 @@ approval through the real hook and waits for you to answer it. Every other row c
 pass while the thing it describes has never once run.
 
 
-Where each agent lives, and what says it is ours:
+Where each agent lives, and what `wired` reads in it:
 
-| agent | config | marker |
+| agent | config | what is read |
 |---|---|---|
-| claude | `~/.claude/settings.json` (+ `$CLAUDE_CONFIG_DIR`, + the `claude-config-dir` hint). The CLI checks the same set `install-hooks` writes — a `$CLAUDE_CONFIG_DIR` outside HOME only with `AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1` — and `wired` needs **every one** of them | `/.agentbar/hooks/claude/` |
-| codex | `~/.codex/config.toml` | `/.agentbar/hooks/codex/` |
-| copilot | `~/.copilot/hooks/agentbar.json` | `/.agentbar/hooks/claude/` |
-| cursor | `~/.cursor/hooks.json` | `/.agentbar/hooks/cursor/` |
-| gemini | `~/.gemini/settings.json` | `/.agentbar/hooks/gemini/` |
-| qwen | `~/.qwen/settings.json` | `/.agentbar/hooks/claude/` |
-| antigravity | `~/.gemini/antigravity{,-cli}/hooks.json` | the top-level `agentbar` key |
-| opencode | `~/.config/opencode/plugins/agentbar.js` | the file is ours |
+| claude | `~/.claude/settings.json` (+ `$CLAUDE_CONFIG_DIR`, + the `claude-config-dir` hint). The CLI checks the same set `install-hooks` writes — a `$CLAUDE_CONFIG_DIR` outside HOME only with `AGENTBAR_ALLOW_CONFIG_OUTSIDE_HOME=1` — and `wired` takes the **worst** of them | `hooks.<Event>[].hooks[].command` |
+| codex | `~/.codex/config.toml` | `command = "…"` under each `[[hooks.<Event>.hooks]]` header (a line reader, not TOML: a commented-out line is never read), plus a top-level `notify` naming `/.agentbar/hooks/codex/` |
+| copilot | `~/.copilot/hooks/agentbar.json` | `hooks.<event>[]`, `exec` + `args` |
+| cursor | `~/.cursor/hooks.json` | `hooks.<event>[].command` |
+| gemini | `~/.gemini/settings.json` | `hooks.<Event>[].hooks[].command` |
+| qwen | `~/.qwen/settings.json` | `hooks.<Event>[].hooks[].command` |
+| antigravity | `~/.gemini/antigravity{,-cli}/hooks.json` — either will do, the **best** of them counts | every top-level rule group (the installer writes `agentbar`), `<Event>[].hooks[].command` |
+| opencode | `~/.config/opencode/plugins/agentbar.js` | the file is ours (`agentbar` in it) |
 | claude-mod | `settings.json` of every Claude config dir claude uses, `env.CLAUDE_CODE_PLUGIN_DIRS` | `/.agentbar/mods/` |
+
+### The event table
+
+Which events each agent needs, and which script (under `~/.agentbar/hooks/`, with
+which argument) answers each, is **one table per side that the installer writes
+from and the doctor checks against**: `Sources/AgentBar/HookWiring.swift` in the app
+(`HookInstaller` and `Diagnostics` both read it) and `HOOK_WIRING` in
+`Scripts/cli/agentbar` (`install-hooks` and `doctor` both read it). The two are held
+to each other by `Tests/Fixtures/hook-wiring/cases.json`: both suites assert their
+table equals the fixture's `events` exactly, and that every config in its `cases` —
+the installer's own output, a hook under the wrong event, two events swapped, the
+path in a note, a Codex block commented out — gets the same verdict, `missing` and
+`misplaced` lists. Adding or moving an event is a change to both tables and the
+fixture, or one of the two suites goes red.
+
+A command counts for an event when one of its words ends in
+`/.agentbar/hooks/<script>` and the words after it start with the event's argument
+(`update.js stop`, not `update.js pre`, for Claude's `Stop`). A command is
+AgentBar's at all when a word contains the agent's script directory
+(`/.agentbar/hooks/claude/` for Claude, Qwen and Copilot, which run the same
+scripts).
 
 ### Leftovers and presence
 
@@ -157,8 +179,10 @@ reads `"\/.agentbar\/hooks\/claude\/"` on disk. The installers never notice — 
 match against the *parsed* value — but anything searching the raw text does. The
 first live run of `doctor` reported a perfectly wired Mac as entirely unwired.
 
-Both sides now flatten `\/` to `/` before any raw-text search, and both suites have
-a regression test that asserts the raw text really does hide the marker.
+`wired` no longer searches raw text — it parses the config, which undoes the
+escaping — but the interpreter check and OpenCode's marker still do, so both sides
+flatten `\/` to `/` first, and both suites keep a regression test that asserts the
+raw text really does hide the marker.
 
 ## Running it
 

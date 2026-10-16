@@ -146,3 +146,19 @@ test("session rows: the same rows pruned, listed and named", () => {
     if (listed) assert.equal(listed.agent_name || "", c.expect.agentName, `${c.name}: agentName`);
   }
 });
+
+test("hook wiring: the same event table, and the same verdict on every config", () => {
+  const f = fixture("hook-wiring");
+  // The table itself first: install-hooks writes from it, so a difference here is
+  // two installers wiring different events, not just two doctors that disagree.
+  assert.deepEqual(JSON.parse(JSON.stringify(cli.HOOK_WIRING)), f.events);
+  assert.ok(f.cases.length >= 20);
+  for (const c of f.cases) {
+    const v = cli.wiringVerdict(c.agent, c.config);
+    if (c.expect.status === "unparseable") { assert.equal(v, null, c.name); continue; }
+    assert.ok(v, `${c.name}: parses`);
+    assert.equal(v.status, c.expect.status, `${c.name}: status`);
+    assert.deepEqual(v.missing, c.expect.missing, `${c.name}: missing`);
+    assert.deepEqual(v.misplaced, c.expect.misplaced, `${c.name}: misplaced`);
+  }
+});

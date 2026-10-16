@@ -563,32 +563,16 @@ enum HookInstaller {
         guard var root = readConfig(at: settingsURL, pass) else { return }
         var hooks = root["hooks"] as? [String: Any] ?? [:]
 
-        let dir = hooksDir.appendingPathComponent("claude").path
-        let events: [(event: String, cmd: String, matcher: Bool, timeout: Int?)] = [
-            ("SessionStart",     "\"\(node)\" \"\(dir)/lifecycle.js\" start", false, nil),
-            ("SessionEnd",       "\"\(node)\" \"\(dir)/lifecycle.js\" end", false, nil),
-            ("UserPromptSubmit", "\"\(node)\" \"\(dir)/update.js\" prompt", false, nil),
-            ("PreToolUse",       "\"\(node)\" \"\(dir)/update.js\" pre", true, nil),
-            ("PostToolUse",      "\"\(node)\" \"\(dir)/update.js\" post", true, nil),
-            // Blocking approval hook: its own wait is 600s, so give Claude Code slack.
-            // (No Notification hook: late permission notifications used to overwrite
-            // newer state and strand sessions on "needs approval".)
-            ("PermissionRequest","\"\(node)\" \"\(dir)/permission.js\"", true, 630),
-            ("Stop",             "\"\(node)\" \"\(dir)/update.js\" stop", false, nil),
-            // "Compacting…" while the session summarises its context. There is no
-            // PostCompact here on purpose: the SessionStart (source "compact") that
-            // follows every compaction already ends it, and an event name an older
-            // Claude Code does not know is a settings file it may refuse.
-            ("PreCompact",       "\"\(node)\" \"\(dir)/update.js\" compact", false, nil),
-        ]
-
         // Drop earlier AgentBar entries from EVERY event (path match), so events we
         // no longer register (e.g. Notification) don't linger from old installs.
         hooks = strippingOurs(hooks, marker: claudeMarker).hooks
 
-        for e in events {
+        // The events and scripts are `HookWiring.claude`, the table Diagnostics checks
+        // a config against.
+        for e in HookWiring.claude {
             var rules = hooks[e.event] as? [[String: Any]] ?? []
-            var hookEntry: [String: Any] = ["type": "command", "command": e.cmd]
+            let cmd = HookWiring.command(e, hooksDir: hooksDir.path, node: node)
+            var hookEntry: [String: Any] = ["type": "command", "command": cmd]
             if let t = e.timeout { hookEntry["timeout"] = t }
             var rule: [String: Any] = ["hooks": [hookEntry]]
             if e.matcher { rule["matcher"] = "*" }
@@ -655,26 +639,8 @@ enum HookInstaller {
         pass.note("codex")
     }
 
-    /// The events Codex fires, and which shared script answers each.
-    ///
-    /// Codex speaks Claude's hook dialect, so these are the `claude/` scripts, reached
-    /// through `codex/hook.js` — Codex's handler has no `env` field and runs the command
-    /// without a shell, so the shim is where `AGENTBAR_AGENT` and the row prefix get set.
-    ///
-    /// Timeouts are per event and Codex clamps them: `SessionEnd`'s ceiling is 3s, so
-    /// asking for 5 there would earn a warning on every session. `PermissionRequest`
-    /// keeps its 630 — above `permission.js`'s own 600s wait, so the hook is the thing
-    /// that gives up first and exits silently into Codex's own prompt, rather than being
-    /// killed mid-wait. Verified against codex-cli 0.155.0; see Scripts/hooks/codex/README.md.
-    static let codexEvents: [(event: String, script: String, arg: String?, timeout: Int)] = [
-        ("SessionStart",     "lifecycle.js", "start",  5),
-        ("SessionEnd",       "lifecycle.js", "end",    3),
-        ("UserPromptSubmit", "update.js",    "prompt", 5),
-        ("PreToolUse",       "update.js",    "pre",    5),
-        ("PostToolUse",      "update.js",    "post",   5),
-        ("Stop",             "update.js",    "stop",   5),
-        ("PermissionRequest", "permission.js", nil,   630),
-    ]
+    /// The events Codex fires, and which shared script answers each — `HookWiring.codex`.
+    static var codexEvents: [HookWiring.Event] { HookWiring.codex }
 
     static let codexBegin = "# >>> agentbar >>> written by AgentBar; edit outside these two lines"
     static let codexEnd = "# <<< agentbar <<<"
@@ -690,12 +656,14 @@ enum HookInstaller {
     static func codexHooksBlock(node: String, dir: String) -> String {
         var out = [codexBegin]
         for e in codexEvents {
-            let arg = e.arg.map { " " + $0 } ?? ""
+            let command = HookWiring.command(e, hooksDir: dir, node: node)
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "\"", with: "\\\"")
             out += ["[[hooks.\(e.event)]]",
                     "[[hooks.\(e.event).hooks]]",
                     "type = \"command\"",
-                    "command = \"\\\"\(node)\\\" \\\"\(dir)/codex/hook.js\\\" \(e.script)\(arg)\"",
-                    "timeout = \(e.timeout)"]
+                    "command = \"\(command)\"",
+                    "timeout = \(e.timeout ?? 5)"]
             if e.event == "PermissionRequest" {
                 out.append("statusMessage = \"Waiting for you in AgentBar\"")
             }
@@ -845,12 +813,11 @@ enum HookInstaller {
         // Cursor's command is a single executable path (our script is +x with a shebang).
         // Only observational events: the before* hooks gate permissions and belong to
         // the user, not to a status bridge.
-        for event in ["sessionStart", "sessionEnd", "preToolUse", "postToolUse",
-                      "afterAgentResponse", "stop"] {
-            var rules = (hooks[event] as? [[String: Any]] ?? [])
+        for e in HookWiring.cursor {
+            var rules = (hooks[e.event] as? [[String: Any]] ?? [])
                 .filter { ($0["command"] as? String)?.contains(marker) != true }
-            rules.append(["command": scriptURL.path])
-            hooks[event] = rules
+            rules.append(["command": pass.hooksDir.path + "/" + e.script])
+            hooks[e.event] = rules
         }
         root["hooks"] = hooks
         let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
@@ -891,13 +858,13 @@ enum HookInstaller {
         // (see that script and Scripts/hooks/antigravity/README.md).
         // The stdin payload carries no event name, so it rides along as an argument.
         var group: [String: Any] = [:]
-        for event in ["PreInvocation", "PreToolUse", "PostToolUse", "PostInvocation", "Stop"] {
-            let entry: [String: Any] = ["type": "command",
-                                        "command": "\"\(scriptURL.path)\" \(event)",
-                                        "timeout": 5]
+        for e in HookWiring.antigravity {
+            var entry: [String: Any] = ["type": "command",
+                                        "command": HookWiring.command(e, hooksDir: pass.hooksDir.path, node: nil)]
+            if let t = e.timeout { entry["timeout"] = t }
             var rule: [String: Any] = ["hooks": [entry]]
-            if event.hasSuffix("ToolUse") { rule["matcher"] = "*" }
-            group[event] = [rule]
+            if e.matcher { rule["matcher"] = "*" }
+            group[e.event] = [rule]
         }
         for dir in dirs {
             let cfgURL = dir.appendingPathComponent("hooks.json")
@@ -921,7 +888,6 @@ enum HookInstaller {
         let qwenDir = pass.home.appendingPathComponent(".qwen")
         guard FileManager.default.fileExists(atPath: qwenDir.path) else { return } // not a Qwen user
         let cfgURL = qwenDir.appendingPathComponent("settings.json")
-        let dir = pass.hooksDir.appendingPathComponent("claude").path
 
         guard var root = readConfig(at: cfgURL, pass) else { return }
         var hooks = root["hooks"] as? [String: Any] ?? [:]
@@ -929,22 +895,11 @@ enum HookInstaller {
         // Drop earlier AgentBar entries from every event before re-adding.
         hooks = strippingOurs(hooks, marker: claudeMarker).hooks
 
-        let events: [(event: String, cmd: String, matcher: Bool)] = [
-            ("SessionStart",     "\"\(node)\" \"\(dir)/lifecycle.js\" start", false),
-            ("SessionEnd",       "\"\(node)\" \"\(dir)/lifecycle.js\" end", false),
-            ("UserPromptSubmit", "\"\(node)\" \"\(dir)/update.js\" prompt", false),
-            ("PreToolUse",       "\"\(node)\" \"\(dir)/update.js\" pre", true),
-            ("PostToolUse",      "\"\(node)\" \"\(dir)/update.js\" post", true),
-            // Qwen splits the failure paths into their own events; without them
-            // a turn that errors out keeps animating as if it were still working.
-            ("PostToolUseFailure", "\"\(node)\" \"\(dir)/update.js\" post", true),
-            ("Stop",             "\"\(node)\" \"\(dir)/update.js\" stop", false),
-            ("StopFailure",      "\"\(node)\" \"\(dir)/update.js\" fail", false),
-        ]
-        for e in events {
+        for e in HookWiring.qwen {
             var rules = hooks[e.event] as? [[String: Any]] ?? []
-            let entry: [String: Any] = ["type": "command", "command": e.cmd,
-                                        "timeout": 5000,
+            let entry: [String: Any] = ["type": "command",
+                                        "command": HookWiring.command(e, hooksDir: pass.hooksDir.path, node: node),
+                                        "timeout": e.timeout ?? 5000,
                                         "env": ["AGENTBAR_AGENT": "qwen"]]
             var rule: [String: Any] = ["hooks": [entry]]
             if e.matcher { rule["matcher"] = "*" }
@@ -982,38 +937,20 @@ enum HookInstaller {
         guard FileManager.default.fileExists(atPath: copilotDir.path) else { return } // not a Copilot user
         let hooksFileDir = copilotDir.appendingPathComponent("hooks", isDirectory: true)
         try pass.createDirectory(hooksFileDir)
-        let dir = pass.hooksDir.appendingPathComponent("claude").path
 
-        let events: [(event: String, script: String, arg: String?)] = [
-            ("SessionStart",       "lifecycle.js", "start"),
-            ("SessionEnd",         "lifecycle.js", "end"),
-            ("UserPromptSubmit",   "update.js", "prompt"),
-            ("PreToolUse",         "update.js", "pre"),
-            ("PostToolUse",        "update.js", "post"),
-            // A failed tool call is still mid-turn: keep the session working.
-            ("PostToolUseFailure", "update.js", "post"),
-            ("Stop",               "update.js", "stop"),
-            // Only Copilot reports errors as their own event; update.js reads the
-            // payload's `recoverable` so a retry doesn't end the turn early.
-            ("ErrorOccurred",      "update.js", "fail"),
-        ]
+        // `HookWiring.copilot`, the blocking `permissionRequest` among them. Its
+        // timeout sits ABOVE the hook's own wait (600s, `AGENTBAR_APPROVAL_TIMEOUT` in
+        // permission.js) so the hook is the thing that gives up first and exits
+        // silently into the terminal prompt — the other way round, Copilot would kill
+        // it mid-wait. Copilot's own timeouts fail open (1.0.67+), so even that lands
+        // on the terminal prompt rather than a denial.
         var hooks: [String: Any] = [:]
-        for e in events {
-            var args = ["\(dir)/\(e.script)"]
+        for e in HookWiring.copilot {
+            var args = ["\(pass.hooksDir.path)/\(e.script)"]
             if let arg = e.arg { args.append(arg) }
             hooks[e.event] = [["type": "command", "exec": node, "args": args,
-                               "timeoutSec": 5, "env": ["AGENTBAR_AGENT": "copilot"]]]
+                               "timeoutSec": e.timeout ?? 5, "env": ["AGENTBAR_AGENT": "copilot"]]]
         }
-        // The blocking one. Its timeout must sit ABOVE the hook's own wait (600s,
-        // `AGENTBAR_APPROVAL_TIMEOUT` in permission.js) so the hook is the thing that
-        // gives up first and exits silently into the terminal prompt — the other way
-        // round, Copilot would kill it mid-wait. Claude's entry uses 630 for exactly
-        // the same reason. Copilot's own timeouts fail open (1.0.67+), so even that
-        // lands on the terminal prompt rather than a denial.
-        hooks["permissionRequest"] = [["type": "command", "exec": node,
-                                       "args": ["\(dir)/permission.js"],
-                                       "timeoutSec": 630,
-                                       "env": ["AGENTBAR_AGENT": "copilot"]]]
         let root: [String: Any] = ["version": 1, "hooks": hooks]
         let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
         try pass.write(data, to: hooksFileDir.appendingPathComponent("agentbar.json"))
@@ -1060,11 +997,10 @@ enum HookInstaller {
         }
         // timeout is in milliseconds (Gemini docs; default 60000) → 5s.
         // BeforeAgent gives "thinking" at turn start, so a no-tool turn still shows life.
-        for event in ["SessionStart", "SessionEnd", "BeforeAgent", "BeforeTool",
-                      "AfterTool", "AfterAgent"] {
-            var groups = (hooks[event] as? [[String: Any]] ?? []).filter { !ours($0) }
-            groups.append(["hooks": [["type": "command", "command": command, "timeout": 5000]]])
-            hooks[event] = groups
+        for e in HookWiring.gemini {
+            var groups = (hooks[e.event] as? [[String: Any]] ?? []).filter { !ours($0) }
+            groups.append(["hooks": [["type": "command", "command": command, "timeout": e.timeout ?? 5000]]])
+            hooks[e.event] = groups
         }
         root["hooks"] = hooks
         let data = try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])

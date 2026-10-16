@@ -101,10 +101,10 @@ enum Diagnostics {
 
     /// One wired integration, as seen from the outside.
     ///
-    /// This mirrors `HookInstaller`'s per-agent knowledge rather than sharing it:
-    /// the installer's logic is bespoke per config format, while a diagnosis only
-    /// needs "where does it live, and what says it is ours". `DiagnosticsTests`
-    /// asserts the list stays in step with `Agent.all` and `Scripts/hooks/`.
+    /// Where each agent's config lives. *What* has to be in it is not here: that is
+    /// `HookWiring`, the event table the installer writes from, so the two cannot
+    /// disagree about what "wired" means. `DiagnosticsTests` asserts the list stays
+    /// in step with `Agent.all` and `Scripts/hooks/`.
     struct Integration {
         let id: String
         let name: String
@@ -112,7 +112,8 @@ enum Diagnostics {
         let presence: [String]
         /// Config files we write into.
         let configs: [String]
-        /// What identifies our entry inside them.
+        /// What says a file is ours where there are no events to check it by: the
+        /// OpenCode plugin, and the Claude Code mod's own entry.
         let marker: String
 
         /// Whether this Mac has the agent at all — the question every row for it
@@ -400,7 +401,9 @@ enum Diagnostics {
         }
 
         var out: [Check] = []
-        var anyWired = false
+        // The best verdict across the agent's configs: Antigravity has two and either
+        // will do; everyone else has one.
+        var best: (verdict: HookWiring.Verdict, rel: String)?
         for rel in i.configs {
             let url = home.appendingPathComponent(rel)
             guard let text = try? String(contentsOf: url, encoding: .utf8) else {
@@ -410,7 +413,9 @@ enum Diagnostics {
                 if i.configs.count == 1 {
                     out.append(Check(id: "agent.\(i.id).wired", title: "\(i.name) hooks", status: .fail,
                                      detail: "~/\(rel) does not exist.",
-                                     fix: "Relaunch AgentBar to run the installer again."))
+                                     fix: "Relaunch AgentBar to run the installer again.",
+                                     repair: .reinstallHooks))
+                    return out
                 }
                 continue
             }
@@ -425,19 +430,57 @@ enum Diagnostics {
                 continue
             }
             let flat = unescapingSlashes(text)
-            if flat.contains(i.marker) { anyWired = true }
+            let verdict = wiring(i, text: text, flat: flat)
+            if best.map({ rank(verdict) > rank($0.verdict) }) ?? true { best = (verdict, rel) }
             out += interpreterCheck(i, rel: rel, text: flat)
         }
+        let status: Status = best.map { Status(rawValue: $0.verdict.status.rawValue) ?? .fail } ?? .fail
         out.insert(Check(id: "agent.\(i.id).wired", title: "\(i.name) hooks",
-                         status: anyWired ? .ok : .fail,
-                         detail: anyWired ? nil : "Installed, but AgentBar is not wired into it.",
-                         fix: anyWired ? nil : "Relaunch AgentBar; if it stays unwired, ~/\(i.configs[0]) may be unreadable.",
-                         repair: anyWired ? nil : .reinstallHooks),
+                         status: status,
+                         detail: best.map { wiringDetail($0.verdict, rel: $0.rel) }
+                            ?? "Installed, but AgentBar is not wired into it.",
+                         fix: status == .ok ? nil
+                            : status == .warn ? "Relaunch AgentBar — the installer puts every hook back under its own event. Hook config is read at session start, so start a NEW \(i.name) session after."
+                            : "Relaunch AgentBar; if it stays unwired, ~/\(i.configs[0]) may be unreadable.",
+                         repair: status == .ok ? nil : .reinstallHooks),
                    at: 0)
+        let anyWired = status != .fail
         if anyWired { out.append(lastSeenCheck(i, base: base, now: now)) }
         if i.id == "copilot" { out += copilotExecCheck(home: home) }
         if i.id == "codex" { out += codexTrustCheck(home: home) }
         return out
+    }
+
+    /// What the agent's config wires, read event by event against `HookWiring` — the
+    /// table the installer writes from. OpenCode is a plugin file with no events, so
+    /// for it the file being AgentBar's is the whole answer.
+    static func wiring(_ i: Integration, text: String, flat: String? = nil) -> HookWiring.Verdict {
+        guard HookWiring.agents[i.id] != nil else {
+            let ours = (flat ?? unescapingSlashes(text)).contains(i.marker)
+            return HookWiring.Verdict(ours: ours)
+        }
+        return HookWiring.verdict(agent: i.id, text: text) ?? HookWiring.Verdict()
+    }
+
+    private static func rank(_ v: HookWiring.Verdict) -> Int {
+        switch v.status { case .ok: return 2; case .warn: return 1; case .fail: return 0 }
+    }
+
+    /// The sentence under a `wired` row; nil when there is nothing to say.
+    static func wiringDetail(_ v: HookWiring.Verdict, rel: String) -> String? {
+        switch v.status {
+        case .ok: return nil
+        case .fail: return "Installed, but nothing in ~/\(rel) runs AgentBar's hooks."
+        case .warn:
+            var parts: [String] = []
+            if !v.missing.isEmpty {
+                parts.append("nothing of AgentBar's runs on \(v.missing.joined(separator: ", "))")
+            }
+            if !v.misplaced.isEmpty {
+                parts.append("AgentBar's hook sits under \(v.misplaced.joined(separator: ", ")), where it does not belong")
+            }
+            return "~/\(rel): " + parts.joined(separator: "; ") + ". What happens there never reaches AgentBar."
+        }
     }
 
     /// The interpreter named inside a config, which is the thing that rots.

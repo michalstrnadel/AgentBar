@@ -207,8 +207,69 @@ import Testing
 
     @Test func aWiredAgentPasses() throws {
         try write(".codex/config.toml",
-                  "notify = [\"/bin/sh\", \"/Users/x/.agentbar/hooks/codex/notify.js\"]\n")
+                  "notify = [\"/bin/sh\", \"/Users/x/.agentbar/hooks/codex/notify.js\"]\n\n"
+                  + HookInstaller.codexHooksBlock(node: "/bin/sh", dir: "/Users/x/.agentbar/hooks") + "\n")
         #expect(check("agent.codex.wired")?.status == .ok)
+        #expect(check("agent.codex.wired")?.repair == nil)
+    }
+
+    /// The notify bridge still reports sessions, so this is not "unwired" — but
+    /// without the hooks block nothing can be approved from here, and it says so.
+    @Test func codexWithTheNotifyBridgeAloneIsAWarning() throws {
+        try write(".codex/config.toml",
+                  "notify = [\"/bin/sh\", \"/Users/x/.agentbar/hooks/codex/notify.js\"]\n")
+        let row = check("agent.codex.wired")
+        #expect(row?.status == .warn)
+        #expect(row?.detail?.contains("PermissionRequest") == true)
+        #expect(row?.repair == .reinstallHooks)
+    }
+
+    // MARK: - Wired event by event
+
+    /// What the installer writes for Claude Code, as `HookWiring` says it.
+    private static func claudeHooks() -> [String: Any] {
+        var hooks: [String: Any] = [:]
+        for e in HookWiring.claude {
+            hooks[e.event] = [["hooks": [["type": "command",
+                                          "command": HookWiring.command(e, hooksDir: "/Users/x/.agentbar/hooks",
+                                                                        node: "/bin/sh")]]]]
+        }
+        return hooks
+    }
+
+    private func writeClaude(_ hooks: [String: Any]) throws {
+        let data = try JSONSerialization.data(withJSONObject: ["hooks": hooks])
+        try write(".claude/settings.json", String(decoding: data, as: UTF8.self))
+    }
+
+    @Test func everyEventPointingAtItsScriptPasses() throws {
+        try writeClaude(Self.claudeHooks())
+        #expect(check("agent.claude.wired")?.status == .ok)
+        #expect(check("agent.claude.lastSeen") != nil)
+    }
+
+    /// AgentBar's script under the wrong event used to pass, because the path was
+    /// somewhere in the file. Now it is a warning that names both events.
+    @Test func theRightScriptUnderTheWrongEventIsAWarning() throws {
+        var hooks = Self.claudeHooks()
+        hooks["Notification"] = hooks.removeValue(forKey: "Stop")
+        try writeClaude(hooks)
+        let row = check("agent.claude.wired")
+        #expect(row?.status == .warn)
+        #expect(row?.detail?.contains("Stop") == true)
+        #expect(row?.detail?.contains("Notification") == true)
+        #expect(row?.fix != nil)
+        #expect(row?.repair == .reinstallHooks)
+        // Partly wired still reports: the events that are there do fire.
+        #expect(check("agent.claude.lastSeen") != nil)
+    }
+
+    /// The path anywhere but in a hook — a note, a copy under some other key — is
+    /// not wiring at all.
+    @Test func thePathOutsideAnyHookIsNotWired() throws {
+        try write(".claude/settings.json",
+                  #"{"note":"/Users/x/.agentbar/hooks/claude/update.js stop","hooks":{}}"#)
+        #expect(check("agent.claude.wired")?.status == .fail)
     }
 
     /// Codex runs no hook until a human accepts it, and until then the integration
@@ -243,7 +304,10 @@ import Testing
     /// Searching the raw text for the plain marker reports a perfectly wired machine
     /// as entirely unwired — which is exactly what the first live run did.
     @Test func aMarkerWithEscapedSlashesStillCounts() throws {
-        let escaped = #"{"hooks":{"stop":[{"command":"\/Users\/x\/.agentbar\/hooks\/cursor\/cursor.js"}]}}"#
+        let events = HookWiring.cursor.map {
+            #""\#($0.event)":[{"command":"\/Users\/x\/.agentbar\/hooks\/cursor\/cursor.js"}]"#
+        }
+        let escaped = #"{"hooks":{"# + events.joined(separator: ",") + "}}"
         #expect(escaped.contains("/.agentbar/hooks/cursor/") == false, "the raw text really does hide the marker")
         try write(".cursor/hooks.json", escaped)
         #expect(check("agent.cursor.wired")?.status == .ok)
@@ -253,7 +317,8 @@ import Testing
     @Test func aDeadInterpreterIsFoundThroughEscapedSlashes() throws {
         try write(".copilot/hooks/agentbar.json",
                   #"{"hooks":{"SessionStart":[{"exec":"\/nope\/bin\/node","args":["\/Users\/x\/.agentbar\/hooks\/claude\/lifecycle.js"]}]}}"#)
-        #expect(check("agent.copilot.wired")?.status == .ok)
+        // One event of nine: wired, but not whole.
+        #expect(check("agent.copilot.wired")?.status == .warn)
         #expect(check("agent.copilot.interpreter")?.status == .fail)
     }
 

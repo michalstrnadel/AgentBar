@@ -1,0 +1,707 @@
+{
+  "about": "The event table install-hooks writes from and doctor checks against — HookWiring.swift and HOOK_WIRING in Scripts/cli/agentbar — and the verdict on each config below. Both halves must equal `events` exactly; a new case goes here, never into one side's test. `expect.status` is ok | warn | fail, or unparseable when the config is not JSON; `missing` keeps the table's order, `misplaced` is sorted.",
+  "events": {
+    "claude": [
+      {
+        "event": "SessionStart",
+        "script": "claude/lifecycle.js",
+        "arg": "start",
+        "matcher": false,
+        "timeout": null
+      },
+      {
+        "event": "SessionEnd",
+        "script": "claude/lifecycle.js",
+        "arg": "end",
+        "matcher": false,
+        "timeout": null
+      },
+      {
+        "event": "UserPromptSubmit",
+        "script": "claude/update.js",
+        "arg": "prompt",
+        "matcher": false,
+        "timeout": null
+      },
+      {
+        "event": "PreToolUse",
+        "script": "claude/update.js",
+        "arg": "pre",
+        "matcher": true,
+        "timeout": null
+      },
+      {
+        "event": "PostToolUse",
+        "script": "claude/update.js",
+        "arg": "post",
+        "matcher": true,
+        "timeout": null
+      },
+      {
+        "event": "PermissionRequest",
+        "script": "claude/permission.js",
+        "arg": null,
+        "matcher": true,
+        "timeout": 630
+      },
+      {
+        "event": "Stop",
+        "script": "claude/update.js",
+        "arg": "stop",
+        "matcher": false,
+        "timeout": null
+      },
+      {
+        "event": "PreCompact",
+        "script": "claude/update.js",
+        "arg": "compact",
+        "matcher": false,
+        "timeout": null
+      }
+    ],
+    "codex": [
+      {
+        "event": "SessionStart",
+        "script": "codex/hook.js",
+        "arg": "lifecycle.js start",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "SessionEnd",
+        "script": "codex/hook.js",
+        "arg": "lifecycle.js end",
+        "matcher": false,
+        "timeout": 3
+      },
+      {
+        "event": "UserPromptSubmit",
+        "script": "codex/hook.js",
+        "arg": "update.js prompt",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "PreToolUse",
+        "script": "codex/hook.js",
+        "arg": "update.js pre",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "PostToolUse",
+        "script": "codex/hook.js",
+        "arg": "update.js post",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "Stop",
+        "script": "codex/hook.js",
+        "arg": "update.js stop",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "PermissionRequest",
+        "script": "codex/hook.js",
+        "arg": "permission.js",
+        "matcher": false,
+        "timeout": 630
+      }
+    ],
+    "qwen": [
+      {
+        "event": "SessionStart",
+        "script": "claude/lifecycle.js",
+        "arg": "start",
+        "matcher": false,
+        "timeout": 5000
+      },
+      {
+        "event": "SessionEnd",
+        "script": "claude/lifecycle.js",
+        "arg": "end",
+        "matcher": false,
+        "timeout": 5000
+      },
+      {
+        "event": "UserPromptSubmit",
+        "script": "claude/update.js",
+        "arg": "prompt",
+        "matcher": false,
+        "timeout": 5000
+      },
+      {
+        "event": "PreToolUse",
+        "script": "claude/update.js",
+        "arg": "pre",
+        "matcher": true,
+        "timeout": 5000
+      },
+      {
+        "event": "PostToolUse",
+        "script": "claude/update.js",
+        "arg": "post",
+        "matcher": true,
+        "timeout": 5000
+      },
+      {
+        "event": "PostToolUseFailure",
+        "script": "claude/update.js",
+        "arg": "post",
+        "matcher": true,
+        "timeout": 5000
+      },
+      {
+        "event": "Stop",
+        "script": "claude/update.js",
+        "arg": "stop",
+        "matcher": false,
+        "timeout": 5000
+      },
+      {
+        "event": "StopFailure",
+        "script": "claude/update.js",
+        "arg": "fail",
+        "matcher": false,
+        "timeout": 5000
+      }
+    ],
+    "copilot": [
+      {
+        "event": "SessionStart",
+        "script": "claude/lifecycle.js",
+        "arg": "start",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "SessionEnd",
+        "script": "claude/lifecycle.js",
+        "arg": "end",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "UserPromptSubmit",
+        "script": "claude/update.js",
+        "arg": "prompt",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "PreToolUse",
+        "script": "claude/update.js",
+        "arg": "pre",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "PostToolUse",
+        "script": "claude/update.js",
+        "arg": "post",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "PostToolUseFailure",
+        "script": "claude/update.js",
+        "arg": "post",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "Stop",
+        "script": "claude/update.js",
+        "arg": "stop",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "ErrorOccurred",
+        "script": "claude/update.js",
+        "arg": "fail",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "permissionRequest",
+        "script": "claude/permission.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": 630
+      }
+    ],
+    "cursor": [
+      {
+        "event": "sessionStart",
+        "script": "cursor/cursor.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": null
+      },
+      {
+        "event": "sessionEnd",
+        "script": "cursor/cursor.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": null
+      },
+      {
+        "event": "preToolUse",
+        "script": "cursor/cursor.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": null
+      },
+      {
+        "event": "postToolUse",
+        "script": "cursor/cursor.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": null
+      },
+      {
+        "event": "afterAgentResponse",
+        "script": "cursor/cursor.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": null
+      },
+      {
+        "event": "stop",
+        "script": "cursor/cursor.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": null
+      }
+    ],
+    "gemini": [
+      {
+        "event": "SessionStart",
+        "script": "gemini/gemini.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": 5000
+      },
+      {
+        "event": "SessionEnd",
+        "script": "gemini/gemini.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": 5000
+      },
+      {
+        "event": "BeforeAgent",
+        "script": "gemini/gemini.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": 5000
+      },
+      {
+        "event": "BeforeTool",
+        "script": "gemini/gemini.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": 5000
+      },
+      {
+        "event": "AfterTool",
+        "script": "gemini/gemini.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": 5000
+      },
+      {
+        "event": "AfterAgent",
+        "script": "gemini/gemini.js",
+        "arg": null,
+        "matcher": false,
+        "timeout": 5000
+      }
+    ],
+    "antigravity": [
+      {
+        "event": "PreInvocation",
+        "script": "antigravity/antigravity.js",
+        "arg": "PreInvocation",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "PreToolUse",
+        "script": "antigravity/antigravity.js",
+        "arg": "PreToolUse",
+        "matcher": true,
+        "timeout": 5
+      },
+      {
+        "event": "PostToolUse",
+        "script": "antigravity/antigravity.js",
+        "arg": "PostToolUse",
+        "matcher": true,
+        "timeout": 5
+      },
+      {
+        "event": "PostInvocation",
+        "script": "antigravity/antigravity.js",
+        "arg": "PostInvocation",
+        "matcher": false,
+        "timeout": 5
+      },
+      {
+        "event": "Stop",
+        "script": "antigravity/antigravity.js",
+        "arg": "Stop",
+        "matcher": false,
+        "timeout": 5
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "claude: what the installer writes",
+      "agent": "claude",
+      "config": "{\n  \"model\": \"opus\",\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" start\"\n          }\n        ]\n      }\n    ],\n    \"SessionEnd\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" end\"\n          }\n        ]\n      }\n    ],\n    \"UserPromptSubmit\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" prompt\"\n          }\n        ]\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" pre\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" post\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PermissionRequest\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/permission.js\\\"\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" stop\"\n          }\n        ]\n      }\n    ],\n    \"PreCompact\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" compact\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+      "expect": {
+        "status": "ok",
+        "missing": [],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "claude: the Stop hook filed under Notification",
+      "agent": "claude",
+      "config": "{\n  \"model\": \"opus\",\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" start\"\n          }\n        ]\n      }\n    ],\n    \"SessionEnd\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" end\"\n          }\n        ]\n      }\n    ],\n    \"UserPromptSubmit\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" prompt\"\n          }\n        ]\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" pre\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" post\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PermissionRequest\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/permission.js\\\"\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PreCompact\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" compact\"\n          }\n        ]\n      }\n    ],\n    \"Notification\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" stop\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+      "expect": {
+        "status": "warn",
+        "missing": [
+          "Stop"
+        ],
+        "misplaced": [
+          "Notification"
+        ]
+      }
+    },
+    {
+      "name": "claude: pre and post swapped between their events",
+      "agent": "claude",
+      "config": "{\n  \"model\": \"opus\",\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" start\"\n          }\n        ]\n      }\n    ],\n    \"SessionEnd\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" end\"\n          }\n        ]\n      }\n    ],\n    \"UserPromptSubmit\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" prompt\"\n          }\n        ]\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" post\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" pre\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PermissionRequest\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/permission.js\\\"\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" stop\"\n          }\n        ]\n      }\n    ],\n    \"PreCompact\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" compact\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+      "expect": {
+        "status": "warn",
+        "missing": [
+          "PreToolUse",
+          "PostToolUse"
+        ],
+        "misplaced": [
+          "PostToolUse",
+          "PreToolUse"
+        ]
+      }
+    },
+    {
+      "name": "claude: an extra copy under an event AgentBar does not use",
+      "agent": "claude",
+      "config": "{\n  \"model\": \"opus\",\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" start\"\n          }\n        ]\n      }\n    ],\n    \"SessionEnd\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" end\"\n          }\n        ]\n      }\n    ],\n    \"UserPromptSubmit\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" prompt\"\n          }\n        ]\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" pre\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" post\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PermissionRequest\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/permission.js\\\"\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" stop\"\n          }\n        ]\n      }\n    ],\n    \"PreCompact\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" compact\"\n          }\n        ]\n      }\n    ],\n    \"Notification\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" stop\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+      "expect": {
+        "status": "warn",
+        "missing": [],
+        "misplaced": [
+          "Notification"
+        ]
+      }
+    },
+    {
+      "name": "claude: one event dropped",
+      "agent": "claude",
+      "config": "{\n  \"model\": \"opus\",\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" start\"\n          }\n        ]\n      }\n    ],\n    \"SessionEnd\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" end\"\n          }\n        ]\n      }\n    ],\n    \"UserPromptSubmit\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" prompt\"\n          }\n        ]\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" pre\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" post\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PermissionRequest\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/permission.js\\\"\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" stop\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+      "expect": {
+        "status": "warn",
+        "missing": [
+          "PreCompact"
+        ],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "claude: the path only in a key that is not a hook",
+      "agent": "claude",
+      "config": "{\"note\":\"/Users/x/.agentbar/hooks/claude/update.js stop\",\"hooks\":{}}",
+      "expect": {
+        "status": "fail",
+        "missing": [
+          "SessionStart",
+          "SessionEnd",
+          "UserPromptSubmit",
+          "PreToolUse",
+          "PostToolUse",
+          "PermissionRequest",
+          "Stop",
+          "PreCompact"
+        ],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "claude: someone else's hooks only",
+      "agent": "claude",
+      "config": "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"say done\"}]}]}}",
+      "expect": {
+        "status": "fail",
+        "missing": [
+          "SessionStart",
+          "SessionEnd",
+          "UserPromptSubmit",
+          "PreToolUse",
+          "PostToolUse",
+          "PermissionRequest",
+          "Stop",
+          "PreCompact"
+        ],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "claude: escaped slashes, as JSONSerialization writes them",
+      "agent": "claude",
+      "config": "{\n  \"model\": \"opus\",\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"\\/usr\\/local\\/bin\\/node\\\" \\\"\\/Users\\/x\\/.agentbar\\/hooks\\/claude\\/lifecycle.js\\\" start\"\n          }\n        ]\n      }\n    ],\n    \"SessionEnd\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"\\/usr\\/local\\/bin\\/node\\\" \\\"\\/Users\\/x\\/.agentbar\\/hooks\\/claude\\/lifecycle.js\\\" end\"\n          }\n        ]\n      }\n    ],\n    \"UserPromptSubmit\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"\\/usr\\/local\\/bin\\/node\\\" \\\"\\/Users\\/x\\/.agentbar\\/hooks\\/claude\\/update.js\\\" prompt\"\n          }\n        ]\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"\\/usr\\/local\\/bin\\/node\\\" \\\"\\/Users\\/x\\/.agentbar\\/hooks\\/claude\\/update.js\\\" pre\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"\\/usr\\/local\\/bin\\/node\\\" \\\"\\/Users\\/x\\/.agentbar\\/hooks\\/claude\\/update.js\\\" post\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PermissionRequest\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"\\/usr\\/local\\/bin\\/node\\\" \\\"\\/Users\\/x\\/.agentbar\\/hooks\\/claude\\/permission.js\\\"\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"\\/usr\\/local\\/bin\\/node\\\" \\\"\\/Users\\/x\\/.agentbar\\/hooks\\/claude\\/update.js\\\" stop\"\n          }\n        ]\n      }\n    ],\n    \"PreCompact\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"\\/usr\\/local\\/bin\\/node\\\" \\\"\\/Users\\/x\\/.agentbar\\/hooks\\/claude\\/update.js\\\" compact\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+      "expect": {
+        "status": "ok",
+        "missing": [],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "claude: a config that does not parse",
+      "agent": "claude",
+      "config": "{\"hooks\": { // mine\n}",
+      "expect": {
+        "status": "unparseable"
+      }
+    },
+    {
+      "name": "cursor: what the installer writes",
+      "agent": "cursor",
+      "config": "{\"version\":1,\"hooks\":{\"sessionStart\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}],\"sessionEnd\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}],\"preToolUse\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}],\"postToolUse\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}],\"afterAgentResponse\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}],\"stop\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}]}}",
+      "expect": {
+        "status": "ok",
+        "missing": [],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "cursor: only stop",
+      "agent": "cursor",
+      "config": "{\"hooks\":{\"stop\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}]}}",
+      "expect": {
+        "status": "warn",
+        "missing": [
+          "sessionStart",
+          "sessionEnd",
+          "preToolUse",
+          "postToolUse",
+          "afterAgentResponse"
+        ],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "cursor: the script under a before* gate",
+      "agent": "cursor",
+      "config": "{\"hooks\":{\"sessionStart\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}],\"sessionEnd\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}],\"preToolUse\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}],\"postToolUse\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}],\"afterAgentResponse\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}],\"stop\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}],\"beforeShellExecution\":[{\"command\":\"/Users/x/.agentbar/hooks/cursor/cursor.js\"}]}}",
+      "expect": {
+        "status": "warn",
+        "missing": [],
+        "misplaced": [
+          "beforeShellExecution"
+        ]
+      }
+    },
+    {
+      "name": "gemini: what the installer writes",
+      "agent": "gemini",
+      "config": "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/gemini/gemini.js\\\"\",\"timeout\":5000}]}],\"SessionEnd\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/gemini/gemini.js\\\"\",\"timeout\":5000}]}],\"BeforeAgent\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/gemini/gemini.js\\\"\",\"timeout\":5000}]}],\"BeforeTool\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/gemini/gemini.js\\\"\",\"timeout\":5000}]}],\"AfterTool\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/gemini/gemini.js\\\"\",\"timeout\":5000}]}],\"AfterAgent\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/gemini/gemini.js\\\"\",\"timeout\":5000}]}]}}",
+      "expect": {
+        "status": "ok",
+        "missing": [],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "gemini: BeforeAgent's hook filed under BeforeModel",
+      "agent": "gemini",
+      "config": "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/gemini/gemini.js\\\"\",\"timeout\":5000}]}],\"SessionEnd\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/gemini/gemini.js\\\"\",\"timeout\":5000}]}],\"BeforeTool\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/gemini/gemini.js\\\"\",\"timeout\":5000}]}],\"AfterTool\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/gemini/gemini.js\\\"\",\"timeout\":5000}]}],\"AfterAgent\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/gemini/gemini.js\\\"\",\"timeout\":5000}]}],\"BeforeModel\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/gemini/gemini.js\\\"\",\"timeout\":5000}]}]}}",
+      "expect": {
+        "status": "warn",
+        "missing": [
+          "BeforeAgent"
+        ],
+        "misplaced": [
+          "BeforeModel"
+        ]
+      }
+    },
+    {
+      "name": "qwen: what the installer writes",
+      "agent": "qwen",
+      "config": "{\"hooks\":{\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" start\",\"timeout\":5000,\"env\":{\"AGENTBAR_AGENT\":\"qwen\"}}]}],\"SessionEnd\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" end\",\"timeout\":5000,\"env\":{\"AGENTBAR_AGENT\":\"qwen\"}}]}],\"UserPromptSubmit\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" prompt\",\"timeout\":5000,\"env\":{\"AGENTBAR_AGENT\":\"qwen\"}}]}],\"PreToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" pre\",\"timeout\":5000,\"env\":{\"AGENTBAR_AGENT\":\"qwen\"}}],\"matcher\":\"*\"}],\"PostToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" post\",\"timeout\":5000,\"env\":{\"AGENTBAR_AGENT\":\"qwen\"}}],\"matcher\":\"*\"}],\"PostToolUseFailure\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" post\",\"timeout\":5000,\"env\":{\"AGENTBAR_AGENT\":\"qwen\"}}],\"matcher\":\"*\"}],\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" stop\",\"timeout\":5000,\"env\":{\"AGENTBAR_AGENT\":\"qwen\"}}]}],\"StopFailure\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" fail\",\"timeout\":5000,\"env\":{\"AGENTBAR_AGENT\":\"qwen\"}}]}]}}",
+      "expect": {
+        "status": "ok",
+        "missing": [],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "qwen: Claude's table is not enough",
+      "agent": "qwen",
+      "config": "{\n  \"model\": \"opus\",\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" start\"\n          }\n        ]\n      }\n    ],\n    \"SessionEnd\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" end\"\n          }\n        ]\n      }\n    ],\n    \"UserPromptSubmit\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" prompt\"\n          }\n        ]\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" pre\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" post\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PermissionRequest\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/permission.js\\\"\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" stop\"\n          }\n        ]\n      }\n    ],\n    \"PreCompact\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" compact\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+      "expect": {
+        "status": "warn",
+        "missing": [
+          "PostToolUseFailure",
+          "StopFailure"
+        ],
+        "misplaced": [
+          "PermissionRequest",
+          "PreCompact"
+        ]
+      }
+    },
+    {
+      "name": "copilot: what the installer writes",
+      "agent": "copilot",
+      "config": "{\"version\":1,\"hooks\":{\"SessionStart\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/lifecycle.js\",\"start\"],\"timeoutSec\":5}],\"SessionEnd\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/lifecycle.js\",\"end\"],\"timeoutSec\":5}],\"UserPromptSubmit\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/update.js\",\"prompt\"],\"timeoutSec\":5}],\"PreToolUse\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/update.js\",\"pre\"],\"timeoutSec\":5}],\"PostToolUse\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/update.js\",\"post\"],\"timeoutSec\":5}],\"PostToolUseFailure\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/update.js\",\"post\"],\"timeoutSec\":5}],\"Stop\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/update.js\",\"stop\"],\"timeoutSec\":5}],\"ErrorOccurred\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/update.js\",\"fail\"],\"timeoutSec\":5}],\"permissionRequest\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/permission.js\"],\"timeoutSec\":630}]}}",
+      "expect": {
+        "status": "ok",
+        "missing": [],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "copilot: permissionRequest missing",
+      "agent": "copilot",
+      "config": "{\"version\":1,\"hooks\":{\"SessionStart\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/lifecycle.js\",\"start\"],\"timeoutSec\":5}],\"SessionEnd\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/lifecycle.js\",\"end\"],\"timeoutSec\":5}],\"UserPromptSubmit\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/update.js\",\"prompt\"],\"timeoutSec\":5}],\"PreToolUse\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/update.js\",\"pre\"],\"timeoutSec\":5}],\"PostToolUse\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/update.js\",\"post\"],\"timeoutSec\":5}],\"PostToolUseFailure\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/update.js\",\"post\"],\"timeoutSec\":5}],\"Stop\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/update.js\",\"stop\"],\"timeoutSec\":5}],\"ErrorOccurred\":[{\"type\":\"command\",\"exec\":\"/usr/local/bin/node\",\"args\":[\"/Users/x/.agentbar/hooks/claude/update.js\",\"fail\"],\"timeoutSec\":5}]}}",
+      "expect": {
+        "status": "warn",
+        "missing": [
+          "permissionRequest"
+        ],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "antigravity: what the installer writes",
+      "agent": "antigravity",
+      "config": "{\"mine\":{},\"agentbar\":{\"PreInvocation\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PreInvocation\",\"timeout\":5}]}],\"PreToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PreToolUse\",\"timeout\":5}],\"matcher\":\"*\"}],\"PostToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PostToolUse\",\"timeout\":5}],\"matcher\":\"*\"}],\"PostInvocation\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PostInvocation\",\"timeout\":5}]}],\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" Stop\",\"timeout\":5}]}]}}",
+      "expect": {
+        "status": "ok",
+        "missing": [],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "antigravity: Stop's command names another event",
+      "agent": "antigravity",
+      "config": "{\"agentbar\":{\"PreInvocation\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PreInvocation\",\"timeout\":5}]}],\"PreToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PreToolUse\",\"timeout\":5}],\"matcher\":\"*\"}],\"PostToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PostToolUse\",\"timeout\":5}],\"matcher\":\"*\"}],\"PostInvocation\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PostInvocation\",\"timeout\":5}]}],\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PreInvocation\",\"timeout\":5}]}]}}",
+      "expect": {
+        "status": "warn",
+        "missing": [
+          "Stop"
+        ],
+        "misplaced": [
+          "Stop"
+        ]
+      }
+    },
+    {
+      "name": "antigravity: moved into a group of the person's own",
+      "agent": "antigravity",
+      "config": "{\"mine\":{\"PreInvocation\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PreInvocation\",\"timeout\":5}]}],\"PreToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PreToolUse\",\"timeout\":5}],\"matcher\":\"*\"}],\"PostToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PostToolUse\",\"timeout\":5}],\"matcher\":\"*\"}],\"PostInvocation\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" PostInvocation\",\"timeout\":5}]}],\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\\\"/Users/x/.agentbar/hooks/antigravity/antigravity.js\\\" Stop\",\"timeout\":5}]}]}}",
+      "expect": {
+        "status": "ok",
+        "missing": [],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "codex: what the installer writes",
+      "agent": "codex",
+      "config": "model = \"o3\"\nnotify = [\"/usr/local/bin/node\", \"/Users/x/.agentbar/hooks/codex/notify.js\"]\n\n# >>> agentbar >>> written by AgentBar; edit outside these two lines\n[[hooks.SessionStart]]\n[[hooks.SessionStart.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" lifecycle.js start\"\ntimeout = 5\n\n[[hooks.SessionEnd]]\n[[hooks.SessionEnd.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" lifecycle.js end\"\ntimeout = 3\n\n[[hooks.UserPromptSubmit]]\n[[hooks.UserPromptSubmit.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" update.js prompt\"\ntimeout = 5\n\n[[hooks.PreToolUse]]\n[[hooks.PreToolUse.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" update.js pre\"\ntimeout = 5\n\n[[hooks.PostToolUse]]\n[[hooks.PostToolUse.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" update.js post\"\ntimeout = 5\n\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" update.js stop\"\ntimeout = 5\n\n[[hooks.PermissionRequest]]\n[[hooks.PermissionRequest.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" permission.js\"\ntimeout = 630\n\n# <<< agentbar <<<\n",
+      "expect": {
+        "status": "ok",
+        "missing": [],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "codex: the notify bridge alone",
+      "agent": "codex",
+      "config": "model = \"o3\"\nnotify = [\"/usr/local/bin/node\", \"/Users/x/.agentbar/hooks/codex/notify.js\"]\n",
+      "expect": {
+        "status": "warn",
+        "missing": [
+          "SessionStart",
+          "SessionEnd",
+          "UserPromptSubmit",
+          "PreToolUse",
+          "PostToolUse",
+          "Stop",
+          "PermissionRequest"
+        ],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "codex: the block commented out",
+      "agent": "codex",
+      "config": "model = \"o3\"\n# # >>> agentbar >>> written by AgentBar; edit outside these two lines\n# [[hooks.SessionStart]]\n# [[hooks.SessionStart.hooks]]\n# type = \"command\"\n# command = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" lifecycle.js start\"\n# timeout = 5\n\n# [[hooks.SessionEnd]]\n# [[hooks.SessionEnd.hooks]]\n# type = \"command\"\n# command = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" lifecycle.js end\"\n# timeout = 3\n\n# [[hooks.UserPromptSubmit]]\n# [[hooks.UserPromptSubmit.hooks]]\n# type = \"command\"\n# command = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" update.js prompt\"\n# timeout = 5\n\n# [[hooks.PreToolUse]]\n# [[hooks.PreToolUse.hooks]]\n# type = \"command\"\n# command = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" update.js pre\"\n# timeout = 5\n\n# [[hooks.PostToolUse]]\n# [[hooks.PostToolUse.hooks]]\n# type = \"command\"\n# command = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" update.js post\"\n# timeout = 5\n\n# [[hooks.Stop]]\n# [[hooks.Stop.hooks]]\n# type = \"command\"\n# command = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" update.js stop\"\n# timeout = 5\n\n# [[hooks.PermissionRequest]]\n# [[hooks.PermissionRequest.hooks]]\n# type = \"command\"\n# command = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" permission.js\"\n# timeout = 630\n\n# # <<< agentbar <<<\n",
+      "expect": {
+        "status": "fail",
+        "missing": [
+          "SessionStart",
+          "SessionEnd",
+          "UserPromptSubmit",
+          "PreToolUse",
+          "PostToolUse",
+          "Stop",
+          "PermissionRequest"
+        ],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "codex: SessionStart's command under a Stop header",
+      "agent": "codex",
+      "config": "notify = [\"/usr/local/bin/node\", \"/Users/x/.agentbar/hooks/codex/notify.js\"]\n\n# >>> agentbar >>> written by AgentBar; edit outside these two lines\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" lifecycle.js start\"\ntimeout = 5\n\n[[hooks.SessionEnd]]\n[[hooks.SessionEnd.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" lifecycle.js end\"\ntimeout = 3\n\n[[hooks.UserPromptSubmit]]\n[[hooks.UserPromptSubmit.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" update.js prompt\"\ntimeout = 5\n\n[[hooks.PreToolUse]]\n[[hooks.PreToolUse.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" update.js pre\"\ntimeout = 5\n\n[[hooks.PostToolUse]]\n[[hooks.PostToolUse.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" update.js post\"\ntimeout = 5\n\n[[hooks.PermissionRequest]]\n[[hooks.PermissionRequest.hooks]]\ntype = \"command\"\ncommand = \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/codex/hook.js\\\" permission.js\"\ntimeout = 630\n\n# <<< agentbar <<<\n",
+      "expect": {
+        "status": "warn",
+        "missing": [
+          "SessionStart",
+          "Stop"
+        ],
+        "misplaced": [
+          "Stop"
+        ]
+      }
+    },
+    {
+      "name": "codex: someone else's config",
+      "agent": "codex",
+      "config": "model = \"o3\"\nnotify = [\"/usr/bin/say\"]\n",
+      "expect": {
+        "status": "fail",
+        "missing": [
+          "SessionStart",
+          "SessionEnd",
+          "UserPromptSubmit",
+          "PreToolUse",
+          "PostToolUse",
+          "Stop",
+          "PermissionRequest"
+        ],
+        "misplaced": []
+      }
+    }
+  ]
+}

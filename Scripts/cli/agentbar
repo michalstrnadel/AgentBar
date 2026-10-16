@@ -1523,6 +1523,186 @@ function watch(argv) {
 // MARK: - install-hooks (Linux counterpart of the macOS app's HookInstaller;
 // same safety rules: never touch an unparseable config, write only on change)
 
+// Which events install-hooks wires into each agent's config, and which of AgentBar's
+// scripts answers each one — HookWiring.swift, line for line. One table with two
+// readers: install-hooks writes from it and doctor checks a config against it, so
+// "wired" means the same thing to both. Tests/Fixtures/hook-wiring/cases.json holds
+// this table and the app's to the same values, and the verdicts too.
+// [event, script under ~/.agentbar/hooks, arg (null: none), matcher, timeout (agent's unit)]
+const HOOK_WIRING = (() => {
+  const ev = (event, script, arg, matcher = false, timeout = null) => ({ event, script, arg, matcher, timeout });
+  return {
+    claude: [
+      ev("SessionStart", "claude/lifecycle.js", "start"),
+      ev("SessionEnd", "claude/lifecycle.js", "end"),
+      ev("UserPromptSubmit", "claude/update.js", "prompt"),
+      ev("PreToolUse", "claude/update.js", "pre", true),
+      ev("PostToolUse", "claude/update.js", "post", true),
+      // Blocking: its own wait is 600s, so give Claude Code slack.
+      ev("PermissionRequest", "claude/permission.js", null, true, 630),
+      ev("Stop", "claude/update.js", "stop"),
+      ev("PreCompact", "claude/update.js", "compact"),
+    ],
+    // Through codex/hook.js, which sets AGENTBAR_AGENT (Codex handlers have no `env`).
+    // Codex clamps SessionEnd to 3s; PermissionRequest outlasts permission.js's 600s.
+    codex: [
+      ev("SessionStart", "codex/hook.js", "lifecycle.js start", false, 5),
+      ev("SessionEnd", "codex/hook.js", "lifecycle.js end", false, 3),
+      ev("UserPromptSubmit", "codex/hook.js", "update.js prompt", false, 5),
+      ev("PreToolUse", "codex/hook.js", "update.js pre", false, 5),
+      ev("PostToolUse", "codex/hook.js", "update.js post", false, 5),
+      ev("Stop", "codex/hook.js", "update.js stop", false, 5),
+      ev("PermissionRequest", "codex/hook.js", "permission.js", false, 630),
+    ],
+    // Observational only; milliseconds. Qwen splits the failure paths into their own
+    // events — without them a turn that errors out keeps animating.
+    qwen: [
+      ev("SessionStart", "claude/lifecycle.js", "start", false, 5000),
+      ev("SessionEnd", "claude/lifecycle.js", "end", false, 5000),
+      ev("UserPromptSubmit", "claude/update.js", "prompt", false, 5000),
+      ev("PreToolUse", "claude/update.js", "pre", true, 5000),
+      ev("PostToolUse", "claude/update.js", "post", true, 5000),
+      ev("PostToolUseFailure", "claude/update.js", "post", true, 5000),
+      ev("Stop", "claude/update.js", "stop", false, 5000),
+      ev("StopFailure", "claude/update.js", "fail", false, 5000),
+    ],
+    // timeoutSec. A failed tool call is still mid-turn; ErrorOccurred is Copilot's own,
+    // and update.js reads its `recoverable`. permissionRequest blocks and decides.
+    copilot: [
+      ev("SessionStart", "claude/lifecycle.js", "start", false, 5),
+      ev("SessionEnd", "claude/lifecycle.js", "end", false, 5),
+      ev("UserPromptSubmit", "claude/update.js", "prompt", false, 5),
+      ev("PreToolUse", "claude/update.js", "pre", false, 5),
+      ev("PostToolUse", "claude/update.js", "post", false, 5),
+      ev("PostToolUseFailure", "claude/update.js", "post", false, 5),
+      ev("Stop", "claude/update.js", "stop", false, 5),
+      ev("ErrorOccurred", "claude/update.js", "fail", false, 5),
+      ev("permissionRequest", "claude/permission.js", null, false, 630),
+    ],
+    // Observational only: the before* hooks gate permissions and belong to the user.
+    cursor: ["sessionStart", "sessionEnd", "preToolUse", "postToolUse", "afterAgentResponse", "stop"]
+      .map((e) => ev(e, "cursor/cursor.js", null)),
+    gemini: ["SessionStart", "SessionEnd", "BeforeAgent", "BeforeTool", "AfterTool", "AfterAgent"]
+      .map((e) => ev(e, "gemini/gemini.js", null, false, 5000)),
+    // The stdin payload carries no event name, so it rides along as the argument.
+    antigravity: ["PreInvocation", "PreToolUse", "PostToolUse", "PostInvocation", "Stop"]
+      .map((e) => ev(e, "antigravity/antigravity.js", e, e.endsWith("ToolUse"), 5)),
+  };
+})();
+const HOOKS_PATH_MARKER = "/.agentbar/hooks/";
+
+// `"<node>" "<hooks>/<script>" <arg>`, or the script alone when it runs by shebang.
+function wiringCommand(e, hooksDir, node) {
+  const script = `"${hooksDir}/${e.script}"`;
+  const head = node ? `"${node}" ${script}` : script;
+  return e.arg ? `${head} ${e.arg}` : head;
+}
+
+// HookWiring.shellWords: whitespace-split, quotes holding a word together.
+function shellWords(s) {
+  const out = [];
+  let word = "", quote = null, inWord = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      else if (c === "\\" && quote === '"' && i + 1 < s.length) word += s[++i];
+      else word += c;
+    } else if (c === '"' || c === "'") { quote = c; inWord = true; }
+    else if (c === "\\" && i + 1 < s.length) { word += s[++i]; inWord = true; }
+    else if (/\s/.test(c)) { if (inWord) { out.push(word); word = ""; inWord = false; } }
+    else { word += c; inWord = true; }
+  }
+  if (inWord) out.push(word);
+  return out;
+}
+
+// Every command under an event (HookWiring.jsonEntries): hooks.<Event>, except
+// Antigravity, whose top level is named rule groups.
+function wiringJsonEntries(root, agent) {
+  const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
+  const tables = agent === "antigravity"
+    ? Object.keys(root).sort().map((k) => root[k]).filter(isObj)
+    : [isObj(root.hooks) ? root.hooks : {}];
+  const words = (h) => {
+    if (typeof h.command === "string") return shellWords(h.command);
+    if (typeof h.exec === "string") return [h.exec].concat((Array.isArray(h.args) ? h.args : []).filter((a) => typeof a === "string"));
+    if (typeof h.bash === "string") return shellWords(h.bash);
+    return null;
+  };
+  const out = [];
+  for (const table of tables) {
+    for (const [event, rules] of Object.entries(table)) {
+      if (!Array.isArray(rules)) continue;
+      for (const rule of rules) {
+        if (!isObj(rule)) continue;
+        for (const h of [rule].concat(Array.isArray(rule.hooks) ? rule.hooks.filter(isObj) : [])) {
+          const w = words(h);
+          if (w) out.push({ event, words: w });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// HookWiring.codexEntries: `command = "…"` under a [[hooks.<Event>.hooks]] header.
+function codexEntries(text) {
+  let current = null;
+  const out = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (line.startsWith("[")) {
+      const m = line.match(/^\[\[\s*hooks\.([A-Za-z]+)\.hooks\s*\]\]/);
+      current = m ? m[1] : null;
+      continue;
+    }
+    const m = current && line.match(/^command\s*=\s*"((?:[^"\\]|\\.)*)"/);
+    if (!m) continue;
+    const value = m[1].replace(/\\(.)/g, (_, c) => (c === "n" ? "\n" : c === "t" ? "\t" : c));
+    out.push({ event: current, words: shellWords(value) });
+  }
+  return out;
+}
+
+const codexNotifyIsOurs = (text) => text.split("\n")
+  .some((l) => /^[ \t]*notify[ \t]*=/.test(l) && l.includes(HOOKS_PATH_MARKER + "codex/"));
+
+// HookWiring.verdict: null when the config does not parse; otherwise which needed
+// events nothing of AgentBar's answers, and where its script sits but does not belong.
+function wiringVerdict(agent, text) {
+  const needed = HOOK_WIRING[agent] || [];
+  let entries, ours = false;
+  if (agent === "codex") {
+    entries = codexEntries(text);
+    ours = codexNotifyIsOurs(text);
+  } else {
+    let root;
+    try { root = JSON.parse(text); } catch { return null; }
+    if (!root || typeof root !== "object" || Array.isArray(root)) return null;
+    entries = wiringJsonEntries(root, agent);
+  }
+  const dirs = [...new Set(needed.map((e) => HOOKS_PATH_MARKER + e.script.split("/")[0] + "/"))];
+  const mine = entries.filter((e) => e.words.some((w) => dirs.some((d) => w.includes(d))));
+  ours = ours || mine.length > 0;
+  const matches = (words, e) => {
+    const i = words.findIndex((w) => w.endsWith(HOOKS_PATH_MARKER + e.script));
+    if (i < 0) return false;
+    const expected = e.arg ? e.arg.split(" ") : [];
+    const rest = words.slice(i + 1, i + 1 + expected.length);
+    return rest.length === expected.length && rest.every((w, k) => w === expected[k]);
+  };
+  const satisfied = new Set(), misplaced = new Set();
+  for (const entry of mine) {
+    if (needed.some((e) => e.event === entry.event && matches(entry.words, e))) satisfied.add(entry.event);
+    else misplaced.add(entry.event);
+  }
+  const missing = needed.map((e) => e.event).filter((e) => !satisfied.has(e));
+  const stray = [...misplaced].filter((e) => !satisfied.has(e)).sort();
+  const status = !ours ? "fail" : missing.length || stray.length ? "warn" : "ok";
+  return { status, ours, missing, misplaced: stray };
+}
+
 // MARK: - doctor (check ids mirror Sources/AgentBar/Diagnostics.swift; docs/diagnostics.md)
 
 // Every integration here fails the same way: silently. A hook that is not wired is
@@ -1747,18 +1927,21 @@ function doctor(json) {
       continue;
     }
     const needsAll = i.id === "claude";
-    let anyWired = false, absent = null;
-    const unwired = [];   // every config that does not carry the marker, as shown
+    let absent = null;
+    // One verdict per config, read event by event against HOOK_WIRING — the table
+    // install-hooks writes from (Diagnostics.wiring). A config that is missing or
+    // does not parse is a "fail" here and gets its own row below or above.
+    const verdicts = [];
     for (const file of configs) {
       const text = read(file);
       if (text === null) {
         if (configs.length === 1) absent = shown(file);
-        unwired.push(shown(file));
+        verdicts.push({ file: shown(file), status: "fail" });
         continue;
       }
       if (file.endsWith(".json")) {
         try { JSON.parse(text); } catch {
-          unwired.push(shown(file));
+          verdicts.push({ file: shown(file), status: "fail" });
           add(`agent.${i.id}.parseable`, `${i.name} config parses`, "fail",
               `${shown(file)} is not valid JSON, so install-hooks refuses to touch it — deliberately, it is your file.`,
               "Fix the JSON (a `//` comment or a trailing comma is the usual cause), then re-run `agentbar install-hooks`.");
@@ -1766,11 +1949,12 @@ function doctor(json) {
         }
       }
       // JSONSerialization escapes forward slashes, so a config the macOS app wrote
-      // says "\\/.agentbar\\/hooks\\/claude\\/" on disk. The installers never notice —
-      // they match against the parsed value — but raw-text search does, and would
-      // report every macOS-written config as unwired.
+      // says "\\/.agentbar\\/hooks\\/claude\\/" on disk. Parsing undoes that; the
+      // raw-text searches below (OpenCode's marker, the interpreter) need it undone.
       const flat = text.replace(/\\\//g, "/");
-      if (flat.includes(i.marker)) anyWired = true; else unwired.push(shown(file));
+      const v = HOOK_WIRING[i.id] ? wiringVerdict(i.id, text) : null;
+      verdicts.push(v ? { file: shown(file), ...v }
+        : { file: shown(file), status: flat.includes(i.marker) ? "ok" : "fail", missing: [], misplaced: [] });
       const dead = (flat.match(/"(\/[^"]*\/node)"/g) || [])
         .map((m) => m.slice(1, -1)).filter((n) => !runnable(n));
       if (dead.length) {
@@ -1779,12 +1963,26 @@ function doctor(json) {
             "Re-run `agentbar install-hooks` — it repairs the path now.");
       }
     }
-    const wired = needsAll ? unwired.length === 0 : anyWired;
-    add(`agent.${i.id}.wired`, `${i.name} hooks`, wired ? "ok" : "fail",
-        wired ? null : (absent ? `${absent} does not exist.`
+    // Claude needs every config dir wired, so the worst one speaks; everyone else's
+    // list is alternatives (Antigravity: either file will do), so the best one does.
+    const rank = { fail: 0, warn: 1, ok: 2 };
+    const pick = verdicts.slice().sort((a, b) => needsAll ? rank[a.status] - rank[b.status] : rank[b.status] - rank[a.status])[0]
+      || { status: "fail" };
+    const unwired = verdicts.filter((v) => v.status === "fail").map((v) => v.file);
+    const partial = (v) => [
+      v.missing.length ? `nothing of AgentBar's runs on ${v.missing.join(", ")}` : null,
+      v.misplaced.length ? `AgentBar's hook sits under ${v.misplaced.join(", ")}, where it does not belong` : null,
+    ].filter(Boolean).join("; ");
+    const wired = pick.status !== "fail";
+    add(`agent.${i.id}.wired`, `${i.name} hooks`, pick.status,
+        pick.status === "ok" ? null
+          : pick.status === "warn" ? `${pick.file}: ${partial(pick)}. What happens there never reaches AgentBar.`
+          : absent ? `${absent} does not exist.`
           : needsAll && configs.length > 1 ? `Not wired into ${unwired.join(", ")} — install-hooks writes every config directory it knows of.`
-          : "Installed, but AgentBar is not wired into it."),
-        wired ? null : "Run `agentbar install-hooks`.");
+          : "Installed, but AgentBar is not wired into it.",
+        pick.status === "ok" ? null
+          : pick.status === "warn" ? `Run \`agentbar install-hooks\` — it puts every hook back under its own event. Hook config is read at session start, so start a NEW ${i.name} session after.`
+          : "Run `agentbar install-hooks`.");
     if (!wired) continue;
 
     const last = hist.filter((r) => r.agent === i.id).map((r) => r.endedAt || 0).sort((a, b) => b - a)[0];
@@ -2674,18 +2872,9 @@ function installHooks({ only = null, args = [] } = {}) {
   const writeIfChanged = (file, root) => writeConfig(file, sortedStringify(root) + "\n");
   const report = (name, changed) => console.log(`${changed ? "wired" : "ok   "}  ${name}`);
 
-  // Claude Code — <configDir>/settings.json (default + CLAUDE_CONFIG_DIR + hint file)
-  const dir = path.join(hooksDir, "claude");
-  const claudeEvents = [
-    ["SessionStart", `"${node}" "${dir}/lifecycle.js" start`, false, null],
-    ["SessionEnd", `"${node}" "${dir}/lifecycle.js" end`, false, null],
-    ["UserPromptSubmit", `"${node}" "${dir}/update.js" prompt`, false, null],
-    ["PreToolUse", `"${node}" "${dir}/update.js" pre`, true, null],
-    ["PostToolUse", `"${node}" "${dir}/update.js" post`, true, null],
-    ["PermissionRequest", `"${node}" "${dir}/permission.js"`, true, 630],
-    ["Stop", `"${node}" "${dir}/update.js" stop`, false, null],
-    ["PreCompact", `"${node}" "${dir}/update.js" compact`, false, null],
-  ];
+  // Claude Code — <configDir>/settings.json (default + CLAUDE_CONFIG_DIR + hint file).
+  // Every agent's events and scripts below come from HOOK_WIRING, the table doctor
+  // checks a config against.
   for (const cfgDir of on("claude") ? claudeDirs : []) {
     const file = path.join(cfgDir, "settings.json");
     const root = readConfig(file);
@@ -2696,12 +2885,12 @@ function installHooks({ only = null, args = [] } = {}) {
       const kept = rules.filter((rule) => !((rule.hooks || []).some((h) => String(h.command || "").includes("/.agentbar/hooks/claude/"))));
       if (kept.length) hooks[ev] = kept; else delete hooks[ev];
     }
-    for (const [ev, cmd, matcher, timeout] of claudeEvents) {
-      const entry = { type: "command", command: cmd };
-      if (timeout) entry.timeout = timeout;
+    for (const e of HOOK_WIRING.claude) {
+      const entry = { type: "command", command: wiringCommand(e, hooksDir, node) };
+      if (e.timeout) entry.timeout = e.timeout;
       const rule = { hooks: [entry] };
-      if (matcher) rule.matcher = "*";
-      hooks[ev] = (hooks[ev] || []).concat([rule]);
+      if (e.matcher) rule.matcher = "*";
+      hooks[e.event] = (hooks[e.event] || []).concat([rule]);
     }
     root.hooks = hooks;
     report(`claude  ${file}`, writeIfChanged(file, root));
@@ -2780,23 +2969,12 @@ function installHooks({ only = null, args = [] } = {}) {
     // [hooks.state] when a human trusts a hook and a dotted `hooks.X` would make
     // that a redefinition. Appended at the end, because a bare key written after a
     // [[table]] header belongs to that table.
-    const shim = path.join(hooksDir, "codex", "hook.js");
-    const codexEvents = [
-      ["SessionStart", "lifecycle.js start", 5],
-      ["SessionEnd", "lifecycle.js end", 3],      // Codex clamps this one to 3s
-      ["UserPromptSubmit", "update.js prompt", 5],
-      ["PreToolUse", "update.js pre", 5],
-      ["PostToolUse", "update.js post", 5],
-      ["Stop", "update.js stop", 5],
-      // Above permission.js's own 600s wait, so the hook gives up first and falls
-      // through to Codex's prompt rather than being killed mid-wait.
-      ["PermissionRequest", "permission.js", 630],
-    ];
     const blockLines = [CODEX_BEGIN];
-    for (const [event, tail, timeout] of codexEvents) {
-      blockLines.push(`[[hooks.${event}]]`, `[[hooks.${event}.hooks]]`, 'type = "command"',
-                      `command = "\\"${node}\\" \\"${shim}\\" ${tail}"`, `timeout = ${timeout}`);
-      if (event === "PermissionRequest") blockLines.push('statusMessage = "Waiting for you in AgentBar"');
+    for (const e of HOOK_WIRING.codex) {
+      const command = wiringCommand(e, hooksDir, node).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      blockLines.push(`[[hooks.${e.event}]]`, `[[hooks.${e.event}.hooks]]`, 'type = "command"',
+                      `command = "${command}"`, `timeout = ${e.timeout}`);
+      if (e.event === "PermissionRequest") blockLines.push('statusMessage = "Waiting for you in AgentBar"');
       blockLines.push("");
     }
     blockLines.push(CODEX_END);
@@ -2825,10 +3003,10 @@ function installHooks({ only = null, args = [] } = {}) {
     if (root !== null) {
       root.version = root.version || 1;
       const hooks = root.hooks && typeof root.hooks === "object" ? root.hooks : {};
-      for (const ev of ["sessionStart", "sessionEnd", "preToolUse", "postToolUse", "afterAgentResponse", "stop"]) {
-        hooks[ev] = (Array.isArray(hooks[ev]) ? hooks[ev] : [])
+      for (const e of HOOK_WIRING.cursor) {
+        hooks[e.event] = (Array.isArray(hooks[e.event]) ? hooks[e.event] : [])
           .filter((r) => !String(r.command || "").includes("/.agentbar/hooks/cursor/"))
-          .concat([{ command: cursorJs }]);
+          .concat([{ command: `${hooksDir}/${e.script}` }]);
       }
       root.hooks = hooks;
       report("cursor  " + file, writeIfChanged(file, root));
@@ -2846,10 +3024,10 @@ function installHooks({ only = null, args = [] } = {}) {
   if (on("antigravity") && antigravityDirs.length) {
     pinNodeShebang(antigravityJs);
     const group = {};
-    for (const ev of ["PreInvocation", "PreToolUse", "PostToolUse", "PostInvocation", "Stop"]) {
-      const rule = { hooks: [{ type: "command", command: `"${antigravityJs}" ${ev}`, timeout: 5 }] };
-      if (ev.endsWith("ToolUse")) rule.matcher = "*";
-      group[ev] = [rule];
+    for (const e of HOOK_WIRING.antigravity) {
+      const rule = { hooks: [{ type: "command", command: wiringCommand(e, hooksDir, null), timeout: e.timeout }] };
+      if (e.matcher) rule.matcher = "*";
+      group[e.event] = [rule];
     }
     for (const agDir of antigravityDirs) {
       const file = path.join(agDir, "hooks.json");
@@ -2869,9 +3047,9 @@ function installHooks({ only = null, args = [] } = {}) {
       const hooks = root.hooks && typeof root.hooks === "object" ? root.hooks : {};
       const cmd = `"${node}" "${path.join(hooksDir, "gemini", "gemini.js")}"`;
       const ours = (g) => (g.hooks || []).some((h) => String(h.command || "").includes("/.agentbar/hooks/gemini/"));
-      for (const ev of ["SessionStart", "SessionEnd", "BeforeAgent", "BeforeTool", "AfterTool", "AfterAgent"]) {
-        hooks[ev] = (Array.isArray(hooks[ev]) ? hooks[ev] : []).filter((g) => !ours(g))
-          .concat([{ hooks: [{ type: "command", command: cmd, timeout: 5000 }] }]);
+      for (const e of HOOK_WIRING.gemini) {
+        hooks[e.event] = (Array.isArray(hooks[e.event]) ? hooks[e.event] : []).filter((g) => !ours(g))
+          .concat([{ hooks: [{ type: "command", command: cmd, timeout: e.timeout }] }]);
       }
       root.hooks = hooks;
       report("gemini  " + file, writeIfChanged(file, root));
@@ -2895,22 +3073,11 @@ function installHooks({ only = null, args = [] } = {}) {
         const kept = rules.filter((rule) => !((rule.hooks || []).some((h) => String(h.command || "").includes("/.agentbar/hooks/claude/"))));
         if (kept.length) hooks[ev] = kept; else delete hooks[ev];
       }
-      const qwenEvents = [
-        ["SessionStart", `"${node}" "${dir}/lifecycle.js" start`, false],
-        ["SessionEnd", `"${node}" "${dir}/lifecycle.js" end`, false],
-        ["UserPromptSubmit", `"${node}" "${dir}/update.js" prompt`, false],
-        ["PreToolUse", `"${node}" "${dir}/update.js" pre`, true],
-        ["PostToolUse", `"${node}" "${dir}/update.js" post`, true],
-        // Qwen splits the failure paths into their own events; without them a
-        // turn that errors out keeps animating as if it were still working.
-        ["PostToolUseFailure", `"${node}" "${dir}/update.js" post`, true],
-        ["Stop", `"${node}" "${dir}/update.js" stop`, false],
-        ["StopFailure", `"${node}" "${dir}/update.js" fail`, false],
-      ];
-      for (const [ev, cmd, matcher] of qwenEvents) {
-        const rule = { hooks: [{ type: "command", command: cmd, timeout: 5000, env: { AGENTBAR_AGENT: "qwen" } }] };
-        if (matcher) rule.matcher = "*";
-        hooks[ev] = (hooks[ev] || []).concat([rule]);
+      for (const e of HOOK_WIRING.qwen) {
+        const rule = { hooks: [{ type: "command", command: wiringCommand(e, hooksDir, node), timeout: e.timeout,
+                                 env: { AGENTBAR_AGENT: "qwen" } }] };
+        if (e.matcher) rule.matcher = "*";
+        hooks[e.event] = (hooks[e.event] || []).concat([rule]);
       }
       root.hooks = hooks;
       report(`qwen    ${file}`, writeIfChanged(file, root));
@@ -2931,30 +3098,15 @@ function installHooks({ only = null, args = [] } = {}) {
   const copilotDir = process.env.COPILOT_HOME || path.join(os.homedir(), ".copilot");
   if (on("copilot") && fs.existsSync(copilotDir)) {
     const file = path.join(copilotDir, "hooks", "agentbar.json");
-    const copilotEvents = [
-      ["SessionStart", "lifecycle.js", "start"],
-      ["SessionEnd", "lifecycle.js", "end"],
-      ["UserPromptSubmit", "update.js", "prompt"],
-      ["PreToolUse", "update.js", "pre"],
-      ["PostToolUse", "update.js", "post"],
-      // A failed tool call is still mid-turn: keep the session working.
-      ["PostToolUseFailure", "update.js", "post"],
-      ["Stop", "update.js", "stop"],
-      // Only Copilot reports errors as their own event; update.js reads the
-      // payload's `recoverable` so a retry doesn't end the turn early.
-      ["ErrorOccurred", "update.js", "fail"],
-    ];
+    // HOOK_WIRING.copilot, permissionRequest among them: its timeout sits ABOVE the
+    // hook's own wait (600s) so the hook gives up first and exits silently into the
+    // terminal prompt — the other way round, Copilot would kill it mid-wait.
     const hooks = {};
-    for (const [ev, script, arg] of copilotEvents) {
-      hooks[ev] = [{ type: "command", exec: node, args: [`${dir}/${script}`, arg],
-                     timeoutSec: 5, env: { AGENTBAR_AGENT: "copilot" } }];
+    for (const e of HOOK_WIRING.copilot) {
+      hooks[e.event] = [{ type: "command", exec: node,
+                          args: [`${hooksDir}/${e.script}`].concat(e.arg ? [e.arg] : []),
+                          timeoutSec: e.timeout, env: { AGENTBAR_AGENT: "copilot" } }];
     }
-    // The blocking one. Its timeout sits ABOVE the hook's own wait (600s) so the
-    // hook gives up first and exits silently into the terminal prompt — the other
-    // way round, Copilot would kill it mid-wait. Claude's entry uses 630 likewise.
-    hooks.permissionRequest = [{ type: "command", exec: node,
-                                 args: [`${dir}/permission.js`],
-                                 timeoutSec: 630, env: { AGENTBAR_AGENT: "copilot" } }];
     fs.mkdirSync(path.dirname(file), { recursive: true });
     report(`copilot ${file}`, writeIfChanged(file, { version: 1, hooks }));
   }
@@ -3105,7 +3257,7 @@ const json = argv.includes("--json");
 if (require.main !== module) {
   module.exports = { readRules, decisionShape, decisionShapeOfCall, decisionVerb, parseWireDisabled, loadWireDisabled,
                      loadWireEnabled, effectiveDisabled, modWired, modUnwired,
-                     displayName, sessions, plausibleTime };
+                     displayName, sessions, plausibleTime, HOOK_WIRING, wiringVerdict, wiringCommand };
 } else switch (cmd) {
   case "status": case undefined: printStatus(json); break;
   case "requests": printRequests(json); break;

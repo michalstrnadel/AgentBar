@@ -85,9 +85,34 @@ check "unpinned shebang is a warning"   '[ "$(status_of hooks.shebang)" = warn ]
 # marker reported a perfectly wired Mac as entirely unwired.
 fresh_home
 mkdir -p "$HOME/.cursor"
-printf '{"hooks":{"stop":[{"command":"\\/Users\\/x\\/.agentbar\\/hooks\\/cursor\\/cursor.js"}]}}' \
-  > "$HOME/.cursor/hooks.json"
+CUR='[{"command":"\\/Users\\/x\\/.agentbar\\/hooks\\/cursor\\/cursor.js"}]'
+printf '{"hooks":{"sessionStart":%s,"sessionEnd":%s,"preToolUse":%s,"postToolUse":%s,"afterAgentResponse":%s,"stop":%s}}' \
+  "$CUR" "$CUR" "$CUR" "$CUR" "$CUR" "$CUR" > "$HOME/.cursor/hooks.json"
 check "escaped slashes still count"     '[ "$(status_of agent.cursor.wired)" = ok ]'
+
+# --- wired event by event, not by substring ----------------------------------------
+# The path anywhere in the file used to count: in a comment, under another key, under
+# the wrong event. Every installed agent must check out whole, and AgentBar's script
+# filed under an event it does not use is a warning, not a pass.
+fresh_home
+mkdir -p "$HOME/.claude" "$HOME/.cursor" "$HOME/.gemini/antigravity" "$HOME/.qwen" "$HOME/.copilot" "$HOME/.codex"
+"$CLI" install-hooks >/dev/null 2>&1
+for a in claude cursor gemini antigravity qwen copilot codex; do
+  check "$a: what install-hooks writes passes" '[ "$(status_of agent.$a.wired)" = ok ]'
+done
+SETTINGS="$HOME/.claude/settings.json"
+"$NODE" -e 'const fs = require("fs"), f = process.argv[1], j = JSON.parse(fs.readFileSync(f, "utf8"));
+j.hooks.Notification = j.hooks.Stop; delete j.hooks.Stop; fs.writeFileSync(f, JSON.stringify(j));' "$SETTINGS"
+check "the right script under the wrong event warns" '[ "$(status_of agent.claude.wired)" = warn ]'
+check "and names both events"           '"$CLI" doctor | grep -q "Stop" && "$CLI" doctor | grep -q "Notification"'
+check "partly wired still reports"      '[ "$(status_of agent.claude.lastSeen)" != absent ]'
+printf '{"note":"%s/.agentbar/hooks/claude/update.js stop","hooks":{}}' "$HOME" > "$SETTINGS"
+check "the path outside any hook fails" '[ "$(status_of agent.claude.wired)" = fail ]'
+# Codex: the notify bridge alone still reports sessions, but nothing can be approved.
+printf 'notify = ["/bin/sh", "%s/.agentbar/hooks/codex/notify.js"]\n' "$HOME" > "$HOME/.codex/config.toml"
+check "codex: notify alone warns"       '[ "$(status_of agent.codex.wired)" = warn ]'
+printf '# notify = ["/bin/sh", "%s/.agentbar/hooks/codex/notify.js"]\n' "$HOME" > "$HOME/.codex/config.toml"
+check "codex: a commented-out line fails" '[ "$(status_of agent.codex.wired)" = fail ]'
 
 # --- a config the installer refuses to touch
 fresh_home
