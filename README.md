@@ -950,6 +950,10 @@ run on Linux and macOS — see [docs/testing.md](docs/testing.md).
   re-sync; both update paths install the exact same release bundle, so nothing
   is lost either way.
 
+## Roadmap
+
+What is being found out and what is being built: [ROADMAP.md](ROADMAP.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Third-party marks: see
