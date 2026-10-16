@@ -125,3 +125,17 @@ export function textOf(tree: unknown): string {
   const label = typeof props.label === 'string' ? props.label : ''
   return `${label}${textOf(Reflect.get(tree, 'children') ?? props.children ?? [])}`
 }
+
+/**
+ * A drawn tree with the stamp of the hook beneath taken off. Claude Code (seen on
+ * 2.1.301) stamps the root each `ui.render` hook returns with the plugin that drew
+ * it, `part: { plugin }`: the test's own hook is "test", this mod is "agentbar".
+ * Only the "test" stamp comes off, so a tree this mod drew (around what was beneath
+ * or instead of it) still carries "agentbar" and fails an equality with what was
+ * beneath. On an engine that does not stamp, the tree comes back as it was.
+ */
+export function unstamped(tree: unknown): unknown {
+  if (typeof tree !== 'object' || !tree || Array.isArray(tree)) return tree
+  const { part, ...rest } = tree as { part?: { plugin?: string } }
+  return part && part.plugin === 'test' && Object.keys(part).length === 1 ? rest : tree
+}

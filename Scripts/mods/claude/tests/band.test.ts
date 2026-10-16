@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { SESSION, START, bandAt, rowOf, textOf, worldOf } from './world'
+import { SESSION, START, bandAt, rowOf, textOf, unstamped, worldOf } from './world'
 
 const ROOT = '/Users/me/.agentbar'
 const CONFIG_ON = { [`${ROOT}/mods/config.json`]: JSON.stringify({ band: true }) }
@@ -15,7 +15,7 @@ describe('the band above the prompt', () => {
     on('ui.render', { component: 'AbovePrompt' }, () => BENEATH as never)
     await $.session.start(SESSION)
     await world.clock.advance(5000)
-    expect(await $.ui.render(bandAt() as never)).toEqual(BENEATH)
+    expect(unstamped(await $.ui.render(bandAt() as never))).toEqual(BENEATH)
     expect(world.invalidations).toBe(0)
   })
 
@@ -33,7 +33,7 @@ describe('the band above the prompt', () => {
     on('ui.render', { component: 'AbovePrompt' }, () => BENEATH as never)
     await $.session.start(SESSION)
     await world.clock.advance(4000)
-    expect(await $.ui.render(bandAt() as never)).toEqual(BENEATH)
+    expect(unstamped(await $.ui.render(bandAt() as never))).toEqual(BENEATH)
   })
 
   test('on, with another session waiting, draws one line with Jump that opens its focus link', async ($, on) => {
@@ -121,7 +121,7 @@ describe('the band above the prompt', () => {
     on('ui.render', { component: 'AbovePrompt' }, () => BENEATH as never)
     await $.session.start(SESSION)
     await world.clock.advance(2000)
-    expect(await $.ui.render(bandAt(100, true) as never)).toEqual(BENEATH)
+    expect(unstamped(await $.ui.render(bandAt(100, true) as never))).toEqual(BENEATH)
   })
 
   test('off macOS there is no Jump button', async ($, on) => {
@@ -153,7 +153,7 @@ describe('the band above the prompt', () => {
     const world = worldOf(on, { files: { [`${ROOT}/state.d/c.json`]: rowOf({}) } })
     on('ui.render', { component: 'AbovePrompt' }, () => BENEATH as never)
     await $.session.start(SESSION)
-    expect(await $.ui.render(bandAt() as never)).toEqual(BENEATH)
+    expect(unstamped(await $.ui.render(bandAt() as never))).toEqual(BENEATH)
 
     world.files.set(`${ROOT}/mods/config.json`, '{"band":true}')
     await world.clock.advance(30000)
@@ -161,6 +161,6 @@ describe('the band above the prompt', () => {
 
     world.files.set(`${ROOT}/mods/config.json`, '{"band":false}')
     await world.clock.advance(30000)
-    expect(await $.ui.render(bandAt() as never)).toEqual(BENEATH)
+    expect(unstamped(await $.ui.render(bandAt() as never))).toEqual(BENEATH)
   })
 })

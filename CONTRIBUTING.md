@@ -202,7 +202,17 @@ so a release signed with any other identity is refused by every install
 all, and CI has no access to the certificate. So CI builds and verifies the
 universal bundle, and it is signed locally.
 
-1. Bump `VERSION` in `Scripts/build.sh`, date the `CHANGELOG.md` section.
+1. Bump the version in all three places that carry it, date the `CHANGELOG.md`
+   section, and check the three agree:
+   - `VERSION` in `Scripts/build.sh` (the app);
+   - `version` in `Scripts/mods/claude/.claude-plugin/plugin.json` and
+     `export const VERSION` in `Scripts/mods/claude/hooks/register.js` (the Claude
+     Code mod, which reports it in every sidecar).
+   ```bash
+   bash Scripts/test/mod-test.sh   # "ok mod version matches the app (X.Y.Z)"
+   ```
+   The mod is bumped with every release, even one that does not touch it:
+   1.54.0–1.55.1 skipped it and left `mod-test.sh` failing on main.
 2. Commit as `chore: release X.Y.Z — …`, run `gh workflow enable ci.yml`, push, and
    wait for **that commit's** push run to finish with conclusion `success`
    (`gh run list --workflow ci.yml --commit "$(git rev-parse HEAD)"`). A failed run
