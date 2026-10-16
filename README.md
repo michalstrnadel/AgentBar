@@ -6,7 +6,7 @@
 ![Linux CLI](https://img.shields.io/badge/Linux-CLI-yellow)
 ![Swift](https://img.shields.io/badge/Swift-AppKit-orange)
 
-**One approval queue for every AI coding agent.**
+**One approval queue for your coding agents, and rules that watch before they answer.**
 
 <p align="center">
   <img src="docs/assets/agentbar-tour.gif?v=2026-10-16" width="640" alt="AgentBar tour: the island under the notch opens on a Claude permission request for git push origin main with Codex and Copilot sessions listed below, one click on Allow; then the welcome window's Menu bar / Dynamic Island / Both choice, then a walk through Settings">

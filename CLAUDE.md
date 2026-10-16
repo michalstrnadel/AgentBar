@@ -130,7 +130,9 @@ open "build/AgentBar.app"
    the `docs/protocol.md` list, the README agent table, and the agent list above.
    If it gets hooks it also needs a row in the `Diagnostics.integrations` table AND
    the Linux `doctor`'s — otherwise diagnostics reports a clean bill of health for
-   an integration it never looked at. Nothing else should need touching.
+   an integration it never looked at — and its events in `HookWiring.swift`, the
+   CLI's `HOOK_WIRING` and `Tests/Fixtures/hook-wiring/cases.json`, the one table
+   each installer writes from and each doctor checks against. Nothing else should need touching.
    An agent without an entry renders generically (a monogram plus its `agent_name`),
    so a third-party bridge via `agentbar report` needs none of the list above.
 6. Third-party marks stay listed in `THIRD_PARTY_NOTICES.md`.
