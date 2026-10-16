@@ -10,6 +10,7 @@ recording permission.
 | `agentbar-tour.gif` / `.mp4` / `.jpg`, `deny-with-note.gif`, `rules-try-it.gif`, `hand-a-file.gif`, `keep-awake.gif` / `.mp4` / `.jpg` / `-triggers.png` | `feature-gifs.swift` via `make-gifs.sh` | **the app's own views**, compiled in |
 | `demo-claude-codex.gif` | `demo-gif.swift` | hand-drawn stage, mascot frames from the sprite sources |
 | `demo-island.gif` | `demo-island-gif.swift` | hand-drawn stage and island |
+| `approval-menu.png`, `welcome-appearance.png` | `Scripts/dev/promo.swift --readme docs/assets` (see its header) | **the app's own views**; the menu's titled rows are typeset from the real `NSMenuItem`s, since AppKit cannot draw a menu offscreen |
 | `social-preview.png` | `social-preview.swift` | the banner, from the 1024 icon master and the Your Day card (`--render-wrap … --demo`) |
 
 ## Feature GIFs: the generator to reach for

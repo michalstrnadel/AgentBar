@@ -9,6 +9,7 @@
 //     $(find Sources/AgentBar -name "*.swift" ! -name "main.swift") \
 //     Scripts/dev/promo.swift -o "$D/promo"
 //   AGENTBAR_HOME="$D/home" "$D/promo" promo/<date>     # from the repo root
+//   AGENTBAR_HOME="$D/home" "$D/promo" --readme docs/assets   # the README stills
 import AppKit
 
 @main
@@ -17,6 +18,19 @@ enum Promo {
     static let now = Date()
 
     static func main() {
+        // `--readme DIR`: the README's stills, written straight into DIR.
+        if let i = CommandLine.arguments.firstIndex(of: "--readme") {
+            outDir = URL(fileURLWithPath: CommandLine.arguments.count > i + 1 ? CommandLine.arguments[i + 1]
+                                                                                 : "docs/assets")
+            try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+            NSApplication.shared.setActivationPolicy(.prohibited)
+            guard AgentBarHome.isSandbox else {
+                fatalError("run with AGENTBAR_HOME set to a scratch folder")
+            }
+            Readme.write()
+            print("done → \(outDir.path)")
+            return
+        }
         outDir = URL(fileURLWithPath: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "promo")
         for sub in ["", "stills", "gifs", "video"] {
             try? FileManager.default.createDirectory(at: outDir.appendingPathComponent(sub),
@@ -1000,3 +1014,393 @@ enum HuntClip {
         return img
     }
 }
+
+// MARK: - README stills
+
+/// `--readme DIR`: the stills the README shows, from the real views, at 2×.
+///   approval-menu.png      — the menu bar's menu with a Claude Code permission
+///                            request and its inline Allow / Always / Deny strip.
+///   welcome-appearance.png — the Welcome / Appearance window, island chosen.
+/// Same pixel width and scale as the files they replace; the height follows the
+/// current UI. Flat: a plain backdrop, no glow, no wallpaper.
+enum Readme {
+    static let scale: CGFloat = 2
+    static let tmp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("agentbar-readme-\(getpid())")
+
+    static func write() {
+        NSApp.appearance = NSAppearance(named: .aqua)
+        if let icon = NSImage(contentsOfFile: "Resources/AppIcon.icns") { NSApp.applicationIconImage = icon }
+        try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+        drawAsActive()
+        seedHistory()
+        save(approvalMenu(), "approval-menu.png")
+        save(welcome(), "welcome-appearance.png")
+    }
+
+    /// An offscreen window is never key and this process is never active, so AppKit
+    /// would draw every window here the way a window in the background looks: grey
+    /// traffic lights, grey radios. Within this process only, every window says it
+    /// is key, so the stills show the window you would be looking at.
+    static func drawAsActive() {
+        let yes = class_getInstanceMethod(NSWindow.self, #selector(NSWindow.promoAlwaysTrue))!
+        // The public getters, and the private ones AppKit's controls and title bar
+        // actually ask. A selector a later macOS drops is skipped, not fatal.
+        for name in ["isKeyWindow", "isMainWindow", "hasKeyAppearance", "_hasKeyAppearance",
+                     "_hasActiveAppearance", "_hasActiveAppearanceIgnoringKeyFocus", "_hasActiveControls",
+                     "_hasActiveAppearanceForStandardWindowButton:", "_isKeyWindow"] {
+            if let m = class_getInstanceMethod(NSWindow.self, NSSelectorFromString(name)) {
+                method_setImplementation(m, method_getImplementation(yes))
+            }
+        }
+        if let m = class_getInstanceMethod(NSApplication.self, #selector(getter: NSApplication.isActive)),
+           let y = class_getInstanceMethod(NSApplication.self, #selector(NSApplication.promoAlwaysTrue)) {
+            method_setImplementation(m, method_getImplementation(y))
+        }
+    }
+
+    // MARK: Fixtures
+
+    static func session(_ id: String, _ o: [String: Any]) -> Session {
+        var obj = o
+        obj["sessionId"] = id
+        obj["pid"] = 1
+        obj["started"] = true
+        obj["ts"] = obj["ts"] ?? Date().timeIntervalSince1970
+        obj["term_program"] = "iTerm.app"
+        let url = tmp.appendingPathComponent("\(id).json")
+        try! JSONSerialization.data(withJSONObject: obj).write(to: url)
+        return Session(fileURL: url)!
+    }
+
+    static func request(_ id: String, _ o: [String: Any]) -> ApprovalRequest {
+        let url = tmp.appendingPathComponent("\(id).json")
+        try! JSONSerialization.data(withJSONObject: o).write(to: url)
+        return ApprovalRequest(fileURL: url)!
+    }
+
+    /// Three finished sessions today, so the Today row has a line to show.
+    static func seedHistory() {
+        let now = Date().timeIntervalSince1970
+        let start = Calendar.current.startOfDay(for: Date()).timeIntervalSince1970
+        var lines: [String] = []
+        for (i, (agent, project, minutes)) in [("claude", "myapp", 42.0), ("codex", "api", 26.0),
+                                               ("claude", "docs", 18.0)].enumerated() {
+            let end = max(start + 60, now - Double(i + 1) * 1_500)
+            let o: [String: Any] = ["v": 1, "agent": agent, "sessionId": "readme-\(i)", "project": project,
+                                    "cwd": "/nonexistent/\(project)", "startedAt": max(start, end - minutes * 60),
+                                    "endedAt": end, "state": "done"]
+            lines.append(String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)!)
+        }
+        let url = HistoryStore.fileURL
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try! (lines.joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    // MARK: Drawing
+
+    /// A transparent 2× bitmap of `size` points, drawn into by `body`.
+    static func canvas(_ size: NSSize, _ body: () -> Void) -> NSBitmapImageRep {
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale),
+                                   pixelsHigh: Int(size.height * scale), bitsPerSample: 8, samplesPerPixel: 4,
+                                   hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                   bytesPerRow: 0, bitsPerPixel: 0)!
+        rep.size = size
+        NSGraphicsContext.saveGraphicsState()
+        let ctx = NSGraphicsContext(bitmapImageRep: rep)!
+        NSGraphicsContext.current = ctx
+        ctx.imageInterpolation = .high
+        NSAppearance(named: .aqua)!.performAsCurrentDrawingAppearance { body() }
+        NSGraphicsContext.restoreGraphicsState()
+        return rep
+    }
+
+    /// A view, laid out at `size`, as a 2× bitmap in the light appearance.
+    static func snap(_ view: NSView, _ size: NSSize) -> NSBitmapImageRep {
+        view.appearance = NSAppearance(named: .aqua)
+        view.frame = NSRect(origin: .zero, size: size)
+        let window = NSWindow(contentRect: view.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: .aqua)
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
+        view.cacheDisplay(in: view.bounds, to: rep)
+        rep.size = size
+        return rep
+    }
+
+    static func save(_ rep: NSBitmapImageRep, _ name: String) {
+        // 144 dpi, so a viewer that honours it shows the picture at its point size.
+        rep.size = NSSize(width: CGFloat(rep.pixelsWide) / scale, height: CGFloat(rep.pixelsHigh) / scale)
+        let url = Promo.outDir.appendingPathComponent(name)
+        try! rep.representation(using: .png, properties: [:])!.write(to: url)
+        print("wrote \(url.path) \(rep.pixelsWide)×\(rep.pixelsHigh)")
+    }
+
+    // MARK: The menu
+
+    /// The menu bar's menu, built from the same item makers the app uses — the
+    /// session rows, the request line, its context and button strip, the meter,
+    /// Today, Your Day and the shared app section — and laid out the way AppKit
+    /// lays out a menu. AppKit cannot draw an NSMenu offscreen, so the titled rows
+    /// are typeset here from their own titles, images and key equivalents; every
+    /// custom row is the real view.
+    static func approvalMenu() -> NSBitmapImageRep {
+        // No branch on the rows: at the old still's width "myapp · main" would cut
+        // "needs approval" to an ellipsis, and that word is the point of the picture.
+        let myapp = "/nonexistent/myapp", site = "/nonexistent/website", api = "/nonexistent/api"
+        let now = Date().timeIntervalSince1970
+        let ask = session("readme-claude", [
+            "agent": "claude", "state": "permission", "label": "Bash: git push origin main",
+            "project": "myapp", "cwd": myapp, "started_at": now - 1_680, "model": "claude-opus-5-5",
+        ])
+        let req = request("readme-claude-p1", [
+            "sessionId": "readme-claude", "agent": "claude", "toolName": "Bash",
+            "display": "Bash: git push origin main",
+            "toolInputPretty": "{\"command\": \"git push origin main\"}",
+            "context": ["kind": "bash", "command": "git push origin main"],
+            "ruleSuggestion": ["type": "addRules", "rules": [["toolName": "Bash", "ruleContent": "git push:*"]]],
+            "cwd": myapp, "pid": 1, "hookPid": 1, "ts": now,
+        ])
+        let site2 = session("readme-claude-2", [
+            "agent": "claude", "state": "thinking", "label": "Thinking…", "project": "website",
+            "cwd": site, "started_at": now - 240,
+        ])
+        let codex = session("readme-codex", [
+            "agent": "codex", "state": "tool", "label": "Running tests", "project": "api", "cwd": api,
+            "started_at": now - 540,
+        ])
+        let sessions = [ask, site2, codex]
+
+        // The items, in the order `MenuBuilder.populate` adds them.
+        var items: [NSMenuItem] = []
+        // `MenuBuilder.header` is a section header on macOS 14 and later.
+        let header = NSMenuItem(title: "Sessions", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        header.identifier = NSUserInterfaceItemIdentifier("sectionHeader")
+        items.append(header)
+        for s in sessions {
+            let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            item.view = SessionRowView(session: s, mark: MenuBuilder.menuMark(for: s.agent))
+            items.append(item)
+            guard s.id == ask.id else { continue }
+            let what = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            what.isEnabled = false
+            what.attributedTitle = NSAttributedString(string: "      \(req.display)", attributes: [
+                .font: NSFont.menuFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
+            items.append(what)
+            if let context = req.context {
+                let ctx = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+                ctx.view = ApprovalContextView(context: context)
+                items.append(ctx)
+            }
+            let strip = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            strip.view = ApprovalButtonsRow(hasRule: req.ruleDescription != nil,
+                                            ruleToolTip: req.ruleDescription.map { "Always allow \($0)" },
+                                            deferTitle: "⌨ Terminal", onChoose: { _ in })
+            items.append(strip)
+        }
+        let claude = UsageCenter.Reading(provider: "Claude", text: "64% left",
+                                         windows: [UsageWindow(name: "5h", usedPercent: 36,
+                                                               resetsAt: Date().addingTimeInterval(7_200)),
+                                                   UsageWindow(name: "weekly", usedPercent: 41,
+                                                               resetsAt: Date().addingTimeInterval(400_000))])
+        let codexQuota = UsageCenter.Reading(provider: "Codex", text: "88% left",
+                                             windows: [UsageWindow(name: "5h", usedPercent: 12,
+                                                                   resetsAt: Date().addingTimeInterval(9_000))])
+        if let meters = UsageMeterView(readings: [claude, codexQuota]) {
+            let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+            item.view = meters
+            items.append(item)
+        }
+        items.append(MenuBuilder.todayRow(target: nil, action: nil))
+        items.append(MenuBuilder.yourDayRow())
+        items.append(.separator())
+        let newTask = NSMenuItem(title: "New Task…", action: nil, keyEquivalent: "")
+        newTask.image = NSImage(systemSymbolName: "plus.bubble", accessibilityDescription: nil)
+        items.append(newTask)
+        let open = NSMenuItem(title: "Open", action: nil, keyEquivalent: "")
+        open.image = NSImage(systemSymbolName: "arrow.up.forward.app", accessibilityDescription: nil)
+        open.submenu = NSMenu()
+        items.append(open)
+        let shortcut = NSMenuItem(title: "Global Allow / Deny Shortcut…", action: nil, keyEquivalent: "")
+        shortcut.image = NSImage(systemSymbolName: "command", accessibilityDescription: nil)
+        items.append(shortcut)
+        let inputs = AppMenuModel.Inputs(update: .upToDate, appVersion: AppMenuModel.appVersion,
+                                         systemColor: false, soundsOn: false, diagnosticsFailures: 0,
+                                         macOSVersion: AppMenuModel.macOSVersion)
+        items += AppMenuRenderer.items(AppMenuModel.appSection(inputs), target: nil,
+                                       action: #selector(NSApplication.terminate(_:)))
+
+        // The status item, as the real driver draws it for these sessions.
+        let driver = MascotDriver()
+        var mark: NSImage?
+        driver.sink("readme") { image, _ in mark = image }
+        driver.update(sessions: sessions, systemColor: false)
+
+        // The old still: 390 × 345 pt. Same width; the menu runs off the bottom
+        // edge, the way a crop of a long menu does.
+        let size = NSSize(width: 390, height: 345)
+        return canvas(size) { drawMenuScene(items, mark: mark, size: size) }
+    }
+
+    static let rowH: CGFloat = 22
+    static let textX: CGFloat = 38
+
+    static func height(of item: NSMenuItem) -> CGFloat {
+        if item.isSeparatorItem { return 11 }
+        if let v = item.view { return v.frame.height }
+        return rowH
+    }
+
+    static func drawMenuScene(_ items: [NSMenuItem], mark: NSImage?, size: NSSize) {
+        // A plain desktop and a light menu bar.
+        NSColor(srgbRed: 0.84, green: 0.86, blue: 0.89, alpha: 1).setFill()
+        NSRect(origin: .zero, size: size).fill()
+        let barH: CGFloat = 26
+        let bar = NSRect(x: 0, y: size.height - barH, width: size.width, height: barH)
+        NSColor(white: 0.97, alpha: 1).setFill()
+        bar.fill()
+        NSColor(white: 0, alpha: 0.08).setFill()
+        NSRect(x: 0, y: bar.minY, width: size.width, height: 0.5).fill()
+
+        // The status item, highlighted because its menu is open.
+        let itemX: CGFloat = 22
+        let itemW: CGFloat = (mark?.size.width ?? 24) + 16
+        let pill = NSRect(x: itemX, y: bar.minY + 3, width: itemW, height: barH - 6)
+        NSColor(white: 0, alpha: 0.1).setFill()
+        NSBezierPath(roundedRect: pill, xRadius: 6, yRadius: 6).fill()
+        if let mark {
+            mark.draw(in: NSRect(x: pill.minX + 8, y: (pill.midY - mark.size.height / 2).rounded(),
+                                 width: mark.size.width, height: mark.size.height))
+        }
+        // The system's own items to the right, as plain text.
+        // The real clock, so the meter's reset times below agree with it.
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "EEE d MMM  H:mm"
+        let clock = NSAttributedString(string: fmt.string(from: Date()), attributes: [
+            .font: NSFont.menuBarFont(ofSize: 0), .foregroundColor: NSColor.labelColor])
+        clock.draw(at: NSPoint(x: size.width - clock.size().width - 14,
+                               y: bar.midY - clock.size().height / 2))
+
+        // The menu.
+        let width = size.width - 30
+        let total = items.reduce(10) { $0 + height(of: $1) }
+        let frame = NSRect(x: 15, y: bar.minY - 6 - total, width: width, height: total)
+        let shape = NSBezierPath(roundedRect: frame, xRadius: 11, yRadius: 11)
+        NSGraphicsContext.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowColor = NSColor(white: 0, alpha: 0.16)
+        shadow.shadowBlurRadius = 10
+        shadow.shadowOffset = NSSize(width: 0, height: -3)
+        shadow.set()
+        // White, as the rows the menu holds are drawn on.
+        NSColor.white.setFill()
+        shape.fill()
+        NSGraphicsContext.restoreGraphicsState()
+        NSColor(white: 0, alpha: 0.12).setStroke()
+        shape.lineWidth = 0.5
+        shape.stroke()
+
+        var y = frame.maxY - 5
+        for item in items {
+            let h = height(of: item)
+            y -= h
+            draw(item, in: NSRect(x: frame.minX, y: y, width: width, height: h))
+        }
+    }
+
+    static func draw(_ item: NSMenuItem, in r: NSRect) {
+        if item.isSeparatorItem {
+            NSColor(white: 0, alpha: 0.1).setFill()
+            NSRect(x: r.minX + 14, y: r.midY, width: r.width - 28, height: 1).fill()
+            return
+        }
+        if let v = item.view {
+            snap(v, r.size).draw(in: r)
+            return
+        }
+        if item.identifier?.rawValue == "sectionHeader" {
+            let t = NSAttributedString(string: item.title, attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                .foregroundColor: NSColor.secondaryLabelColor])
+            t.draw(at: NSPoint(x: r.minX + 14, y: r.midY - t.size().height / 2 - 1))
+            return
+        }
+        let enabled = item.isEnabled || item.submenu != nil
+        let ink: NSColor = enabled ? .labelColor : .tertiaryLabelColor
+        if let img = item.image {
+            let s = img.size
+            let box = NSRect(x: r.minX + 14 + (16 - s.width) / 2, y: (r.midY - s.height / 2).rounded(),
+                             width: s.width, height: s.height)
+            (img.isTemplate ? IconRenderer.tint(img, with: ink) : img).draw(in: box)
+        }
+        let title: NSAttributedString
+        if let a = item.attributedTitle {
+            let m = NSMutableAttributedString(attributedString: a)
+            m.enumerateAttributes(in: NSRange(location: 0, length: m.length)) { attrs, range, _ in
+                if attrs[.font] == nil { m.addAttribute(.font, value: NSFont.menuFont(ofSize: 0), range: range) }
+                if attrs[.foregroundColor] == nil { m.addAttribute(.foregroundColor, value: ink, range: range) }
+            }
+            title = m
+        } else {
+            title = NSAttributedString(string: item.title, attributes: [
+                .font: NSFont.menuFont(ofSize: 0), .foregroundColor: ink])
+        }
+        title.draw(at: NSPoint(x: r.minX + textX, y: (r.midY - title.size().height / 2).rounded()))
+
+        var right = r.maxX - 14
+        if item.submenu != nil,
+           let chevron = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .semibold)) {
+            let s = chevron.size
+            IconRenderer.tint(chevron, with: .secondaryLabelColor)
+                .draw(in: NSRect(x: right - s.width, y: (r.midY - s.height / 2).rounded(),
+                                 width: s.width, height: s.height))
+            right -= s.width + 8
+        }
+        if !item.keyEquivalent.isEmpty {
+            let key = NSAttributedString(string: "⌘" + item.keyEquivalent.uppercased(), attributes: [
+                .font: NSFont.menuFont(ofSize: 0), .foregroundColor: NSColor.tertiaryLabelColor])
+            key.draw(at: NSPoint(x: right - key.size().width, y: (r.midY - key.size().height / 2).rounded()))
+        }
+        if #available(macOS 14.0, *), let badge = item.badge?.stringValue, !badge.isEmpty {
+            let t = NSAttributedString(string: badge, attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                .foregroundColor: NSColor.secondaryLabelColor])
+            let b = NSRect(x: right - t.size().width - 14, y: r.midY - 8, width: t.size().width + 14, height: 16)
+            NSColor(white: 0, alpha: 0.08).setFill()
+            NSBezierPath(roundedRect: b, xRadius: 8, yRadius: 8).fill()
+            t.draw(at: NSPoint(x: b.minX + 7, y: b.midY - t.size().height / 2))
+        }
+    }
+
+    // MARK: The Welcome / Appearance window
+
+    /// The real window, drawn without opening it (`renderForVerification`), with
+    /// the island chosen and the hooks line filled in — the first-run face.
+    static func welcome() -> NSBitmapImageRep {
+        let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
+        guard let r = WelcomeWindow.shared.renderForVerification(
+            mode: .island, mark: sprite.colorFrames.first ?? sprite.restingColor, word: "Brewing",
+            wired: ["claude", "codex", "cursor", "gemini", "antigravity", "copilot", "opencode"])
+        else { fatalError("no render of the Welcome window") }
+        let size = NSSize(width: CGFloat(r.image.pixelsWide) / scale, height: CGFloat(r.image.pixelsHigh) / scale)
+        // A window's corners: rounded, transparent outside, as a window capture is.
+        // A hairline edge, because the window is white and so is the README.
+        return canvas(size) {
+            let edge = NSBezierPath(roundedRect: NSRect(origin: .zero, size: size).insetBy(dx: 0.25, dy: 0.25),
+                                    xRadius: 12, yRadius: 12)
+            NSGraphicsContext.saveGraphicsState()
+            edge.addClip()
+            r.image.draw(in: NSRect(origin: .zero, size: size))
+            NSGraphicsContext.restoreGraphicsState()
+            NSColor(white: 0, alpha: 0.18).setStroke()
+            edge.lineWidth = 0.5
+            edge.stroke()
+        }
+    }
+}
+
+extension NSWindow { @objc func promoAlwaysTrue() -> Bool { true } }
+extension NSApplication { @objc func promoAlwaysTrue() -> Bool { true } }

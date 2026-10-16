@@ -9,7 +9,7 @@
 **One approval queue for every AI coding agent.**
 
 <p align="center">
-  <img src="docs/assets/agentbar-tour.gif?v=2026-10-01" width="640" alt="AgentBar tour: the island under the notch opens on a Claude permission request for git push origin main with Codex and Copilot sessions listed below, one click on Allow; then the welcome window's Menu bar / Dynamic Island / Both choice, then a walk through Settings">
+  <img src="docs/assets/agentbar-tour.gif?v=2026-10-16" width="640" alt="AgentBar tour: the island under the notch opens on a Claude permission request for git push origin main with Codex and Copilot sessions listed below, one click on Allow; then the welcome window's Menu bar / Dynamic Island / Both choice, then a walk through Settings">
 </p>
 
 **Why.** Your agents stop and ask before they run something, and the question waits
@@ -825,7 +825,7 @@ you get on first launch. The preview above the buttons is the real mascot driven
 through the real code, not a picture of one, so it animates exactly as the bar will.
 
 <p align="center">
-  <img src="docs/assets/welcome-appearance.png?v=2026-09-23" width="430" alt="AgentBar's Appearance window: a live mascot preview, the Menu bar / Dynamic Island / Both picker, an 'Island on:' row of drawn displays with 'Follow pointer' selected, the icon colour choice, and the list of agents whose hooks are wired up">
+  <img src="docs/assets/welcome-appearance.png?v=2026-10-16" width="430" alt="AgentBar's Welcome window, which is also its Appearance window: a live mascot preview, the Menu bar / Dynamic Island / Both picker with Dynamic Island chosen, an 'Island on:' row of drawn displays with 'Follow pointer' selected, the 'Today, along the bottom' switches, the Colorful / Monochrome icon colour choice, the list of agents whose hooks are wired up, and a 'Try an approval' button">
 </p>
 
 **Island on:** draws your displays rather than listing them — a laptop for the
@@ -839,7 +839,7 @@ as the same one.
 ## Remote Allow/Deny
 
 <p align="center">
-  <img src="docs/assets/approval-menu.png" width="480" alt="AgentBar menu with a pending Claude Code permission request: yellow needs-approval row, the requested command, and an inline Allow / Deny / Terminal button strip">
+  <img src="docs/assets/approval-menu.png?v=2026-10-16" width="480" alt="AgentBar menu with a pending Claude Code permission request: the myapp row with a yellow dot and 'needs approval', the requested command, and an inline ✓ Allow / ✓ Always / ✕ Deny / ⌨ Terminal button strip; below it a Claude and a Codex session working, the quota meters, Today, Your Day… and New Task…">
 </p>
 
 When a Claude Code or Copilot CLI session asks for permission, the request appears right under the
