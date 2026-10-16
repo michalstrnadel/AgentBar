@@ -26,6 +26,10 @@
     {"name": "an MCP tool counts by its full name", "tool": "mcp__github__create_issue", "input": {"description": "x"}, "shape": "tool:mcp__github__create_issue"},
     {"name": "a task", "tool": "Task", "input": {"description": "Explore the repo"}, "shape": "tool:Task"},
     {"name": "an empty path is no path", "tool": "Edit", "input": {"file_path": ""}, "shape": "tool:Edit"},
-    {"name": "a path that is not text is no path", "tool": "Edit", "input": {"file_path": 7}, "shape": "tool:Edit"}
+    {"name": "a path that is not text is no path", "tool": "Edit", "input": {"file_path": 7}, "shape": "tool:Edit"},
+    {"name": "git -C names where, not what", "tool": "Bash", "input": {"command": "git -C sub status --short"}, "shape": "bash:git status"},
+    {"name": "git -C twice", "tool": "Bash", "input": {"command": "git -C a -C b log"}, "shape": "bash:git log"},
+    {"name": "git -C with nothing after it", "tool": "Bash", "input": {"command": "git -C sub"}, "shape": "bash:git"},
+    {"name": "-C is git's alone", "tool": "Bash", "input": {"command": "make -C sub test"}, "shape": "bash:make sub"}
   ]
 }

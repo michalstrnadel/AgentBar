@@ -585,4 +585,167 @@ import Testing
         #expect(RuleEngine.verdict(for: q, cwd: Self.repo,
                                    rules: [deny("tool:AskUserQuestion")]) == nil)
     }
+
+    // MARK: - git -C <dir> (#30)
+
+    /// A real tree, because the whole point is what the disk says:
+    ///
+    ///     root/repo/            ← cwd
+    ///         sub/inner/
+    ///         my dir/
+    ///         .git/hooks/
+    ///         file.txt
+    ///         link  → root/outside
+    ///         trick → root/repo-evil
+    ///         sub/out → root/outside
+    ///     root/repo-evil/
+    ///     root/outside/
+    private struct Tree {
+        let root: URL, repo: String, real: String
+        init() throws {
+            let fm = FileManager.default
+            root = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("agentbar-gitC-\(UUID().uuidString)")
+            let r = root.appendingPathComponent("repo")
+            for dir in ["repo/sub/inner", "repo/my dir", "repo/.git/hooks", "repo-evil", "outside"] {
+                try fm.createDirectory(at: root.appendingPathComponent(dir), withIntermediateDirectories: true)
+            }
+            try Data("x".utf8).write(to: r.appendingPathComponent("file.txt"))
+            try fm.createSymbolicLink(at: r.appendingPathComponent("link"),
+                                      withDestinationURL: root.appendingPathComponent("outside"))
+            try fm.createSymbolicLink(at: r.appendingPathComponent("trick"),
+                                      withDestinationURL: root.appendingPathComponent("repo-evil"))
+            try fm.createSymbolicLink(at: r.appendingPathComponent("sub/out"),
+                                      withDestinationURL: root.appendingPathComponent("outside"))
+            repo = r.path
+            real = try #require(RuleEngine.realDirectory(r.path))
+        }
+        func remove() { try? FileManager.default.removeItem(at: root) }
+    }
+
+    @Test func gitCInsideTheDirectoryIsApproved() throws {
+        let t = try Tree(); defer { t.remove() }
+        for line in ["git -C sub status", "git -C sub/inner log --oneline -5", "git -C . status",
+                     "git -C sub/.. status", "git -C \(t.repo)/sub status", "git -C 'sub' status",
+                     "git -C \"sub/inner\" diff", "env git -C sub status", "/usr/bin/git -C sub status"] {
+            #expect(RuleEngine.refusalInCommand(line, cwd: t.repo) == nil,
+                    "should approve: \(line) — \(RuleEngine.refusalInCommand(line, cwd: t.repo) ?? "")")
+        }
+        // The same directory written without the link (/private/var, not /var).
+        #expect(RuleEngine.refusalInCommand("git -C sub status", cwd: t.real) == nil)
+        #expect(RuleEngine.gitDirectory(of: "git -C sub/inner status", cwd: t.repo)
+                == .runsIn(dir: t.real + "/sub/inner", base: t.real, subcommand: "status"))
+    }
+
+    @Test func gitCOutsideTheDirectoryIsRefused() throws {
+        let t = try Tree(); defer { t.remove() }
+        for line in ["git -C ../outside status", "git -C \(t.root.path)/outside status",
+                     "git -C / status", "git -C ~ status", "git -C .. status"] {
+            #expect(RuleEngine.refusalInCommand(line, cwd: t.repo) != nil, "should refuse: \(line)")
+        }
+    }
+
+    @Test func gitCDotDotEscapeIsRefused() throws {
+        let t = try Tree(); defer { t.remove() }
+        for line in ["git -C sub/../../outside status", "git -C sub/inner/../../.. status"] {
+            #expect(RuleEngine.refusalInCommand(line, cwd: t.repo) != nil, "should refuse: \(line)")
+        }
+    }
+
+    /// `link/..` is `repo` to anyone tidying the text and `root` to `chdir`, which
+    /// follows the link before it reads the `..`. git goes where chdir goes.
+    @Test func gitCSymlinkEscapeIsRefused() throws {
+        let t = try Tree(); defer { t.remove() }
+        for line in ["git -C link status", "git -C link/.. status", "git -C sub/out log"] {
+            #expect(RuleEngine.refusalInCommand(line, cwd: t.repo) != nil, "should refuse: \(line)")
+        }
+    }
+
+    /// `repo-evil` starts with `repo`; a string prefix would call it inside.
+    @Test func gitCSharedPrefixIsOutside() throws {
+        let t = try Tree(); defer { t.remove() }
+        #expect(RuleEngine.refusalInCommand("git -C trick status", cwd: t.repo) != nil)
+        #expect(RuleEngine.refusalInCommand("git -C \(t.repo)-evil status", cwd: t.repo) != nil)
+        #expect(!RuleEngine.isInside("/a/bc", "/a/b"))
+        #expect(!RuleEngine.isInside("/a", "/a/b"))
+        #expect(RuleEngine.isInside("/a/b", "/a/b"))
+        #expect(RuleEngine.isInside("/a/b/c", "/a/b"))
+    }
+
+    /// git applies each `-C` relative to the one before; so does the check, and a
+    /// step that leaves the directory is refused even if a later one comes back.
+    @Test func repeatedGitCIsResolvedStepByStep() throws {
+        let t = try Tree(); defer { t.remove() }
+        #expect(RuleEngine.gitDirectory(of: "git -C sub -C inner status", cwd: t.repo)
+                == .runsIn(dir: t.real + "/sub/inner", base: t.real, subcommand: "status"))
+        #expect(RuleEngine.refusalInCommand("git -C sub -C inner status", cwd: t.repo) == nil)
+        #expect(RuleEngine.refusalInCommand("git -C sub -C inner/.. status", cwd: t.repo) == nil)
+        // A later `-C ..` is inside to git, but every word on the line is also read
+        // from `cwd` by the ordinary path clause, and that clause only adds refusals.
+        #expect(RuleEngine.refusalInCommand("git -C sub/inner -C .. status", cwd: t.repo) != nil)
+        for line in ["git -C sub -C ../../outside status", "git -C sub -C inner -C ../../.. status",
+                     "git -C .. -C repo status", "git -C sub -C nope status"] {
+            #expect(RuleEngine.refusalInCommand(line, cwd: t.repo) != nil, "should refuse: \(line)")
+        }
+    }
+
+    @Test func gitCWithNoValueIsRefused() throws {
+        let t = try Tree(); defer { t.remove() }
+        for line in ["git -C", "git -C sub", "git -C '' status", "git -C \"\" status",
+                     "git -C -C sub status", "git -C sub -C"] {
+            #expect(RuleEngine.refusalInCommand(line, cwd: t.repo) != nil, "should refuse: \(line)")
+        }
+    }
+
+    /// The shell hands git `my dir` as one word; the shape — cut on blanks — reads
+    /// `dir"` as the subcommand. Where the two disagree, the human answers.
+    @Test func gitCQuotedPathWithASpaceFallsToTheHuman() throws {
+        let t = try Tree(); defer { t.remove() }
+        #expect(RuleEngine.gitDirectory(of: "git -C \"my dir\" status", cwd: t.repo)
+                == .runsIn(dir: t.real + "/my dir", base: t.real, subcommand: "status"))
+        for line in ["git -C \"my dir\" status", "git -C 'my dir' status"] {
+            #expect(DecisionLedger.verb(of: line) != "git status")
+            #expect(RuleEngine.refusalInCommand(line, cwd: t.repo) != nil, "should refuse: \(line)")
+        }
+        // A quoted `~` is a directory called `~`, not home.
+        #expect(RuleEngine.refusalInCommand("git -C \"~/x\" status", cwd: t.repo) != nil)
+    }
+
+    @Test func gitCToADirectoryNotOnDiskIsRefused() throws {
+        let t = try Tree(); defer { t.remove() }
+        for line in ["git -C nope status", "git -C file.txt status", "git -C sub/nope status"] {
+            #expect(RuleEngine.refusalInCommand(line, cwd: t.repo) != nil, "should refuse: \(line)")
+        }
+        #expect(RuleEngine.refusalInCommand("git -C sub status", cwd: t.repo + "/gone") != nil)
+    }
+
+    @Test func gitCLeavesEveryOtherRefusalStanding() throws {
+        let t = try Tree(); defer { t.remove() }
+        for line in ["git -C sub -c core.pager=less log", "git -C sub --no-pager log",
+                     "git --no-pager -C sub log", "git -Csub status", "git -C sub push",
+                     "git -C sub reset --hard", "git -C sub grep -O vim x",
+                     "git -C .git/hooks status", "git -C sub status; rm -rf /",
+                     // A path after the subcommand is git's to read from `sub`:
+                     // `out` is a link there, and nothing at all from `cwd`.
+                     "git -C sub diff out/x"] {
+            #expect(RuleEngine.refusalInCommand(line, cwd: t.repo) != nil, "should refuse: \(line)")
+        }
+        #expect(RuleEngine.refusalInCommand("git diff out/x", cwd: t.repo) == nil)
+    }
+
+    @Test func gitCIsMatchedByItsSubcommandAndDeniedAnywhere() throws {
+        let t = try Tree(); defer { t.remove() }
+        #expect(DecisionLedger.verb(of: "git -C sub status") == "git status")
+        #expect(DecisionLedger.verb(of: "git -C a -C b log -1") == "git log")
+        let inside = request(command: "git -C sub status", cwd: t.repo)
+        #expect(RuleEngine.verdict(for: inside, cwd: t.repo, rules: [allow("bash:git status", in: t.repo)])?
+            .behavior == "allow")
+        let outside = request(command: "git -C link status", cwd: t.repo)
+        #expect(RuleEngine.verdict(for: outside, cwd: t.repo,
+                                   rules: [allow("bash:git status", in: t.repo)]) == nil)
+        // Denials never ask the disk.
+        let anywhere = request(command: "git -C /nowhere status", cwd: t.repo)
+        #expect(RuleEngine.verdict(for: anywhere, cwd: t.repo, rules: [deny("bash:git status")])?
+            .behavior == "deny")
+    }
 }

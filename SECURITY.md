@@ -73,8 +73,15 @@ guarantees worth knowing when auditing:
   is checked twice — as written, and with its symbolic links followed — so a link
   inside the directory that leads out of it is outside. An option in front of a
   tool's subcommand (`git -c …`, `git --config-env=…`) and an option that hands git
-  a program to run (`grep -O`, `--ext-diff`, `--textconv`) are refused, and so is a
-  command long enough to have been cut by the hook (F21). No
+  a program to run (`grep -O`, `--ext-diff`, `--textconv`) are refused. The one
+  exception is `git -C <dir>`, which says where git runs and not what it runs: it is
+  approved only when every `-C`, applied in order the way git applies them, resolves
+  through `realpath` (`~`, `..` and symbolic links included) to a directory that
+  exists inside the session's directory, compared by path component; a value that
+  is empty, starts with `-`, has a quoted `~` or splits differently for the shell
+  than for the shape falls through to the human, and every later relative path is
+  checked from the directory git moved to as well. A command long enough to have
+  been cut by the hook is refused too (F21). No
   setting disables that table, and anything the engine cannot parse is a refusal.
   A rule also has a **watching** mode, which new rules start in: it matches and
   works out the answer, writes down what it would have done, and answers nothing,

@@ -360,18 +360,53 @@ final class RuleEngine {
         if let bad = refusedSpelling(of: name, in: words) {
             return "`\(name) \(bad)` is never approved by a rule"
         }
+        // Where git will run when the line says `git -C <dir>`: every later relative
+        // path is git's to read from there, not from `cwd`.
+        var gitDir: (dir: String, base: String)?
         if let subs = refusedSubcommands[name] {
-            // An option in front of the subcommand is the tool's own, not the
-            // subcommand's: `git -c core.pager=… log` and `git --config-env=…` set
-            // what runs, and the shape — named after the subcommand — never says so.
-            if words.first?.hasPrefix("-") == true {
+            var sub = words.first
+            if name == "git", words.first == "-C" {
+                switch gitDirectory(of: line, cwd: cwd) {
+                case .refused(let reason): return reason
+                case .runsIn(let dir, let base, let subcommand):
+                    gitDir = (dir, base); sub = subcommand
+                }
+                // The rule was matched on the shape, and the shape was cut from the
+                // line by `DecisionLedger.verb`, which splits on blanks and knows no
+                // quotes. A subcommand the shell reads differently from the shape is
+                // a rule answering for a command it was not written for.
+                guard let sub, DecisionLedger.verb(of: line) == "git \(sub)" else {
+                    return "a `git -C` line the shape reads differently from the shell"
+                }
+            } else if words.first?.hasPrefix("-") == true {
+                // An option in front of the subcommand is the tool's own, not the
+                // subcommand's: `git -c core.pager=… log` and `git --config-env=…`
+                // set what runs, and the shape — named after the subcommand — never
+                // says so.
                 return "an option in front of `\(name)`'s subcommand"
             }
-            if let sub = words.first, subs.contains(sub) {
+            if let sub, subs.contains(sub) {
                 return "`\(name) \(sub)` is never approved by a rule"
             }
         }
         for word in words {
+            // Under `git -C`, a relative path is read from the directory git moved
+            // to. It is checked from there as well as from `cwd`: the two only ever
+            // add refusals to each other.
+            if let gitDir {
+                let value = word.firstIndex(of: "=").map { String(word[word.index(after: $0)...]) }
+                // `dir` came out of realpath and `cwd` is as the agent wrote it
+                // (`/var/…` for `/private/var/…`), so the path is read from `cwd`
+                // plus the part of `dir` below `base`, and checked the way every
+                // other path on the line is.
+                let below = gitDir.dir.split(separator: "/").dropFirst(gitDir.base.split(separator: "/").count)
+                let from = ([cwd] + below.map(String.init)).joined(separator: "/")
+                for candidate in [word, value].compactMap({ $0 }) where looksLikePath(candidate) {
+                    if let reason = refusalInPath(absolute(candidate, in: from), cwd: cwd) {
+                        return reason
+                    }
+                }
+            }
             // `--output=/tmp/x` and `PREFIX=/usr/local` carry their path after the
             // `=`; read whole, they are a relative name that lands inside the
             // directory on paper. An option with a path glued on and no `=`
@@ -395,6 +430,135 @@ final class RuleEngine {
             }
         }
         return nil
+    }
+
+    // MARK: - git -C <dir>
+
+    enum GitDirectory: Equatable {
+        case refused(String)
+        /// `dir` is where git will run and `base` is `cwd`, both through realpath;
+        /// `subcommand` is the first word after the last `-C <dir>`.
+        case runsIn(dir: String, base: String, subcommand: String)
+    }
+
+    /// Where `git -C <dir> … <subcommand>` runs, or why a rule may not say yes to it.
+    ///
+    /// `-C` is the one option in front of git's subcommand a rule may approve: it
+    /// changes where git runs, not what it runs, so it is safe exactly when the place
+    /// is one the rule already covers. Every other option there stays refused.
+    ///
+    /// git applies each `-C` as a `chdir`, in order, each relative to the last. That
+    /// is resolved the same way here — `realpath` of each step on top of the one
+    /// before — because `realpath` is what `chdir` does: it follows a link before it
+    /// reads the `..` after it, where tidying the text first (`a/link/..` → `a`)
+    /// would land somewhere git never goes. Every step must exist, be a directory
+    /// and stay inside `cwd`; one that does not is refused, not reasoned about. The
+    /// containment test is by path component, so `/a/bc` is not inside `/a/b`.
+    ///
+    /// The words are the shell's — quotes grouping, blanks splitting — not the
+    /// blank-split ones the rest of the table reads, because a directory with a
+    /// space in it is one argument to git. `refusalInCommand` has already refused
+    /// every character the shell would rewrite (`$`, `\`, globs, braces) and every
+    /// unterminated quote, so quotes are the only grouping left.
+    static func gitDirectory(of line: String, cwd: String) -> GitDirectory {
+        var words = shellWords(line)
+        while let first = words.first,
+              wrappers.contains((first.text as NSString).lastPathComponent) {
+            words.removeFirst()
+        }
+        guard let head = words.first, (head.text as NSString).lastPathComponent == "git" else {
+            return .refused("a `git -C` line that will not tokenise")
+        }
+        words.removeFirst()
+
+        // The structure first, the disk second: an option that is refused anyway
+        // says so whatever the directories are.
+        var steps: [(text: String, raw: String)] = []
+        while let word = words.first, word.text.hasPrefix("-") {
+            guard word.text == "-C" else {
+                return .refused("an option in front of `git`'s subcommand")
+            }
+            words.removeFirst()
+            guard let value = words.first else { return .refused("a `git -C` with no directory after it") }
+            words.removeFirst()
+            steps.append(value)
+        }
+        guard let sub = words.first?.text, !sub.isEmpty else {
+            return .refused("a `git -C` with no subcommand after it")
+        }
+
+        guard let base = realDirectory(cwd) else {
+            return .refused("a `git -C` from a directory that is not on disk")
+        }
+        var dir = base
+        for step in steps {
+            var value = step.text
+            // git skips an empty `-C ''`; a value that looks like an option is a
+            // directory to git and a flag to everybody reading the line.
+            if value.isEmpty || value.hasPrefix("-") {
+                return .refused("a `git -C` directory nobody would read the same way")
+            }
+            // The shell expands a leading `~` only unquoted, and only as `~` or
+            // `~/…` here — `~user` is somebody else's home.
+            if value.hasPrefix("~") {
+                guard step.raw == value, value == "~" || value.hasPrefix("~/") else {
+                    return .refused("a `git -C` directory nobody would read the same way")
+                }
+                value = FileManager.default.homeDirectoryForCurrentUser.path + value.dropFirst()
+            }
+            let joined = value.hasPrefix("/") ? value : dir + "/" + value
+            guard let next = realDirectory(joined) else {
+                return .refused("a `git -C` directory that is not on disk")
+            }
+            if let fragment = refusedFragment(in: next + "/") {
+                return .refused("`\(fragment)` is never approved by a rule")
+            }
+            guard isInside(next, base) else {
+                return .refused("a `git -C` directory outside the directory the rule names")
+            }
+            dir = next
+        }
+        return .runsIn(dir: dir, base: base, subcommand: sub)
+    }
+
+    /// `path` through realpath(3) when it names a directory that exists, else nil.
+    static func realDirectory(_ path: String) -> String? {
+        guard !path.isEmpty, let c = realpath(path, nil) else { return nil }
+        defer { free(c) }
+        let real = String(cString: c)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: real, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return nil }
+        return real
+    }
+
+    /// Whether `path` is `base` or below it, compared component by component.
+    static func isInside(_ path: String, _ base: String) -> Bool {
+        let p = path.split(separator: "/"), b = base.split(separator: "/")
+        return p.count >= b.count && Array(p.prefix(b.count)) == b
+    }
+
+    /// A line cut into words the way a POSIX shell cuts it, for a line with no
+    /// backslash, no `$` and no unterminated quote (the caller refused those): blanks
+    /// split, `'…'` and `"…"` group and are removed. `raw` is the word as written.
+    static func shellWords(_ line: String) -> [(text: String, raw: String)] {
+        var out: [(text: String, raw: String)] = []
+        var text = "", raw = "", inWord = false
+        var open: Character?
+        for ch in line {
+            if let q = open {
+                raw.append(ch)
+                if ch == q { open = nil } else { text.append(ch) }
+            } else if ch == " " || ch == "\t" {
+                if inWord { out.append((text, raw)); text = ""; raw = ""; inWord = false }
+            } else {
+                inWord = true
+                raw.append(ch)
+                if ch == "'" || ch == "\"" { open = ch } else { text.append(ch) }
+            }
+        }
+        if inWord { out.append((text, raw)) }
+        return out
     }
 
     /// A refused flag in a spelling the table does not list, or nil. The table holds

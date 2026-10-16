@@ -407,8 +407,12 @@ function decisionVerb(command) {
   if (!words.length) return "";
   const name = lastPathComponent(words[0]);
   if (!MULTIPLEXERS.has(name)) return name;
-  const next = words.slice(1).find((w) => !w.startsWith("-"));
-  return next ? `${name} ${next}` : name;
+  // `git -C <dir>` says where git runs, not what it does: its value is no verb.
+  for (let i = 1; i < words.length; i++) {
+    if (name === "git" && words[i] === "-C") { i++; continue; }
+    if (!words[i].startsWith("-")) return `${name} ${words[i]}`;
+  }
+  return name;
 }
 
 // A string field or nothing — ApprovalRequest reads every field `as? String`.

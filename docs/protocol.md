@@ -414,7 +414,8 @@ decisions about the same command are two decisions, and counting them is the poi
   future, contributes `0` rather than a negative number.
 - `shape` is the key repeats are counted by, and it is **normalised on purpose**:
   the first meaningful word of a command (two for a multiplexer — `git push`,
-  `npm test`), or `<tool>:<folder>/*.<ext>` for an edit or a write. It MUST NOT
+  `npm test`; the second is the first word that is not a flag, and for git the
+  word after each `-C` is skipped too, so `git -C sub status` is `git status`), or `<tool>:<folder>/*.<ext>` for an edit or a write. It MUST NOT
   carry arguments, paths or URLs: those never repeat, and they are where a secret
   would be if one were ever typed into a command.
 - `display` is the request's own one-line summary, already capped by the hook, kept
@@ -620,7 +621,10 @@ request** — the command as it will actually run, not its shape — and fall th
 to the human on any of: more than one command on the line, or a pipe, redirect,
 background or substitution; elevation (`sudo` and friends); a destructive or
 history-rewriting subcommand; anything that reaches off the machine; a path outside
-the rule's `cwd`; a path that configures permission itself (`~/.agentbar`, an
+the rule's `cwd`; an option in front of a tool's subcommand, except `git -C <dir>`
+when every `-C`, applied in order and resolved through `realpath` (`~`, `..`,
+symbolic links), names an existing directory inside the request's `cwd` (compared
+by path component, not by string prefix); a path that configures permission itself (`~/.agentbar`, an
 agent's settings directory, `.git/hooks`, `.git/config`); a plan review or a
 question; and anything it cannot parse — an unterminated quote, a line break of
 any kind (`\n`, `\r`, `\r\n`), or a request whose text the reader could not keep

@@ -325,9 +325,17 @@ final class DecisionLedger {
         guard let head = words.first else { return "" }
         let name = (head as NSString).lastPathComponent
         guard Self.multiplexers.contains(name) else { return name }
-        // The subcommand, if there is one that isn't a flag.
-        guard let next = words.dropFirst().first(where: { !$0.hasPrefix("-") }) else { return name }
-        return "\(name) \(next)"
+        // The subcommand, if there is one that isn't a flag. `git -C <dir>` is the
+        // one option whose value is a word of its own: it says where git runs, not
+        // what it does, so `git -C sub status` is `git status` and never `git sub`.
+        var rest = words.dropFirst()
+        while let word = rest.first {
+            rest = rest.dropFirst()
+            if name == "git", word == "-C" { rest = rest.dropFirst(); continue }
+            if word.hasPrefix("-") { continue }
+            return "\(name) \(word)"
+        }
+        return name
     }
 
     /// The file this request names: the hook's own field when it wrote one, else

@@ -27,7 +27,9 @@
     "untokenisable": "a command that will not tokenise",
     "outside-command": "a command run from outside the directory",
     "glued-option": "an option with a path glued to it",
-    "outside-path": "a path outside the directory the rule names"
+    "outside-path": "a path outside the directory the rule names",
+    "git-dir": "a `git -C`",
+    "git-option": "an option in front of `git`'s subcommand"
   },
   "rulesets": {
     "main": [
@@ -299,6 +301,13 @@
     {"name": "a tool that names no file", "rules": "main",
      "request": {"agent": "claude", "toolName": "WebFetch", "cwd": "/work/proj", "toolInputPretty": "{\"url\":\"https://x\"}"},
      "expect": {"shape": "tool:WebFetch", "answer": "none", "would": null, "rule": null, "refusal": "no-path"}},
+    {"name": "git -C is matched by the subcommand, and a directory not on disk is refused", "rules": "main",
+     "command": "git -C sub status",
+     "expect": {"shape": "bash:git status", "answer": "none", "would": null, "rule": null, "refusal": "git-dir"}},
+    {"name": "git -C with nothing after it", "rules": "main", "command": "git -C",
+     "expect": {"shape": "bash:git", "answer": "none", "would": null, "rule": null, "refusal": "git-dir"}},
+    {"name": "git -C and then another option", "rules": "main", "command": "git -C sub -c core.pager=x status",
+     "expect": {"shape": "bash:git core.pager=x", "answer": "none", "would": null, "rule": null, "refusal": "git-option"}},
     {"name": "a plan review", "rules": "main",
      "request": {"agent": "claude", "toolName": "ExitPlanMode", "cwd": "/work/proj", "context": {"kind": "plan", "plan": "do it"}},
      "expect": {"shape": "tool:ExitPlanMode", "answer": "none", "would": null, "rule": null, "refusal": "plan"}},
