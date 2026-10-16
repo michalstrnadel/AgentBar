@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Example launchd job for Scripts/dev/traffic-snapshot.sh: one snapshot a day.
+  Not installed by anything. To use it, replace /PATH/TO/AgentBar and YOU, then:
+
+    cp Scripts/dev/traffic-launchd.plist ~/Library/LaunchAgents/com.agentbar.traffic-snapshot.plist
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.agentbar.traffic-snapshot.plist
+
+  Remove with: launchctl bootout gui/$(id -u)/com.agentbar.traffic-snapshot
+  A Mac asleep at 09:15 runs the job when it wakes; a missed day is not lost as
+  long as one run happens within 14 days (the daily breakdown is merged).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.agentbar.traffic-snapshot</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/PATH/TO/AgentBar/Scripts/dev/traffic-snapshot.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- gh and node; launchd's default PATH has neither -->
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>15</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/YOU/.agentbar-metrics/launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOU/.agentbar-metrics/launchd.log</string>
+</dict>
+</plist>
