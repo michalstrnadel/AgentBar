@@ -32,6 +32,7 @@ Thanks for your interest! AgentBar is intentionally small — please keep it tha
 open build/AgentBar.app
 swift test                                # Swift unit tests (needs Swift 6)
 ./Scripts/test/permission-hook-test.sh    # Claude hook protocol tests
+./Scripts/test/contract-test.sh           # docs/contract.md: no failure path approves
 ./Scripts/test/bridge-hooks-test.sh       # cursor/gemini/antigravity/codex bridge tests
 ./Scripts/test/opencode-plugin-test.sh    # OpenCode plugin driven through its event bus
 ./Scripts/test/cli-test.sh                # cross-platform CLI tests
@@ -206,7 +207,9 @@ universal bundle, and it is signed locally.
    wait for **that commit's** push run to finish with conclusion `success`
    (`gh run list --workflow ci.yml --commit "$(git rev-parse HEAD)"`). A failed run
    is not a release — 1.45.0 went out from one and could never be attested: fix it
-   and push again. Run `gh workflow disable ci.yml` once the release is out.
+   and push again. That run includes `Scripts/test/contract-test.sh`
+   ([docs/contract.md](docs/contract.md)), so a commit with a failure path that
+   approves by default cannot be released. Run `gh workflow disable ci.yml` once the release is out.
 3. Download the bundle CI built and verified, then sign it here:
    ```bash
    # The selector release-provenance.yml uses: the successful push run of this

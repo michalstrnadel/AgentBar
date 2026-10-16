@@ -852,6 +852,8 @@ so the terminal prompt never appears; if AgentBar isn't running, quits mid-wait,
 you ignore the request for 10 minutes, the prompt shows in the terminal exactly as
 before. (Known cosmetic issue: the terminal dialog can flash briefly even when
 approved from the menu — upstream [claude-code #12176](https://github.com/anthropics/claude-code/issues/12176).)
+Every way this can fail ends at the agent's own prompt, never at an approval. The
+[contract](docs/contract.md) lists each failure path, and a test checks every one before each release.
 
 **Codex answers natively too**, since 1.28.0. It speaks Claude's hook dialect, so
 the same scripts serve it, and a Codex prompt arrives as a real card with real

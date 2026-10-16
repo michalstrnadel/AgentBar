@@ -8,53 +8,8 @@ cd "$(dirname "$0")/../.."
 HOOK="Scripts/hooks/claude/permission.js"
 NODE="${NODE:-node}"
 
-pass=0; fail=0
-check() {
-  if eval "$2"; then echo "ok   $1"; pass=$((pass+1)); else echo "FAIL $1"; fail=$((fail+1)); fi
-}
-
-# The tests borrow HOME; an inherited CLAUDE_CONFIG_DIR, COPILOT_HOME or
-# CODEX_HOME would still point at the runner's real config.
-unset CLAUDE_CONFIG_DIR COPILOT_HOME CODEX_HOME AGENTBAR_HOME
-# F11 runs the hook's real liveness check, which an inherited override would pin;
-# every other case sets it on its own command line.
-unset AGENTBAR_FORCE_APP
-TESTROOT="$(mktemp -d)"
-trap 'rm -rf "$TESTROOT"' EXIT
-
-# A counter, not $RANDOM: two draws out of 32768 collide about once in three
-# hundred runs, and a "fresh" home that is really a previous one still holds its
-# files — which fails exactly the checks that assert a directory is empty, on a
-# machine nobody is watching. (Caught in CI: "codex non-complete event ignored".)
-HOME_SEQ=0
-fresh_home() {
-  HOME_SEQ=$((HOME_SEQ + 1))
-  export HOME="$TESTROOT/home.$$.$HOME_SEQ"
-  mkdir -p "$HOME/.agentbar/answers.d"
-}
-
-# Bounded poll for the request file instead of a fixed sleep; sets $REQ.
-# Seconds the hook waits for an answer in tests that DO answer it. Generous on
-# purpose: what those tests assert is rule matching and answer handling, not the
-# timeout, and the hook exits the moment the answer lands — so a large value
-# costs nothing in the happy path. At 5s a loaded CI runner could spend longer
-# getting the answer written than the hook was willing to wait, and the test
-# failed as if the rule logic were wrong. The deliberate timeout test keeps its
-# own short value.
-ANSWER_TIMEOUT=30
-
-wait_req() {
-  for _ in $(seq 100); do
-    REQ="$(ls "$HOME/.agentbar/requests.d/" 2>/dev/null | head -1)"
-    [ -n "$REQ" ] && return 0
-    sleep 0.1
-  done
-  # Say so rather than letting the caller write an answer to a path built from an
-  # empty REQ: that cascades into a confusing assertion failure three lines later.
-  echo "FAIL wait_req: no request file appeared within 10s" >&2
-  fail=$((fail + 1))
-  return 1
-}
+# check, contract, fresh_home, wait_req, ANSWER_TIMEOUT, $TESTROOT and summary.
+. Scripts/test/lib/harness.sh
 
 EVENT='{"session_id":"testsess","prompt_id":"p1","tool_name":"Bash","tool_input":{"command":"git push origin main"},"permission_suggestions":[{"type":"rule","rule":"Bash(git push:*)"}]}'
 
@@ -876,15 +831,12 @@ wait "$hookpid"
 check "claude: still wrapped as before" 'grep -q "hookSpecificOutput" "$HOME/out.json"'
 
 # --- the fall-through contract, clause by clause ---------------------------------
-# SECURITY.md publishes these as F1..F22: every way this hook can fail must write
+# SECURITY.md publishes these as F1..F23: every way this hook can fail must write
 # nothing to stdout, because writing nothing is what sends the question back to the
 # agent's own terminal. Several are asserted elsewhere in this file already; they
 # are gathered here under their numbers so that a clause nobody checks is visible
 # as a gap rather than hidden in a scenario. F15-F18, F21 and F22 are the rules engine's, in
 # RuleEngineTests and RulesStoreTests.
-contract() { # $1 clause, $2 condition
-  check "$1 falls through" "$2"
-}
 
 fresh_home
 AGENTBAR_FORCE_APP=0 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json"
@@ -1015,6 +967,20 @@ wait_req
 printf '{"behavior":"answer","answers":[["NotAnOption"]]}' > "$HOME/.agentbar/answers.d/$REQ"
 wait "$hookpid"
 contract "F14 an answer nobody offered" '[ ! -s "$HOME/out.json" ]'
+
+# F23: a leftover answer the hook cannot clear. Before the fix the removal failed
+# quietly in a read-only answers.d and the stale `allow` approved a request that was
+# published a moment later and never shown to anyone. (Root ignores the mode bits,
+# so the case only means something for an ordinary user.)
+if [ "$(id -u)" != 0 ]; then
+  fresh_home
+  printf '{"behavior":"allow"}' > "$HOME/.agentbar/answers.d/testsess-p1.json"
+  chmod 555 "$HOME/.agentbar/answers.d"
+  AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=3 "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json"
+  chmod 755 "$HOME/.agentbar/answers.d"
+  contract "F23 a leftover answer that cannot be cleared" '[ ! -s "$HOME/out.json" ]'
+  check "F23 publishes no request it cannot keep apart" '[ -z "$(ls "$HOME/.agentbar/requests.d" 2>/dev/null)" ]'
+fi
 
 # --- 31. A row's id and the name of the file it lives in are the same thing ----
 # The app takes a session's id from the state file's NAME; the Linux CLI matches a
@@ -1267,6 +1233,4 @@ check "AGENTBAR_HOME: nothing under ~/.agentbar"      '[ ! -e "$HOME/.agentbar" 
 printf '{"session_id":"ah-rel","cwd":"/tmp/proj","prompt":"x"}' | AGENTBAR_HOME=rel AGENTBAR_FORCE_APP=1 "$NODE" Scripts/hooks/claude/update.js prompt; RC=$?
 check "AGENTBAR_HOME relative: update.js uses the default" '[ "$RC" = 0 ] && [ -f "$HOME/.agentbar/state.d/ah-rel.json" ] && [ ! -e rel ]'
 
-echo "---"
-echo "$pass passed, $fail failed"
-[ "$fail" -eq 0 ]
+summary
