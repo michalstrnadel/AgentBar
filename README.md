@@ -869,6 +869,10 @@ AgentBar brings the session's own tab forward and presses the approval key. It w
 can't be found, so a keystroke never lands in a tab it couldn't verify — in tmux
 that means both the pane and the outer terminal's tab; on terminals with no tab
 targeting (Warp, Ghostty, kitty) it falls back to the app and types nothing.
+Before every key it checks again that the terminal is the frontmost app and that
+no modifier is held: it waits up to 2 s for a terminal still coming forward and
+briefly for ⌘/⇧/⌃/⌥ to be let go, and if either never happens it sends nothing and
+the prompt stays yours. Keys go out with no modifier flags, 50 ms apart.
 Best-effort by design, and it needs the Accessibility permission (the menu item
 offers to open System Settings until it's granted).
 

@@ -141,6 +141,9 @@ The asymmetry in F16 and F17 is deliberate: an unreadable policy file must fail
 towards asking, never towards allowing.
 - Keystroke approval for non-Claude agents requires the user to grant the
   Accessibility permission and a per-prompt click on an explicitly labeled item.
+  Before every key `KeystrokeGate` requires the target app to be frontmost and no
+  modifier to be physically held; past a short wait for either, nothing is sent.
+  Keys are posted with no modifier flags.
 
 ### The Claude Code mod
 
