@@ -693,6 +693,7 @@ final class DecisionLedger {
     /// Held by every append and by prune. Prune reads the file and replaces it; an
     /// append that landed between the two went to the file being replaced and was
     /// gone — a rule's row included, which is the row rule 3 promises always exists.
+    /// The in-process half of `JournalLock`, which adds the CLI's half.
     static let fileLock = NSLock()
 
     /// Posted on the main queue after rows were appended, by anyone — a click, a
@@ -714,20 +715,24 @@ final class DecisionLedger {
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
         // O_APPEND, like the history: the app and a CLI on a shared home must not be
-        // able to truncate each other.
-        fileLock.lock()
-        defer { fileLock.unlock() }
-        let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
-        guard fd >= 0 else {
-            NSLog("AgentBar: decisions.jsonl could not be opened (errno %d)", errno)
-            return false
+        // able to truncate each other. Under the journal lock, so no prune — ours or
+        // the CLI's — sits between its read and its rename. A lock still busy past
+        // its wait does not stop the row; the row goes in unguarded, as it used to.
+        let ok = JournalLock.around(url, inProcess: fileLock) { _ -> Bool in
+            let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+            guard fd >= 0 else {
+                NSLog("AgentBar: decisions.jsonl could not be opened (errno %d)", errno)
+                return false
+            }
+            defer { close(fd) }
+            let written = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+            guard written == data.count else {
+                NSLog("AgentBar: decisions.jsonl took %d of %d bytes", written, data.count)
+                return false
+            }
+            return true
         }
-        defer { close(fd) }
-        let written = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
-        guard written == data.count else {
-            NSLog("AgentBar: decisions.jsonl took %d of %d bytes", written, data.count)
-            return false
-        }
+        guard ok else { return false }
         DispatchQueue.main.async { NotificationCenter.default.post(name: didAppend, object: nil) }
         return true
     }
@@ -739,8 +744,15 @@ final class DecisionLedger {
 
     static func prune(url: URL = DecisionLedger.fileURL,
                       now: TimeInterval = Date().timeIntervalSince1970) {
-        fileLock.lock()
-        defer { fileLock.unlock() }
+        JournalLock.around(url, inProcess: fileLock) { outcome in
+            // Busy past the wait: the CLI is pruning, or was stopped holding the
+            // lock. Either way this pass is not ours; the next is six hours away.
+            guard outcome != .busy else { return }
+            pruneLocked(url: url, now: now)
+        }
+    }
+
+    private static func pruneLocked(url: URL, now: TimeInterval) {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
         let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
         // A line this version cannot read — a row from a newer AgentBar, a hand edit

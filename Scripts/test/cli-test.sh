@@ -470,6 +470,73 @@ check "approvals --json carries the rows"   '"$CLI" approvals --json | grep -q "
 
 check "forget empties the ledger"           '"$CLI" forget | grep -q "Forgot 2 decisions" && [ ! -f "$LEDGER" ]'
 
+# --- the journal lock (#28): the app prunes by read, write a copy, rename. A CLI
+# append landing between the read and the rename went into the file being replaced
+# and was lost. Both halves now flock `<journal>.lock`. The pruner below is the app's
+# prune with its window held open on purpose, so an unguarded append always loses.
+PRUNER="$TESTROOT/app-style-prune.pl"
+cat > "$PRUNER" <<'PL'
+use strict; use Fcntl qw(:flock); use Time::HiRes qw(sleep);
+my ($file, $stop) = @ARGV; my $passes = 0;
+until (-e $stop) {
+  open(my $l, ">>", "$file.lock") or die "lock: $!"; flock($l, LOCK_EX) or die;
+  if (open(my $in, "<", $file)) {
+    local $/; my $t = <$in>; close $in;
+    sleep 0.05;                                   # the window an append used to fall into
+    open(my $o, ">", "$file.app.tmp") or die; print $o $t; close $o;
+    rename("$file.app.tmp", $file) or die; $passes++;
+  }
+  close $l; sleep 0.005;
+}
+open(my $p, ">", "$stop.passes"); print $p $passes;
+PL
+if command -v perl >/dev/null 2>&1; then
+  fresh_home
+  LEDGER="$HOME/.agentbar/decisions.jsonl"
+  echo '{"v":1,"ts":1,"decision":"allow","via":"app"}' > "$LEDGER"
+  STOP="$TESTROOT/stop.$HOME_SEQ"
+  perl "$PRUNER" "$LEDGER" "$STOP" & PRUNE_PID=$!
+  for i in $(seq 1 20); do
+    seed_request "lk$i" $$
+    "$CLI" approve >/dev/null 2>&1
+  done
+  touch "$STOP"; wait "$PRUNE_PID"
+  check "interleaved with an app prune, no CLI row is lost" '[ "$(grep -c "\"via\":\"cli\"" "$LEDGER")" = 20 ] && grep -q "\"via\":\"app\"" "$LEDGER"'
+  check "...and the prune really ran in between"         '[ "$(cat "$STOP.passes")" -gt 5 ]'
+
+  # History: the same lock around the append and the CLI's own prune.
+  fresh_home
+  HIST="$HOME/.agentbar/history.jsonl"
+  printf '{"v":1,"agent":"codex","sessionId":"seed","endedAt":%s,"state":"done"}\n' "$(date +%s)" > "$HIST"
+  STOP="$TESTROOT/stop.$HOME_SEQ"
+  perl "$PRUNER" "$HIST" "$STOP" & PRUNE_PID=$!
+  "$CLI" status >/dev/null 2>&1
+  for i in $(seq 1 10); do
+    seed_session "hl$i" tool $$
+    "$CLI" status >/dev/null 2>&1
+    rm -f "$HOME/.agentbar/state.d/hl$i.json"
+    "$CLI" status >/dev/null 2>&1
+  done
+  touch "$STOP"; wait "$PRUNE_PID"
+  check "history appends survive an app prune too"     '[ "$(grep -c "\"sessionId\":\"hl" "$HIST")" = 10 ] && grep -q "\"sessionId\":\"seed\"" "$HIST"'
+
+  # A holder that never lets go (a stopped app, a stuck CLI) costs the wait, not the
+  # row: the append goes in unguarded, as it did before the lock existed.
+  fresh_home
+  LEDGER="$HOME/.agentbar/decisions.jsonl"
+  : > "$LEDGER"
+  perl -MFcntl=:flock -e 'open(my $l, ">>", $ARGV[0]) or die; flock($l, LOCK_EX) or die; sleep 20' "$LEDGER.lock" & HOLD_PID=$!
+  sleep 0.3
+  seed_request stuck $$
+  T0=$(date +%s)
+  AGENTBAR_LOCK_WAIT=1 "$CLI" approve >/dev/null 2>&1
+  T1=$(date +%s)
+  kill "$HOLD_PID" 2>/dev/null; wait "$HOLD_PID" 2>/dev/null
+  check "a lock held forever costs the wait, not the row" '[ $((T1 - T0)) -le 5 ] && grep -q "\"via\":\"cli\"" "$LEDGER" && [ -f "$HOME/.agentbar/answers.d/stuck.json" ]'
+else
+  echo "skip journal lock: no perl to play the app's prune"
+fi
+
 # --- rules: what the human wrote down, listed here and applied by the app
 fresh_home
 check "no rules says so plainly"            '"$CLI" rules | grep -q "No rules"'

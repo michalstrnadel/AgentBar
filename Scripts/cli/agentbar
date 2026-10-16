@@ -78,6 +78,50 @@ const writeAtomic = (f, obj, replacer) => {
   fs.writeFileSync(t, JSON.stringify(obj, replacer));
   fs.renameSync(t, f);
 };
+
+// The journal lock (docs/protocol.md, "Locking the journals"): flock(2) on
+// `<journal>.lock`, taken by this CLI and by the macOS app around every append to
+// and every prune of history.jsonl and decisions.jsonl. Without it, an append that
+// landed between the other side's read and rename went into the file being
+// replaced and was lost.
+//
+// Node has no flock, and this script takes no dependencies, so the lock is taken
+// by a helper that inherits the descriptor as fd 3: flock(1) from util-linux on
+// Linux, else perl (stock on macOS and most distributions). A flock belongs to the
+// open file description, not the process, so the lock outlives the helper and is
+// ours until we close the descriptor — and the kernel drops it if we die, which is
+// why this is a flock and not an O_EXCL lockfile with stale-pid guessing. Nothing
+// here may hang: the wait is bounded, and past it an append goes ahead unguarded
+// (as before the lock) while a prune steps aside for whoever holds it.
+const LOCK_WAIT = (() => {
+  const v = Number(process.env.AGENTBAR_LOCK_WAIT);
+  return Number.isFinite(v) && v >= 0 ? Math.min(v, 30) : 2;
+})();
+const LOCKERS = [
+  ["flock", ["-x", "-w", String(LOCK_WAIT), "3"]],
+  ["perl", ["-MFcntl=:flock", "-e",
+    'open(my $f, "+<&=", 3) or exit 3; $SIG{ALRM} = sub { exit 1 }; alarm(' +
+    Math.max(1, Math.ceil(LOCK_WAIT)) + '); flock($f, LOCK_EX) or exit 1; exit 0']],
+];
+// "held" | "busy" | "unavailable" — the same three outcomes as the app's JournalLock.
+function withJournalLock(file, body) {
+  let fd = -1;
+  try { fd = fs.openSync(file + ".lock", fs.constants.O_RDWR | fs.constants.O_CREAT, 0o644); } catch {}
+  let outcome = "unavailable";
+  if (fd >= 0) {
+    const { spawnSync } = require("child_process");
+    for (const [cmd, args] of LOCKERS) {
+      const r = spawnSync(cmd, args, {
+        stdio: ["ignore", "ignore", "ignore", fd], timeout: (LOCK_WAIT + 2) * 1000,
+      });
+      if (r.status === 0) { outcome = "held"; break; }
+      // Exit 1 is "still held when the wait ran out" for both helpers.
+      if (r.status === 1 || (r.error && r.error.code === "ETIMEDOUT")) { outcome = "busy"; break; }
+      // Missing (ENOENT) or unusable here: try the next one.
+    }
+  }
+  try { return body(outcome); } finally { if (fd >= 0) try { fs.closeSync(fd); } catch {} }
+}
 // Foundation's CharacterSet.whitespaces / .whitespacesAndNewlines, member for
 // member (dumped from Foundation: Zs, tab and — Apple's own addition — U+200B),
 // because String.prototype.trim() is neither: it eats U+FEFF and spares U+200B.
@@ -223,8 +267,12 @@ function recordHistory(ss) {
     for (const id of Object.keys(prev)) if (!live[id]) out.push(rec(prev[id], id));
     if (!out.length) return;
     out.sort((a, b) => a.endedAt - b.endedAt || (a.sessionId < b.sessionId ? -1 : 1));
-    fs.appendFileSync(historyFile, out.map((r) => JSON.stringify(r)).join("\n") + "\n");
-    pruneHistory();
+    // One lock for both: the append goes in whatever happens, the prune only when
+    // nobody else is in the middle of one.
+    withJournalLock(historyFile, (lock) => {
+      fs.appendFileSync(historyFile, out.map((r) => JSON.stringify(r)).join("\n") + "\n");
+      if (lock !== "busy") pruneHistoryLocked();
+    });
   } catch {}
 }
 
@@ -331,7 +379,8 @@ function printHistory(argv, json) {
   console.log("\n" + parts.join(" · "));
 }
 
-function pruneHistory() {
+// Only under the journal lock — see withJournalLock.
+function pruneHistoryLocked() {
   try {
     const all = readHistory();
     let kept = all.filter((r) => now() - (r.endedAt || 0) <= HISTORY_MAX_AGE);
@@ -477,7 +526,10 @@ function recordDecision(r, decision) {
     waited: r.ts > 0 ? Math.max(0, now() - r.ts) : 0,
     via: "cli",
   };
-  try { fs.appendFileSync(decisionsFile, JSON.stringify(rec) + "\n"); } catch {}
+  // Under the journal lock, so the app's prune cannot replace the file around it.
+  withJournalLock(decisionsFile, () => {
+    try { fs.appendFileSync(decisionsFile, JSON.stringify(rec) + "\n"); } catch {}
+  });
 }
 
 // Whether a row is the person's own answer. `rule` (an AgentBar rule answered) and
@@ -1017,7 +1069,11 @@ function printRules(json) {
 // rather not keep that", so it removes everything and says how much it removed.
 function forget() {
   const n = readDecisions().length;
-  try { fs.rmSync(decisionsFile, { force: true }); } catch {}
+  // Locked like a prune, so a row the app is appending lands before the removal
+  // or after it, and is never half of either.
+  withJournalLock(decisionsFile, () => {
+    try { fs.rmSync(decisionsFile, { force: true }); } catch {}
+  });
   console.log(`Forgot ${n} decision${n === 1 ? "" : "s"} (${decisionsFile}).`);
 }
 

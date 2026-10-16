@@ -17,6 +17,7 @@ locks. All timestamps (`ts`) are Unix seconds.
   watcher.json frontend presence heartbeat      (writer: CLI watch/waybar)
   history.jsonl  one line per ended session     (writer: frontends only)
   decisions.jsonl one line per permission decision (writer: frontends only)
+  *.jsonl.lock   the journals' flock sidecars (see "Locking the journals"; never written to)
   history-seen.json  the CLI's previous tick, so one-shot commands can diff
   config-changes.json  the macOS installer's last settings writes, as diffs (writer: the app only; mode 0600)
   hooks/       installed copies of the hook scripts (refreshed by the installer)
@@ -325,7 +326,8 @@ Rules:
 - `decayed: true` means a frontend watchdog synthesized the ending rather than the
   agent reporting it. A reader that counts those as clean finishes is inventing
   outcomes.
-- Writers prune to **30 days** and a hard cap of **5000 records**.
+- Writers prune to **30 days** and a hard cap of **5000 records**, by an atomic
+  replace, and only under the journal lock (below) — as is every append.
 - `spans` is the session's working time so far, carried whole on every line (the
   last line wins, so it must). `startedAt`–`endedAt` is how long the session was
   *open*; a reader that sums that as work counts a window left open all day as a
@@ -379,11 +381,51 @@ the baseline commit all mean the key is omitted.
 protocol: a snapshot of the previous tick so that one-shot commands (`status`,
 `waybar`) can diff. The macOS app keeps the same snapshot in memory.
 
+### Locking the journals
+
+`history.jsonl` and `decisions.jsonl` are the two files in the folder that are not
+written by an atomic replace alone: they are appended to, and a prune reads one,
+writes a shorter copy and renames it over the original. An append that lands
+between that read and that rename goes into the file being replaced and is lost —
+for the ledger, possibly a rule's row, the one row rule 3 promises always exists.
+So every writer of either file takes one advisory lock around **every append, every
+prune and any removal** (`agentbar forget`):
+
+- The lock is `flock(2)`, exclusive, on a sidecar named after the journal:
+  `history.jsonl.lock` and `decisions.jsonl.lock`, created `0644` if missing and
+  never deleted or replaced. Not on the journal itself: a prune replaces the
+  journal's inode, and a lock on the old one would not exclude a writer that opened
+  the new one.
+- `flock`, not an `O_EXCL` lockfile: the kernel drops it when its holder dies, so
+  there is no stale lock to detect and no pid to trust. It is advisory and only
+  means anything between writers that take it; readers take nothing (a reader sees
+  the old file or the new one, never half of either).
+- **The wait is bounded** (2 s in both frontends; the CLI honours
+  `AGENTBAR_LOCK_WAIT=<s>`). A writer still refused at the end of it does what
+  writers did before the lock existed: an **append goes ahead unguarded**, because
+  losing a row to a possible race is better than losing it for certain, and a
+  **prune steps aside**, because whoever holds the lock is pruning. A writer that
+  cannot open the sidecar at all (a read-only directory, no helper to take it —
+  below) appends and prunes as before.
+- No hook writes either journal, and none ever takes this lock: a hook must never
+  wait on a frontend (CLAUDE.md rule 4).
+
+The macOS app calls `flock` directly (`JournalLock`). Node has no `flock`, and the
+CLI takes no dependencies, so it opens the sidecar itself and hands the descriptor
+as fd 3 to a helper that locks it and exits: `flock -x -w <s> 3` (util-linux,
+present on practically every Linux), else `perl` with `Fcntl`'s `flock` (stock on
+macOS and most distributions). A `flock` belongs to the open file description, not
+to the process that took it, so the lock outlives the helper and is released when
+the CLI closes its descriptor or exits. A machine with neither helper gets today's
+unlocked behaviour. A third-party writer of either journal should take the same
+lock the same way.
+
 ## decisions.jsonl — what the human decided
 
 One append-only line per permission decision that **actually reached `answers.d`**.
 Written by frontends only, same mechanics as `history.jsonl` (O_APPEND, one line at
-a time, a torn line costs that line). Unlike the history, nothing collapses: two
+a time, a torn line costs that line, every append and prune under the journal lock).
+Unlike the history, nothing collapses: two
 decisions about the same command are two decisions, and counting them is the point.
 
 ```json

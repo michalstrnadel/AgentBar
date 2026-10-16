@@ -11,7 +11,9 @@ import Foundation
 ///
 /// So one append-only line per session in `~/.agentbar/history.jsonl`. Append-only
 /// because a crash mid-write must cost at most the last line, and because the CLI
-/// can append to the same file on Linux without a lock. A session is written more
+/// appends to the same file on Linux. Appends and prunes on both sides take one
+/// `flock` on a sidecar (`JournalLock`), so neither side's prune can swallow the
+/// other's append. A session is written more
 /// than once — once per turn that ends, once more when it disappears — and the
 /// reader keeps the **last** line for a given `sessionId`, so the newest wins and
 /// duplicates are harmless rather than something to coordinate away.
@@ -239,13 +241,14 @@ final class HistoryStore {
                                                  withIntermediateDirectories: true)
         // O_APPEND, not read-modify-write: two frontends (the app and `agentbar
         // watch` on a shared home) must not be able to truncate each other, and a
-        // line-sized append is atomic.
-        Self.fileLock.lock()
-        defer { Self.fileLock.unlock() }
-        let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
-        guard fd >= 0 else { return }
-        defer { close(fd) }
-        _ = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+        // line-sized append is atomic. Under the journal lock, so neither side's
+        // prune can replace the file around it; busy past the wait, it appends anyway.
+        JournalLock.around(url, inProcess: Self.fileLock) { _ in
+            let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+            guard fd >= 0 else { return }
+            defer { close(fd) }
+            _ = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+        }
     }
 
     // MARK: - Reading and pruning
@@ -286,7 +289,8 @@ final class HistoryStore {
     }
 
     private static let cacheLock = NSLock()
-    /// Held by append and prune, for the reason `DecisionLedger.fileLock` gives.
+    /// Held by append and prune, for the reason `DecisionLedger.fileLock` gives. The
+    /// in-process half of `JournalLock`.
     static let fileLock = NSLock()
     private static var cache: (url: String, stamp: (TimeInterval, Int), records: [Record])?
 
@@ -294,8 +298,14 @@ final class HistoryStore {
     /// something actually goes — an old session, or the earlier lines of one that
     /// was written more than once — so the common case costs a read and nothing else.
     static func prune(url: URL = HistoryStore.fileURL, now: TimeInterval = Date().timeIntervalSince1970) {
-        fileLock.lock()
-        defer { fileLock.unlock() }
+        JournalLock.around(url, inProcess: fileLock) { outcome in
+            // Busy past the wait means the other writer is mid-prune: not ours to redo.
+            guard outcome != .busy else { return }
+            pruneLocked(url: url, now: now)
+        }
+    }
+
+    private static func pruneLocked(url: URL, now: TimeInterval) {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return }
         // Counted as lines, not as sessions: `read` collapses a session written on
         // every turn into one record, and comparing collapsed counts meant a file of
