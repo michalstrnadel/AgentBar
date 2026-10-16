@@ -3,6 +3,48 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Security
+
+- **A leftover answer that can't be cleared no longer approves anything.**
+  Before showing a request, Claude Code's permission hook removes any old answer
+  stored under the same name. If that folder couldn't be written to, the removal
+  failed silently, and an old **Allow** was read as the answer to a new request
+  nobody had seen. Now, if the old answer is still there, the hook steps aside
+  and the agent asks in its own prompt. This is clause F23 in SECURITY.md.
+
+### Added
+
+- **"Never an implicit approval" is now a published contract.**
+  [docs/contract.md](docs/contract.md) lists every way an approval can fail and
+  what each agent shows when it does. `Scripts/test/contract-test.sh` runs every
+  one of those cases through the real hooks as Claude Code, Copilot and Codex
+  and checks that none of them approves. CI runs it, so a release can't ship
+  without it passing.
+- **Rules may approve `git -C <dir>`** when the directory really is inside the
+  session's folder on disk. Each `-C` is followed the way git follows it, so a
+  `..` or symlink escape is caught, and every other option in front of git's
+  subcommand is still refused. As a side effect, a rule that denies
+  `git status` now also denies `git -C x status`.
+- A public [roadmap](ROADMAP.md).
+
+### Fixed
+
+- **Diagnostics checks each hook under the right event.** Before, a hook counted
+  as connected if AgentBar's path appeared anywhere in an agent's config. Now
+  each event AgentBar needs must run the right script. A config with the script
+  under the wrong event, or with an event missing, shows a warning with a
+  re-install button. This applies in the app and in `agentbar doctor`. Codex
+  with only the `notify` line and no hooks block is now a warning.
+- **Approving by keystroke never sends a key with a modifier held.** If ⌘, ⇧, ⌃,
+  ⌥ or fn is down, AgentBar waits briefly for you to let go and otherwise sends
+  nothing. If focus moves away between two keys, it stops. Dropping a file onto
+  a session goes through the same check before it pastes.
+- **History and the decision log stay intact when the app and the Linux CLI
+  write at the same time.** Both now take one shared file lock. Before, a line
+  the CLI added while the app was trimming the file could be lost.
+
 ## 1.55.1 - 2026-10-12
 
 ### Fixed
