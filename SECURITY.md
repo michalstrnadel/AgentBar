@@ -97,13 +97,15 @@ guarantees worth knowing when auditing:
   is the one guarantee the rest of the product is built on, so it is written out
   below as a numbered contract rather than a sentence, and each clause is a test
   that runs on every release.
+  [docs/contract.md](docs/contract.md) lists every failure path, which hooks it
+  applies to, and what the agent shows.
 
 ### The fall-through contract
 
 `permission.js` writes a decision to stdout, and **writing nothing means "no
 decision"** — the host falls back to asking at its own terminal. Every clause below
 is a path that must write nothing, and each is a test that runs on every release:
-F1–F14 in `Scripts/test/permission-hook-test.sh`, which names them by number and
+F1–F14 and F23 in `Scripts/test/permission-hook-test.sh`, which names them by number and
 runs in CI on macOS and Linux; F15–F18 in `RuleEngineTests` and `RulesStoreTests`,
 which carry the same numbers in their doc comments. `grep -rn "F17"` finds the
 clause and the test that holds it to, which is the point of numbering them: a
@@ -133,6 +135,7 @@ clause whose test nobody can find is a clause somebody can delete.
 | F20 | The rules file repeats a key, has a trailing comma, or a field of the wrong type | as F16 — the app and the CLI used to read such a file differently |
 | F21 | The command is 2,000 units or longer — where the hook cuts it | The tail, where a second command would sit, was never read |
 | F22 | The rule's ledger row cannot be written | An answer nobody clicked may only exist with the row naming its rule |
+| F23 | A leftover answer under the request's name cannot be removed (`answers.d` not writable) | Nothing under that name can be told apart from an answer to a request nobody has seen yet |
 
 The asymmetry in F16 and F17 is deliberate: an unreadable policy file must fail
 towards asking, never towards allowing.

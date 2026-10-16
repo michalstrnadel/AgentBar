@@ -378,6 +378,24 @@ function run() {
     fs.mkdirSync(reqDir, { recursive: true, mode: 0o700 });
     fs.mkdirSync(ansDir, { recursive: true, mode: 0o700 });
 
+    // A leftover answer under this name (orphan of a crashed twin, prompt_id
+    // reuse) must not be mistaken for the user's decision on THIS request.
+    //
+    // BEFORE the request is published, not after. The rename below is what makes
+    // the request visible, and a frontend watching requests.d can answer within
+    // microseconds of it — the app watches by fs event, not by poll. Clearing
+    // afterwards left a window in which that prompt answer was deleted by this
+    // cleanup, and the hook then waited out its full 10 minutes for a decision it
+    // had already been given. Nobody can answer a request that does not exist yet,
+    // so doing it first closes the window instead of narrowing it.
+    try { fs.rmSync(ansPath, { force: true }); } catch {}
+    // And if it could not be removed — answers.d not writable, the name taken by a
+    // directory — nothing under that name can be trusted to be about THIS request:
+    // a leftover `allow` would otherwise be read as the answer to a card nobody saw.
+    // Fall through to the agent's own prompt (F23 in SECURITY.md) — before the row
+    // says "waiting on you", so nothing is left claiming a wait that never began.
+    if (fs.existsSync(ansPath)) process.exit(0);
+
     // The session row itself shows what's pending, even before the menu opens.
     // What it said just before is kept: an allowed tool goes back to being the
     // tool PreToolUse announced.
@@ -394,18 +412,6 @@ function run() {
         sessionId: rowId(p.session_id), pid: process.ppid, started: true,
         ts: Math.floor(Date.now() / 1000) });
     } catch {}
-
-    // A leftover answer under this name (orphan of a crashed twin, prompt_id
-    // reuse) must not be mistaken for the user's decision on THIS request.
-    //
-    // BEFORE the request is published, not after. The rename below is what makes
-    // the request visible, and a frontend watching requests.d can answer within
-    // microseconds of it — the app watches by fs event, not by poll. Clearing
-    // afterwards left a window in which that prompt answer was deleted by this
-    // cleanup, and the hook then waited out its full 10 minutes for a decision it
-    // had already been given. Nobody can answer a request that does not exist yet,
-    // so doing it first closes the window instead of narrowing it.
-    try { fs.rmSync(ansPath, { force: true }); } catch {}
 
     writeAtomic(reqPath, {
       // safeId to match Session.id, which the app derives from the state file name.
