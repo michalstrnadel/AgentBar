@@ -923,6 +923,9 @@ enum Assets {
     static func write(_ a: Art) {
         let dir = Promo.outDir
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        ApprovalArt.write(a, to: dir)
+        // `--assets --approvals`: only the approvals film's pictures, without the games.
+        if CommandLine.arguments.contains("--approvals") { return }
         for (img, name) in [(a.held, "island-held"), (a.approval, "island-approval"),
                             (a.context, "island-context"), (a.joystick, "island-joystick"),
                             (a.claudeCodePage, "settings-claude-code"), (a.whatsNew, "settings-whats-new"),
@@ -1404,3 +1407,263 @@ enum Readme {
 
 extension NSWindow { @objc func promoAlwaysTrue() -> Bool { true } }
 extension NSApplication { @objc func promoAlwaysTrue() -> Bool { true } }
+
+// MARK: - The approvals film
+
+/// The pictures for the approvals film and its clips: three agents asking in one
+/// island, the queue as it empties (Allow, then Deny with a note typed into the real
+/// field), a rule that only watches, and the Phone page. Each picture comes with
+/// where its buttons are (`approvals-marks.json`, points from the top left), so the
+/// film's pointer lands on the real Allow rather than on a guess.
+enum ApprovalArt {
+    static let note = "use pnpm in this repo, not npm"
+    static let apiDir = "/work/api"
+
+    static func write(_ a: Art, to dir: URL) {
+        let ts = a.ts
+        seedRules(ts: ts)
+        var marks: [String: Any] = [:]
+
+        // The three sessions and what each one asks.
+        func asking(_ id: String, _ agent: String, _ command: String, project: String, prompt: String,
+                    since: Int) -> (Session, ApprovalRequest) {
+            var o: [String: Any] = ["agent": agent, "state": "permission", "label": "Bash: \(command)",
+                                    "project": project, "started_at": ts - since, "prompt": prompt]
+            if agent == "claude" { o["model"] = "claude-opus-5-5" }
+            let s = a.session(id, o)
+            let r = a.request("\(id)-p1", [
+                "sessionId": id, "agent": agent, "toolName": "Bash", "display": "Bash: \(command)",
+                "toolInputPretty": "{\"command\": \"\(command)\"}",
+                "context": ["kind": "bash", "command": command],
+                "pid": 1, "hookPid": 1, "ts": ts, "cwd": agent == "copilot" ? apiDir : "/tmp",
+            ])
+            return (s, r)
+        }
+        let codex = asking("ap-codex", "codex", "git push origin fix/cart-total", project: "webshop",
+                           prompt: "fix the cart total rounding and push the branch", since: 840)
+        let claude = asking("ap-claude", "claude", "npm install left-pad", project: "checkout",
+                            prompt: "add left-pad to the checkout package", since: 1_260)
+        let copilot = asking("ap-copilot", "copilot", "npm test", project: "api",
+                             prompt: "make the date parser accept ISO weeks", since: 420)
+        let codexBack = a.session("ap-codex-run", ["agent": "codex", "state": "tool", "label": "Running command",
+                                                   "project": "webshop", "started_at": ts - 840,
+                                                   "prompt": "fix the cart total rounding and push the branch"])
+        let claudeBack = a.session("ap-claude-think", ["agent": "claude", "state": "thinking", "label": "Thinking…",
+                                                       "project": "checkout", "started_at": ts - 1_260,
+                                                       "prompt": "add left-pad to the checkout package",
+                                                       "model": "claude-opus-5-5"])
+        let copilotBack = a.session("ap-copilot-run", ["agent": "copilot", "state": "tool", "label": "Running tests",
+                                                       "project": "api", "started_at": ts - 420,
+                                                       "prompt": "make the date parser accept ISO weeks"])
+
+        let cardW = a.rowW - 12
+        func card(_ r: ApprovalRequest, cwd: String = "") -> IslandApprovalView {
+            IslandApprovalView(request: r, deferTitle: "Answer in terminal", cwd: cwd, width: cardW,
+                               onChoose: { _ in })
+        }
+        func wrap(_ v: NSView) -> NSView {
+            let w = NSStackView(views: [v])
+            w.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 0)
+            return w
+        }
+        /// One open island, written as `name.png`, with the rects of `targets` in it.
+        @discardableResult
+        func shoot(_ name: String, _ rows: [NSView], targets: [String: NSView?] = [:]) -> IslandContentView {
+            let (img, content) = island(a, rows)
+            Video.write(img, to: dir.appendingPathComponent("\(name).png"))
+            var t: [String: Any] = [:]
+            for (k, v) in targets {
+                guard let v else { print("⚠︎ \(name): no \(k)"); continue }
+                t[k] = rect(v, in: content)
+            }
+            marks[name] = ["w": img.size.width, "h": img.size.height, "targets": t]
+            print("wrote \(name).png \(Int(img.size.width))×\(Int(img.size.height))")
+            return content
+        }
+
+        // 1–3: they ask, one after another.
+        let c1 = card(codex.1), c2 = card(claude.1), c3 = card(copilot.1, cwd: apiDir)
+        shoot("approvals-ask-1", [a.row(codex.0, hero: true), wrap(card(codex.1))])
+        shoot("approvals-ask-2", [a.row(codex.0, hero: true), wrap(card(codex.1)),
+                                  a.row(claude.0), wrap(card(claude.1))])
+        shoot("approvals-ask-3", [a.row(codex.0, hero: true), wrap(c1), a.row(claude.0), wrap(c2),
+                                  a.row(copilot.0), wrap(c3)],
+              targets: ["allow": button("Allow", in: c1)])
+        // 4: Codex allowed and back at work; Claude leads.
+        let d1 = card(claude.1), d2 = card(copilot.1, cwd: apiDir)
+        shoot("approvals-allowed", [a.row(claude.0, hero: true), wrap(d1), a.row(copilot.0), wrap(d2),
+                                    a.row(codexBack)],
+              targets: ["note": button("Deny with a note", in: d1)])
+        // 5: the note open, empty, then the field alone at every length of the note.
+        let e1 = card(claude.1), e2 = card(copilot.1, cwd: apiDir)
+        e1.setComposing(true)
+        let noteContent = shoot("approvals-note", [a.row(claude.0, hero: true), wrap(e1), a.row(copilot.0),
+                                                   wrap(e2), a.row(codexBack)],
+                                targets: ["field": e1.noteField, "send": button("Deny & tell it", in: e1)])
+        var widths: [CGFloat] = []
+        e1.noteField.placeholder = ""
+        let fieldRect = e1.noteField.convert(e1.noteField.bounds, to: noteContent)
+        for n in 0...note.count {
+            let typed = String(note.prefix(n))
+            e1.noteField.stringValue = typed
+            let whole = a.snap(noteContent, noteContent.frame.size)
+            let strip = crop(whole, fieldRect, flipped: noteContent.isFlipped)
+            Video.write(strip, to: dir.appendingPathComponent(String(format: "approvals-note-%02d.png", n)))
+            widths.append(NSAttributedString(string: typed, attributes: [.font: NSFont.systemFont(ofSize: 12)]).size().width)
+        }
+        marks["noteTyping"] = ["count": note.count, "text": note, "widths": widths, "textInset": 8]
+        // 6: Claude refused with the note and thinking again; Copilot leads.
+        let f1 = card(copilot.1, cwd: apiDir)
+        shoot("approvals-denied", [a.row(copilot.0, hero: true), wrap(f1), a.row(claudeBack), a.row(codexBack)],
+              targets: ["allow": button("Allow", in: f1)])
+        // 7: all three at work.
+        shoot("approvals-clear", [a.row(copilotBack, hero: true), a.row(claudeBack), a.row(codexBack)])
+        // Copilot asking alone, for the watching-rule clip.
+        let g1 = card(copilot.1, cwd: apiDir)
+        shoot("approvals-copilot", [a.row(copilot.0, hero: true), wrap(g1)], targets: ["allow": button("Allow", in: g1)])
+        // Codex asking alone, for the phone clip.
+        shoot("approvals-codex", [a.row(codex.0, hero: true), wrap(card(codex.1))])
+
+        // Settings: the rules and the Phone page.
+        let on = NSSwitch()
+        on.controlSize = .small
+        on.state = .on
+        let rules = settingsPage(a, title: "Rules", [
+            SettingsChrome.card([SettingsChrome.row(
+                "Answer from my rules",
+                "Off stops every rule at once and deletes none. A rule set to Watching never answers either way.",
+                control: on)]),
+            SettingsChrome.card([SettingsChrome.customRow(RulesView())]),
+        ])
+        Video.write(rules, to: dir.appendingPathComponent("approvals-rules.png"))
+        print("wrote approvals-rules.png \(Int(rules.size.width))×\(Int(rules.size.height))")
+
+        // The Phone page's first card as it looks switched on. The page's own
+        // `reload()` is not called: it would mint a topic in the defaults and read
+        // the Keychain, and the card shown here needs neither.
+        let phone = PhonePage()
+        let views = [phone.views[1]]
+        for v in views { all(v).compactMap { $0 as? NSSwitch }.forEach { $0.state = .on } }
+        let phoneImg = settingsPage(a, title: "Phone", views)
+        Video.write(phoneImg, to: dir.appendingPathComponent("approvals-phone.png"))
+        print("wrote approvals-phone.png \(Int(phoneImg.size.width))×\(Int(phoneImg.size.height))")
+
+        // What a push for Codex's request says, from PhoneRelay itself.
+        marks["phonePush"] = [
+            "title": "Codex needs approval",
+            "message": PhoneRelay.body(for: codex.1, project: "webshop", agentName: "Codex", detail: .full),
+            "verbs": PhoneRelay.verbs(for: codex.1, detail: .full),
+        ]
+        try? JSONSerialization.data(withJSONObject: marks, options: [.prettyPrinted, .sortedKeys])
+            .write(to: dir.appendingPathComponent("approvals-marks.json"))
+    }
+
+    /// A watching rule with a week of evidence behind it, and an answering denial
+    /// beside it, in the scratch AGENTBAR_HOME.
+    static func seedRules(ts: Int) {
+        let day = 86_400
+        _ = RulesStore.save([
+            RulesStore.Rule(id: "promo-npm-test", decision: "allow", shape: "bash:npm test", cwd: apiDir,
+                            mode: .watch, created: TimeInterval(ts - 6 * day)),
+            RulesStore.Rule(id: "promo-npm-publish", decision: "deny", shape: "bash:npm publish",
+                            tell: "ask me before publishing", mode: .on, created: TimeInterval(ts - 20 * day)),
+        ])
+        var lines: [String] = []
+        func row(_ o: [String: Any]) {
+            var r: [String: Any] = ["v": 1, "agent": "copilot", "project": "api", "cwd": apiDir, "tool": "Bash",
+                                    "waited": 0, "rule": "", "would": "", "via": "island"]
+            r.merge(o) { _, new in new }
+            lines.append(String(data: try! JSONSerialization.data(withJSONObject: r), encoding: .utf8)!)
+        }
+        // Fourteen prompts across six days: each time the rule would have allowed,
+        // and each time you allowed it yourself a few seconds later.
+        for i in 0..<14 {
+            let t = ts - 6 * day + 3_600 + i * (5 * day / 13) - (i == 13 ? 4_000 : 0)
+            let sid = "promo-copilot-\(i)"
+            row(["ts": t, "sessionId": sid, "shape": "bash:npm test", "display": "Bash: npm test",
+                 "decision": "watch", "would": "allow", "via": "rule", "rule": "promo-npm-test"])
+            row(["ts": t + 9, "sessionId": sid, "shape": "bash:npm test", "display": "Bash: npm test",
+                 "decision": "allow", "waited": 9])
+        }
+        for i in 0..<2 {
+            row(["ts": ts - (3 + i * 5) * day, "agent": "claude", "cwd": "/work/webshop", "project": "webshop",
+                 "sessionId": "promo-pub-\(i)", "shape": "bash:npm publish", "display": "Bash: npm publish",
+                 "decision": "deny", "via": "rule", "rule": "promo-npm-publish"])
+        }
+        let url = DecisionLedger.fileURL
+        let old = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        try! (old + lines.joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    static func island(_ a: Art, _ rows: [NSView]) -> (NSImage, IslandContentView) {
+        let ear = IslandShape.earWidth
+        let width = IslandShape.panelWidth(body: IslandController.expandedWidth, ear: ear)
+        let content = IslandContentView(frame: NSRect(x: 0, y: 0, width: width, height: 100))
+        content.appearance = NSAppearance(named: .darkAqua)
+        content.flushTop = true
+        content.earWidth = ear
+        content.collapsedHeight = 30
+        content.topInset = 10
+        content.setFooter(a.footer())
+        content.setRows(rows)
+        let img = a.snap(content, NSSize(width: width, height: content.contentHeight))
+        return (img, content)
+    }
+
+    static func settingsPage(_ a: Art, title: String, _ views: [NSView]) -> NSImage {
+        let col = NSStackView()
+        col.orientation = .vertical
+        col.alignment = .leading
+        col.spacing = SettingsChrome.Space.gap
+        col.edgeInsets = NSEdgeInsets(top: 22, left: 24, bottom: 24, right: 24)
+        let heading = NSTextField(labelWithString: title)
+        heading.font = .systemFont(ofSize: 20, weight: .bold)
+        col.addArrangedSubview(heading)
+        for v in views {
+            col.addArrangedSubview(v)
+            if !(v is NSTextField) {
+                v.widthAnchor.constraint(equalToConstant: SettingsChrome.cardWidth).isActive = true
+            }
+        }
+        let page = SettingsSurface(fill: { NSColor(white: 0.13, alpha: 1) })
+        page.translatesAutoresizingMaskIntoConstraints = false
+        col.translatesAutoresizingMaskIntoConstraints = false
+        page.addSubview(col)
+        NSLayoutConstraint.activate([
+            col.topAnchor.constraint(equalTo: page.topAnchor), col.bottomAnchor.constraint(equalTo: page.bottomAnchor),
+            col.leadingAnchor.constraint(equalTo: page.leadingAnchor), col.trailingAnchor.constraint(equalTo: page.trailingAnchor),
+        ])
+        _ = a.snap(page)
+        return a.snap(page)
+    }
+
+    static func all(_ v: NSView) -> [NSView] { [v] + v.subviews.flatMap(all) }
+
+    /// The visible button whose title (plain or attributed) starts with `title`.
+    static func button(_ title: String, in root: NSView) -> NSView? {
+        all(root).first { v in
+            guard let b = v as? NSButton, !b.isHiddenOrHasHiddenAncestor else { return false }
+            return b.title.hasPrefix(title) || b.attributedTitle.string.hasPrefix(title)
+        }
+    }
+
+    /// `v`'s rect in `root`, in points from the top left.
+    static func rect(_ v: NSView, in root: NSView) -> [String: CGFloat] {
+        var r = v.convert(v.bounds, to: root)
+        if !root.isFlipped { r.origin.y = root.bounds.height - r.maxY }
+        return ["x": r.minX, "y": r.minY, "w": r.width, "h": r.height]
+    }
+
+    /// The part of `img` under `r`, a rect in the coordinates of the view it was drawn from.
+    static func crop(_ img: NSImage, _ r: NSRect, flipped: Bool) -> NSImage {
+        guard let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return img }
+        let scale = CGFloat(cg.width) / img.size.width
+        // CGImage rows run from the top.
+        let top = flipped ? r.minY : img.size.height - r.maxY
+        let px = CGRect(x: r.minX * scale, y: top * scale, width: r.width * scale, height: r.height * scale).integral
+        guard let part = cg.cropping(to: px) else { return img }
+        let out = NSImage(size: r.size)
+        out.addRepresentation(NSBitmapImageRep(cgImage: part))
+        return out
+    }
+}
