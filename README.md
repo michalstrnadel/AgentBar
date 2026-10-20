@@ -124,12 +124,12 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
 ## Features
 
 <p align="center">
-  <img src="docs/assets/demo-claude-codex.gif?v=2026-09-23" width="640" alt="AgentBar demo: Claude session works, needs approval, one-click Allow, then a Codex session takes over the bar">
+  <img src="docs/assets/menu-bar.gif?v=2026-10-20" width="390" alt="AgentBar in the menu bar: the Claude mascot gets an amber dot, a click opens the menu on myapp needs approval with git push origin main and a ✓ Allow / ✓ Always / ✕ Deny / ⌨ Terminal strip, a website and an api session working below it, the quota meters, Today and Your Day; the pointer clicks ✓ Allow and the menu closes on Claude back at work">
   <br><sub><b>Menu bar mode</b></sub>
 </p>
 
 <p align="center">
-  <img src="docs/assets/demo-island.gif?v=2026-09-23" width="640" alt="AgentBar as a Dynamic Island: the pill under the notch says approve?, opens on hover into the session panel with the mini-diff, one click on Allow, and the pill flashes ✓ Allowed">
+  <img src="docs/assets/approvals.gif?v=2026-10-20" width="640" alt="Three agents, three questions, one place to answer them: Codex, Claude and Copilot each ask for a shell command and line up in the island under the notch. Codex's git push is allowed in one click; Claude's npm install left-pad is denied with the note 'use pnpm in this repo, not npm', and its terminal shows it reading the note and running pnpm instead; Copilot's npm test meets a rule that only watches, and the Rules page shows it would have allowed 14×, as you did">
   <br><sub><b>Dynamic Island mode</b> — pick either (or both) in the welcome window</sub>
 </p>
 
@@ -200,6 +200,8 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   actually done. Nothing in the file applies while any of it is wrong, and
   Diagnostics says so — because a rule that silently stopped working looks exactly
   like AgentBar working normally.
+
+  <img src="docs/assets/watching-rule.gif?v=2026-10-20" width="400" alt="A rule that watches first: Copilot asks for npm test in the island and you click Allow yourself; Settings ▸ Rules then shows the rule 'Allow npm test in api' set to Watching — would have allowed 14×, you did the same 14× — with a Let it answer button, beside 'Deny npm publish everywhere', which is answering">
 - **Your week of decisions** — the top of **Settings ▸ Approvals** lists the five
   prompts that held your agents up longest over the last seven days: how often you
   were asked, how long they waited (*“14× · 7m waited”*, or *“at least”* when an
@@ -900,6 +902,10 @@ the hook as an explicit "refine this first".
 app, scan the code on the page, and press **Send a Test**: it measures the way
 there and back. By default a push goes out only while you are away — the screen
 locked, or two minutes without the keyboard or mouse.
+
+<p align="center">
+  <img src="docs/assets/phone-approvals.gif?v=2026-10-20" width="400" alt="Settings ▸ Phone with Send requests to my phone on, When I'm Away and Include the command on; then a phone's lock screen gets 'Codex needs approval — Codex in webshop: git push origin fix/cart-total' with Allow and Deny buttons">
+</p>
 
 Allow comes only with a shell command short enough to read whole on a phone. An
 edit, a plan, a long command, or anything with **Include the command** off gets

@@ -10,8 +10,21 @@ recording permission.
 | `agentbar-tour.gif` / `.mp4` / `.jpg`, `deny-with-note.gif`, `rules-try-it.gif`, `hand-a-file.gif`, `keep-awake.gif` / `.mp4` / `.jpg` / `-triggers.png` | `feature-gifs.swift` via `make-gifs.sh` | **the app's own views**, compiled in |
 | `demo-claude-codex.gif` | `demo-gif.swift` | hand-drawn stage, mascot frames from the sprite sources |
 | `demo-island.gif` | `demo-island-gif.swift` | hand-drawn stage and island |
-| `approval-menu.png`, `welcome-appearance.png` | `Scripts/dev/promo.swift --readme docs/assets` (see its header) | **the app's own views**; the menu's titled rows are typeset from the real `NSMenuItem`s, since AppKit cannot draw a menu offscreen |
+| `approval-menu.png`, `welcome-appearance.png`, `menu-bar.gif` | `Scripts/dev/promo.swift --readme docs/assets` (see its header) | **the app's own views**; the menu's titled rows are typeset from the real `NSMenuItem`s, since AppKit cannot draw a menu offscreen |
+| `approvals.gif`, `watching-rule.gif`, `phone-approvals.gif` | the approvals films in the product-videos studio (`promo/2026-10-16/README.md`), cut to GIF with the `ffmpeg` line below | **the app's own views** from `promo.swift --assets --approvals`; the terminal and the phone around them are drawn |
 | `social-preview.png` | `social-preview.swift` | the banner, from the 1024 icon master and the Your Day card (`--render-wrap … --demo`) |
+
+The README no longer shows `demo-claude-codex.gif` or `demo-island.gif` (July's UI);
+they stay because `Scripts/appicon.swift` still stamps the icon into them.
+
+The film GIFs, from the studio's `out/` (36 s film cut before its end card, 14 s clips):
+
+```bash
+gif() { ffmpeg -y -t "$4" -i "$1" -vf "fps=12,scale=$3:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=256:stats_mode=full[p];[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle" "$2"; }
+gif out/agentbar-approvals-wide.mp4 docs/assets/approvals.gif 1024 33.5
+gif out/agentbar-watching-rule-square.mp4 docs/assets/watching-rule.gif 640 13
+gif out/agentbar-phone-square.mp4 docs/assets/phone-approvals.gif 640 13
+```
 
 ## Feature GIFs: the generator to reach for
 

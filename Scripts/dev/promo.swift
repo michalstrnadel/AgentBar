@@ -1038,6 +1038,7 @@ enum Readme {
         seedHistory()
         save(approvalMenu(), "approval-menu.png")
         save(welcome(), "welcome-appearance.png")
+        menuBarGif()
     }
 
     /// An offscreen window is never key and this process is never active, so AppKit
@@ -1131,6 +1132,12 @@ enum Readme {
         return rep
     }
 
+    /// `rep` composited over what is already drawn. A rep's own `draw(in:)` copies,
+    /// so a view's transparent background would punch a hole through the menu.
+    static func over(_ rep: NSBitmapImageRep, _ r: NSRect) {
+        rep.draw(in: r, from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+    }
+
     static func save(_ rep: NSBitmapImageRep, _ name: String) {
         // 144 dpi, so a viewer that honours it shows the picture at its point size.
         rep.size = NSSize(width: CGFloat(rep.pixelsWide) / scale, height: CGFloat(rep.pixelsHigh) / scale)
@@ -1148,12 +1155,23 @@ enum Readme {
     /// are typeset here from their own titles, images and key equivalents; every
     /// custom row is the real view.
     static func approvalMenu() -> NSBitmapImageRep {
+        let m = menu(answered: false)
+        return canvas(menuSize) { drawMenuScene(m.items, mark: m.mark, size: menuSize) }
+    }
+
+    /// The old still: 390 × 345 pt. Same width; the menu runs off the bottom
+    /// edge, the way a crop of a long menu does.
+    static let menuSize = NSSize(width: 390, height: 345)
+
+    /// The menu's items and the status item's mark, before the Allow click or after it.
+    static func menu(answered: Bool) -> (items: [NSMenuItem], mark: NSImage?, strip: NSView?) {
         // No branch on the rows: at the old still's width "myapp · main" would cut
         // "needs approval" to an ellipsis, and that word is the point of the picture.
         let myapp = "/nonexistent/myapp", site = "/nonexistent/website", api = "/nonexistent/api"
         let now = Date().timeIntervalSince1970
         let ask = session("readme-claude", [
-            "agent": "claude", "state": "permission", "label": "Bash: git push origin main",
+            "agent": "claude", "state": answered ? "tool" : "permission",
+            "label": answered ? "Running git push origin main" : "Bash: git push origin main",
             "project": "myapp", "cwd": myapp, "started_at": now - 1_680, "model": "claude-opus-5-5",
         ])
         let req = request("readme-claude-p1", [
@@ -1176,6 +1194,7 @@ enum Readme {
 
         // The items, in the order `MenuBuilder.populate` adds them.
         var items: [NSMenuItem] = []
+        var stripView: NSView?
         // `MenuBuilder.header` is a section header on macOS 14 and later.
         let header = NSMenuItem(title: "Sessions", action: nil, keyEquivalent: "")
         header.isEnabled = false
@@ -1185,7 +1204,7 @@ enum Readme {
             let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
             item.view = SessionRowView(session: s, mark: MenuBuilder.menuMark(for: s.agent))
             items.append(item)
-            guard s.id == ask.id else { continue }
+            guard s.id == ask.id, !answered else { continue }
             let what = NSMenuItem(title: "", action: nil, keyEquivalent: "")
             what.isEnabled = false
             what.attributedTitle = NSAttributedString(string: "      \(req.display)", attributes: [
@@ -1201,6 +1220,7 @@ enum Readme {
                                             ruleToolTip: req.ruleDescription.map { "Always allow \($0)" },
                                             deferTitle: "⌨ Terminal", onChoose: { _ in })
             items.append(strip)
+            stripView = strip.view
         }
         let claude = UsageCenter.Reading(provider: "Claude", text: "64% left",
                                          windows: [UsageWindow(name: "5h", usedPercent: 36,
@@ -1239,11 +1259,81 @@ enum Readme {
         var mark: NSImage?
         driver.sink("readme") { image, _ in mark = image }
         driver.update(sessions: sessions, systemColor: false)
+        return (items, mark, stripView)
+    }
 
-        // The old still: 390 × 345 pt. Same width; the menu runs off the bottom
-        // edge, the way a crop of a long menu does.
-        let size = NSSize(width: 390, height: 345)
-        return canvas(size) { drawMenuScene(items, mark: mark, size: size) }
+    /// `menu-bar.gif`: the status item turns amber, its menu opens on the request,
+    /// the pointer clicks ✓ Allow and the menu closes on Claude back at work. Every
+    /// frame is the still's scene; only the pointer moves between them.
+    static func menuBarGif() {
+        let ask = menu(answered: false), done = menu(answered: true)
+        var stripRect = NSRect.zero
+        let closed = canvas(menuSize) { drawMenuScene([], mark: ask.mark, size: menuSize, open: false) }
+        let open = canvas(menuSize) {
+            let rects = drawMenuScene(ask.items, mark: ask.mark, size: menuSize)
+            if let i = ask.items.firstIndex(where: { $0.view === ask.strip }) { stripRect = rects[i] }
+        }
+        let after = canvas(menuSize) { drawMenuScene([], mark: done.mark, size: menuSize, open: false) }
+
+        // Where the pointer goes: the status item, then the real ✓ Allow.
+        let itemPoint = NSPoint(x: 22 + ((ask.mark?.size.width ?? 24) + 16) / 2, y: menuSize.height - 13)
+        var allow = NSPoint(x: stripRect.minX + 40, y: stripRect.midY)
+        var pressed = open
+        if let strip = ask.strip,
+           let b = ApprovalArt.all(strip).first(where: { ($0 as? NSButton)?.title.hasPrefix("✓ Allow") == true })
+               as? NSButton {
+            let r = b.convert(b.bounds, to: strip)
+            let y = strip.isFlipped ? stripRect.maxY - r.maxY : stripRect.minY + r.minY
+            allow = NSPoint(x: stripRect.minX + r.midX, y: y + r.height / 2)
+            b.highlight(true)
+            let rects = NSRect(x: stripRect.minX, y: stripRect.minY, width: stripRect.width, height: stripRect.height)
+            pressed = canvas(menuSize) {
+                over(open, NSRect(origin: .zero, size: menuSize))
+                over(snap(strip, rects.size), rects)
+            }
+            b.highlight(false)
+        }
+
+        let fps = 24.0
+        var frames: [(NSBitmapImageRep, NSPoint)] = []
+        func hold(_ base: NSBitmapImageRep, _ at: NSPoint, _ s: Double) {
+            for _ in 0..<Int(s * fps) { frames.append((base, at)) }
+        }
+        func move(_ base: NSBitmapImageRep, _ from: NSPoint, _ to: NSPoint, _ s: Double) {
+            let n = Int(s * fps)
+            for i in 1...n {
+                let t = Video.ease(Double(i) / Double(n))
+                frames.append((base, NSPoint(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)))
+            }
+        }
+        let rest = NSPoint(x: menuSize.width - 80, y: 90)
+        hold(closed, rest, 1.0)
+        move(closed, rest, itemPoint, 0.6)
+        hold(closed, itemPoint, 0.25)
+        hold(open, itemPoint, 1.4)
+        move(open, itemPoint, allow, 0.7)
+        hold(open, allow, 0.35)
+        hold(pressed, allow, 0.2)
+        hold(after, allow, 2.2)
+
+        let dir = tmp.appendingPathComponent("menu-bar")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let arrow = NSCursor.arrow.image, hot = NSCursor.arrow.hotSpot
+        for (i, (base, p)) in frames.enumerated() {
+            let f = canvas(menuSize) {
+                over(base, NSRect(origin: .zero, size: menuSize))
+                arrow.draw(in: NSRect(x: p.x - hot.x, y: p.y - arrow.size.height + hot.y,
+                                      width: arrow.size.width, height: arrow.size.height))
+            }
+            try! f.representation(using: .png, properties: [:])!
+                .write(to: dir.appendingPathComponent(String(format: "%04d.png", i)))
+        }
+        let out = Promo.outDir.appendingPathComponent("menu-bar.gif")
+        Video.ffmpeg(["-y", "-framerate", "\(Int(fps))", "-i", dir.appendingPathComponent("%04d.png").path,
+                      "-vf", "fps=12,split[a][b];[a]palettegen=max_colors=256:stats_mode=full[p];"
+                          + "[b][p]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
+                      out.path])
+        print("wrote \(out.path) \(frames.count) frames")
     }
 
     static let rowH: CGFloat = 22
@@ -1255,7 +1345,9 @@ enum Readme {
         return rowH
     }
 
-    static func drawMenuScene(_ items: [NSMenuItem], mark: NSImage?, size: NSSize) {
+    /// Draws the scene and returns each item's rect; `open: false` is the menu bar alone.
+    @discardableResult
+    static func drawMenuScene(_ items: [NSMenuItem], mark: NSImage?, size: NSSize, open: Bool = true) -> [NSRect] {
         // A plain desktop and a light menu bar.
         NSColor(srgbRed: 0.84, green: 0.86, blue: 0.89, alpha: 1).setFill()
         NSRect(origin: .zero, size: size).fill()
@@ -1266,12 +1358,14 @@ enum Readme {
         NSColor(white: 0, alpha: 0.08).setFill()
         NSRect(x: 0, y: bar.minY, width: size.width, height: 0.5).fill()
 
-        // The status item, highlighted because its menu is open.
+        // The status item, highlighted while its menu is open.
         let itemX: CGFloat = 22
         let itemW: CGFloat = (mark?.size.width ?? 24) + 16
         let pill = NSRect(x: itemX, y: bar.minY + 3, width: itemW, height: barH - 6)
-        NSColor(white: 0, alpha: 0.1).setFill()
-        NSBezierPath(roundedRect: pill, xRadius: 6, yRadius: 6).fill()
+        if open {
+            NSColor(white: 0, alpha: 0.1).setFill()
+            NSBezierPath(roundedRect: pill, xRadius: 6, yRadius: 6).fill()
+        }
         if let mark {
             mark.draw(in: NSRect(x: pill.minX + 8, y: (pill.midY - mark.size.height / 2).rounded(),
                                  width: mark.size.width, height: mark.size.height))
@@ -1286,6 +1380,7 @@ enum Readme {
         clock.draw(at: NSPoint(x: size.width - clock.size().width - 14,
                                y: bar.midY - clock.size().height / 2))
 
+        guard open else { return [] }
         // The menu.
         let width = size.width - 30
         let total = items.reduce(10) { $0 + height(of: $1) }
@@ -1306,11 +1401,15 @@ enum Readme {
         shape.stroke()
 
         var y = frame.maxY - 5
+        var rects: [NSRect] = []
         for item in items {
             let h = height(of: item)
             y -= h
-            draw(item, in: NSRect(x: frame.minX, y: y, width: width, height: h))
+            let r = NSRect(x: frame.minX, y: y, width: width, height: h)
+            draw(item, in: r)
+            rects.append(r)
         }
+        return rects
     }
 
     static func draw(_ item: NSMenuItem, in r: NSRect) {
@@ -1320,7 +1419,7 @@ enum Readme {
             return
         }
         if let v = item.view {
-            snap(v, r.size).draw(in: r)
+            over(snap(v, r.size), r)
             return
         }
         if item.identifier?.rawValue == "sectionHeader" {

@@ -1,7 +1,7 @@
 # Roadmap
 
 Where AgentBar is going, what is being found out before it is built, and what is
-being built. Updated 2026-10-16. Every item links to its issue; the
+being built. Updated 2026-10-20. Every item links to its issue; the
 [`roadmap`](https://github.com/michalstrnadel/AgentBar/issues?q=label%3Aroadmap)
 label shows them all.
 
@@ -39,8 +39,6 @@ Status is why people install it. Approvals are why they keep it.
 
 ### Discovery
 
-- **Where users come from** — a traffic archive (GitHub keeps 14 days) and UTM links
-  on everything we post. [#21](https://github.com/michalstrnadel/AgentBar/issues/21)
 - **Positioning** — what AgentBar is compared with, and the one claim only it can
   back with code. [#26](https://github.com/michalstrnadel/AgentBar/issues/26)
 
@@ -48,8 +46,6 @@ Status is why people install it. Approvals are why they keep it.
 
 - **Social kit** — an approvals film, single-feature clips, post copy per network.
   [#22](https://github.com/michalstrnadel/AgentBar/issues/22)
-- **README images** that match today's app.
-  [#23](https://github.com/michalstrnadel/AgentBar/issues/23)
 - **Curated lists** that accept tools like this one.
   [#24](https://github.com/michalstrnadel/AgentBar/issues/24)
 - **Community launch** — one rules-checked post per community, Hacker News last.
@@ -57,17 +53,17 @@ Status is why people install it. Approvals are why they keep it.
 
 ### Delivery — trust and reliability
 
-- **"Never an implicit approval" as a tested contract** — every failure path
-  driven through the real hooks, on every release.
-  [#31](https://github.com/michalstrnadel/AgentBar/issues/31)
-- **One file lock for the app and the Linux CLI** around history and the ledger.
-  [#28](https://github.com/michalstrnadel/AgentBar/issues/28)
-- **Diagnostics checks wiring by event**, not by substring.
-  [#29](https://github.com/michalstrnadel/AgentBar/issues/29)
-- **Rules may approve `git -C <dir>`** when the directory is inside the rule's.
-  [#30](https://github.com/michalstrnadel/AgentBar/issues/30)
 - **Keystroke approval for Codex and Copilot**: modifier hygiene, pacing, cold start.
   [#1](https://github.com/michalstrnadel/AgentBar/issues/1)
+
+### Done this cycle
+
+- Where users come from: a traffic archive and UTM links. [#21](https://github.com/michalstrnadel/AgentBar/issues/21)
+- README images that match today's app. [#23](https://github.com/michalstrnadel/AgentBar/issues/23)
+- "Never an implicit approval" as a tested contract, run on every release (1.56.0). [#31](https://github.com/michalstrnadel/AgentBar/issues/31)
+- One file lock for the app and the Linux CLI (1.56.0). [#28](https://github.com/michalstrnadel/AgentBar/issues/28)
+- Diagnostics checks wiring by event (1.56.0). [#29](https://github.com/michalstrnadel/AgentBar/issues/29)
+- Rules may approve `git -C <dir>` (1.56.0). [#30](https://github.com/michalstrnadel/AgentBar/issues/30)
 
 ## Next
 

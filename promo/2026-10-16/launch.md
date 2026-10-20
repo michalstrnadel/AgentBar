@@ -124,7 +124,7 @@ https://old.reddit.com/r/ClaudeCode/about/rules
   standalone post needs the "what you learned" part; save that for later.
 - Flair (standalone only): **Built with Claude**.
 - When: the day after the thread is pinned, 12:00–14:00 UTC (estimate).
-- GIF: `demo-island.gif`.
+- GIF: `approvals.gif`.
 
 **Draft (showcase comment):**
 
@@ -137,7 +137,7 @@ https://old.reddit.com/r/codex/about/rules
 
 - No self-promotion rule found; keep it about Codex.
 - Flair: **Showcase**.
-- GIF: `demo-claude-codex.gif`.
+- GIF: `approvals.gif`.
 
 **Draft:**
 
@@ -178,7 +178,7 @@ https://old.reddit.com/r/ChatGPTCoding/about/rules
 
 - Third-party sources say a **weekly self-promotion thread** now exists (unverified).
   Post there; a main-feed post is likely removed.
-- GIF: `demo-claude-codex.gif`.
+- GIF: `approvals.gif`.
 
 **Draft (self-promo thread comment):**
 
@@ -219,7 +219,7 @@ rules as read first, or the post is likely removed and starts a 30-day cooldown.
   michalstrnadel.com/agentbar (Tier 2), and then with the PCP template.
 - Flair: **Free**; title prefix **[OS]**. One post per 30 days, counted even if
   removed, so get it right once.
-- GIF: `demo-island.gif`. No em dashes anywhere.
+- GIF: `approvals.gif`. No em dashes anywhere.
 
 **Draft (PCP template, also fine for the megathread):**
 
