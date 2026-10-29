@@ -335,6 +335,50 @@ enum RenderPreview {
             renderSlab([sized(hero, rowW), wrap], name: "03j-plan-subagents-mcp")
         }
 
+        // Scene 3k: over the shoulder — a working session's live feed, its last
+        // hour, its subagents by name and what it has cost; and a finished one that
+        // left a shell running.
+        do {
+            LiveFeed.preview["hero-live"] = [
+                .tool("Read", "SessionStore.swift"),
+                .said("The merge drops the mod's agents; I'll carry them through."),
+                .tool("Edit", "SessionStore.swift"),
+                .tool("Bash", "swift test --filter ModAgents"),
+            ]
+            var live = makeSession("hero-live", [
+                "agent": "claude", "state": "tool", "label": "Running command",
+                "project": "agentbar", "cwd": "/tmp", "sessionId": "hero-live", "pid": 1,
+                "started": true, "ts": now, "started_at": now - 2400,
+                "prompt": "carry the mod's subagents into the island", "model": "claude-opus-5",
+                "term_program": "iTerm.app",
+                "todo": ["done": 2, "total": 5, "now": "Running the tests"],
+            ])
+            live.subagents = 2
+            live.subagentDetails = [
+                ModReport.Subagent(type: "Explore", what: "find the merge", model: "claude-haiku-5-5",
+                                   background: false, since: TimeInterval(now - 70)),
+                ModReport.Subagent(type: "code-reviewer", what: "review the diff", model: "claude-sonnet-5-5",
+                                   background: true, since: TimeInterval(now - 200)),
+            ]
+            live.costUsd = 1.84
+            let tl = SessionTimeline.shared
+            for (t, st) in [(-3400, "tool"), (-2600, "permission"), (-2400, "tool"), (-1500, "done"),
+                            (-1200, "thinking"), (-300, "question"), (-240, "tool"), (0, "tool")] {
+                live.state = Session.State(rawValue: st)!
+                tl.observe([live], now: TimeInterval(now + t))
+            }
+            live.state = .tool
+            let hero = IslandRowView(session: live, mark: mark(for: "claude"), style: .hero, onClick: { _ in })
+            var finished = makeSession("done-bg", [
+                "agent": "claude", "state": "done", "project": "site", "cwd": "/tmp",
+                "sessionId": "done-bg", "pid": 1, "started": true, "ts": now, "started_at": now - 600,
+                "recap": "Started the dev server and left it running.",
+            ])
+            finished.background = BackgroundWork(tasks: [.init(type: "shell", what: "npm run dev")], wakeups: 1)
+            let compact = IslandRowView(session: finished, mark: mark(for: "claude"), style: .compact, onClick: { _ in })
+            renderSlab([sized(hero, rowW), sized(compact, rowW)], name: "03k-over-the-shoulder")
+        }
+
         // Scene 3h: the rule sheet for a denial that tells the agent why.
         do {
             var prefill = RuleSheet.Prefill(decision: "deny", shape: "bash:npm", cwd: "",

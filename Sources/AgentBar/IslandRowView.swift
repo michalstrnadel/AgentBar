@@ -156,7 +156,9 @@ final class IslandRowView: NSView {
         // (island plan, Phase 3.2). Only while working, and only once there is
         // more than the current step to show; head-truncated so the newest steps
         // survive a narrow panel.
-        if session.state.isWorking, session.activity.count > 1 {
+        // The live feed says the same and more; the breadcrumb steps aside for it.
+        let live = style == .hero ? LiveFeedView(session: session) : nil
+        if session.state.isWorking, session.activity.count > 1, live == nil {
             let feed = NSTextField(labelWithAttributedString: Self.activityLine(session))
             feed.lineBreakMode = .byTruncatingHead
             feed.maximumNumberOfLines = 1
@@ -181,6 +183,8 @@ final class IslandRowView: NSView {
             column.append(recap)
         }
         // The last hour along the hero row: when it worked and when it waited on you.
+        // Over the shoulder: what the first row's session is doing right now.
+        if let live { column.append(live) }
         var timeline: TimelineStripView?
         if style == .hero {
             let now = Date().timeIntervalSince1970
@@ -192,6 +196,7 @@ final class IslandRowView: NSView {
         }
         let text = NSStackView(views: column)
         timeline?.widthAnchor.constraint(equalTo: text.widthAnchor).isActive = true
+        live?.widthAnchor.constraint(equalTo: text.widthAnchor).isActive = true
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 3

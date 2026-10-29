@@ -117,6 +117,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var soundPackStatus: NSTextField!
     private var hideIslandBox: NSSwitch!
     private var hideAwayBox: NSSwitch!
+    private var liveFeedBox: NSSwitch!
     private var personalityBox: NSSwitch!
     private var screenshotBox: NSSwitch!
     private var quietPopup: NSPopUpButton!
@@ -355,6 +356,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
         hideIslandBox = SettingsChrome.toggle(target: self, action: #selector(toggleHideIsland))
         hideAwayBox = SettingsChrome.toggle(target: self, action: #selector(toggleHideAway))
+        liveFeedBox = SettingsChrome.toggle(target: self, action: #selector(toggleLiveFeed))
         personalityBox = SettingsChrome.toggle(target: self, action: #selector(togglePersonality))
         screenshotBox = SettingsChrome.toggle(target: self, action: #selector(toggleScreenshot))
         quietPopup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -561,6 +563,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                        + "even with agents working. Anything waiting on "
                                        + "you keeps it up; the first touch brings it back.",
                                        control: hideAwayBox),
+                    SettingsChrome.row("Show what it's doing right now",
+                                       "Under the first working session: the last few things "
+                                       + "it reached for and the last thing it said, read from "
+                                       + "its own transcript on this Mac. Claude Code only.",
+                                       control: liveFeedBox),
                     // In the island's card because it is the island's alone — the
                     // menu bar mark never moves for its own amusement.
                     SettingsChrome.row("Let the mascot react",
@@ -849,6 +856,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         volumeSlider.doubleValue = SoundCenter.volume
         hideIslandBox.state = IslandVisibility.Prefs.hideWhenEmpty ? .on : .off
         hideAwayBox.state = IslandVisibility.Prefs.hideWhenAway ? .on : .off
+        liveFeedBox.state = LiveFeedView.enabled ? .on : .off
         personalityBox.state = MascotPersonality.Prefs.enabled ? .on : .off
         screenshotBox.state = ScreenshotShelf.enabled ? .on : .off
         quietPopup.selectItem(withTag: QuietWatch.minutes)
@@ -896,6 +904,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
     @objc private func toggleHold() {
         UserDefaults.standard.set(holdBox.state == .on, forKey: HoldButton.enabledKey)
+        onChange?()
+    }
+
+    @objc private func toggleLiveFeed() {
+        UserDefaults.standard.set(liveFeedBox.state == .on, forKey: LiveFeedView.prefKey)
         onChange?()
     }
 
