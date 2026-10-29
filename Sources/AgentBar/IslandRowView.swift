@@ -149,6 +149,17 @@ final class IslandRowView: NSView {
             feed.maximumNumberOfLines = 1
             column.append(feed)
         }
+        // Done, but something it started is still going: say so before the recap,
+        // or a row with a shell still running reads as finished.
+        if session.state == .done, let bg = session.background {
+            let line = NSTextField(labelWithString: bg.text)
+            line.font = .monospacedSystemFont(ofSize: 10.5, weight: .medium)
+            line.textColor = IslandInk.quiet
+            line.lineBreakMode = .byTruncatingTail
+            line.maximumNumberOfLines = 1
+            line.toolTip = bg.detail.isEmpty ? nil : bg.detail
+            column.append(line)
+        }
         // "You: …" asked; "Claude: …" answers — the pair reads as the exchange.
         if !session.recap.isEmpty, session.state == .done || session.state == .idle {
             let recap = NSTextField(labelWithAttributedString: Self.recapLine(session))

@@ -378,6 +378,13 @@ check "tasks: a deleted task leaves the count" 'grep -q "\"done\":1,\"total\":1"
 printf '{"session_id":"testsess","prompt":"next thing"}' | "$NODE" "$UPDATE" prompt
 check "tasks: a finished list is dropped by the next prompt" '! grep -q "\"tasks\"\|\"todo\"" "$STATE"'
 
+# 15g. a turn that ends with work still running in the background says so on Stop
+printf '%s' '{"session_id":"testsess","cwd":"/tmp/proj","last_assistant_message":"ok","background_tasks":[{"id":"b1","type":"shell","status":"running","description":"dev server","command":"npm run dev"},{"id":"b2","type":"subagent","status":"running","description":"","agent_type":"Explore"}],"session_crons":[{"id":"c","schedule":"0 9 * * *","recurring":true,"prompt":"x"}]}' | "$NODE" "$UPDATE" stop
+check "background: listed on stop"    'grep -q "\"background\":\[{\"type\":\"shell\",\"what\":\"dev server\"},{\"type\":\"subagent\",\"what\":\"Explore\"}\]" "$STATE"'
+check "background: wakeups counted"   'grep -q "\"wakeups\":1" "$STATE"'
+printf '{"session_id":"testsess","prompt":"go on"}' | "$NODE" "$UPDATE" prompt
+check "background: gone with the next prompt" '! grep -q "\"background\"\|\"wakeups\"" "$STATE"'
+
 # 15d. missing/unreadable transcript: stop still lands, just without a recap
 printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"/nonexistent/x.jsonl"}' | "$NODE" "$UPDATE" stop
 check "recap: missing transcript ok"  'grep -q "\"state\":\"done\"" "$STATE" && ! grep -q "\"recap\"" "$STATE"'

@@ -135,6 +135,13 @@ Rules:
   agent's words for it (≤ 60 chars), at most 50. Read after each call (`post`): a
   create's id is only in its result, a failed update changes nothing, a `deleted`
   status removes the task. Frontends read `todo`, not this.
+- `background` (optional, Stop only): `[{type, what}]`, work the finished turn left
+  running that will wake the session again — Claude Code's `background_tasks`:
+  `type` as it names it (`shell`, `subagent`, `monitor`, `workflow`, …), `what` its
+  description, command or subagent type (≤ 60 chars), at most 5. Gone with the
+  next event.
+- `wakeups` (optional, Stop only): how many scheduled wakeups (`session_crons`) the
+  session has, ≤ 99.
 - `subagentRuns` (optional): `[{id, type, ts}]`, the subagents working for this
   session, newest last, at most 8. A writer adds or refreshes one on each tool event
   that carries `agent_id` (`type` from `agent_type`, `"subagent"` when absent),

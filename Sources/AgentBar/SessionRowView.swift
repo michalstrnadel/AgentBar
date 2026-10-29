@@ -63,6 +63,10 @@ final class SessionRowView: NSView {
         if detail.isEmpty, s.state == .done || s.state == .idle, !s.recap.isEmpty {
             detail = String(s.recap.prefix(60)) + (s.recap.count > 60 ? "…" : "")
         }
+        // …unless the turn left work running: that is the more useful half-line.
+        if s.state == .done, let bg = s.background {
+            detail = bg.text
+        }
         // Accurate as of the render; a menu stays open too briefly to need ticking.
         return Content(dot: dot, name: name, detail: detail, elapsed: s.elapsed ?? "",
                        agent: agent, agentID: s.agentID,

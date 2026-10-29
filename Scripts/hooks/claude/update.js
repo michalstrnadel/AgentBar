@@ -320,6 +320,19 @@ function run() {
                    ? cleanRecapText(p.last_assistant_message) : "")
                   || recapFromTranscript(p.transcript_path);
     if (recap) out.recap = recap;
+    // A turn can end with work still going on in the background — a shell left
+    // running, a subagent, a monitor — that will wake the session again. Claude
+    // Code lists it on Stop so "done" can say it is not quite.
+    const bg = Array.isArray(p.background_tasks)
+      ? p.background_tasks.filter((t) => t && typeof t === "object" && typeof t.type === "string") : [];
+    if (bg.length) {
+      out.background = bg.slice(0, 5).map((t) => ({
+        type: oneLine(t.type).slice(0, 20),
+        what: oneLine(String(t.description || t.command || t.agent_type || t.name || "")).slice(0, 60),
+      }));
+    }
+    const crons = Array.isArray(p.session_crons) ? p.session_crons.length : 0;
+    if (crons) out.wakeups = Math.min(crons, 99);
   }
   try {
     fs.mkdirSync(stateDir, { recursive: true });

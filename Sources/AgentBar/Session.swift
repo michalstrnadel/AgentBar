@@ -49,6 +49,8 @@ struct Session {
     var subagentTypes: [String] = []
     /// The agent's own task list, counted (`TaskProgress`); nil when it keeps none.
     var todo: TaskProgress?
+    /// What the last turn left running in the background; nil when nothing.
+    var background: BackgroundWork?
     /// How many subagents are working, by whichever source saw more.
     var subagentCount: Int { max(subagents, subagentTypes.count) }
     var modSeen = false
@@ -110,6 +112,7 @@ struct Session {
         activity    = (o["activity"] as? [String] ?? []).prefix(5).map { String($0.prefix(40)) }
         url         = o["url"] as? String ?? ""
         todo = TaskProgress(o["todo"])
+        background = BackgroundWork(o["background"], wakeups: o["wakeups"])
         subagentTypes = (o["subagentRuns"] as? [[String: Any]] ?? []).suffix(8).compactMap {
             ($0["type"] as? String).map { String(Self.displayName($0).prefix(30)) }
         }.filter { !$0.isEmpty }
