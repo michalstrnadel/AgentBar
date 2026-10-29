@@ -23,6 +23,7 @@ final class WrapWindow: NSObject, NSWindowDelegate {
     private(set) var range: DayWrap.Range = .today
 
     func show(_ range: DayWrap.Range = .today) {
+        leaveReplay()   // WrapWindow+Replay.swift
         if window == nil { build() }
         self.range = range
         rangeControl.selectedSegment = range == .today ? 0 : 1
@@ -33,6 +34,13 @@ final class WrapWindow: NSObject, NSWindowDelegate {
     }
 
     @objc func openFromMenu(_ sender: Any?) { show(.today) }
+
+    /// The window, built if it was not yet — for the replay mode to borrow
+    /// (WrapWindow+Replay.swift).
+    var hostWindow: NSWindow {
+        if window == nil { build() }
+        return window!
+    }
 
     /// The recap is read off the main queue — the transcripts behind the agent
     /// time can be megabytes — and the card builds once it is in.

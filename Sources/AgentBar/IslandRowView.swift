@@ -541,10 +541,11 @@ final class IslandRowView: NSView {
     override func mouseUp(with event: NSEvent) { onClick(session) }
 
     /// Right-click or control-click: carry this session's work over to another
-    /// agent. A row has nothing else to offer that a click does not already do.
+    /// agent, or watch its last turn played back (`ReplayMenu`).
     override func menu(for event: NSEvent) -> NSMenu? {
-        HandoffMenu.shared.menu(for: session,
-                                runningOut: Handoff.runningOut(session, readings: UsageCenter.shared.readings))
+        let handoff = HandoffMenu.shared.menu(for: session,
+                                              runningOut: Handoff.runningOut(session, readings: UsageCenter.shared.readings))
+        return ReplayMenu.shared.adding(to: handoff, for: session)
     }
 
     override func accessibilityPerformPress() -> Bool {
