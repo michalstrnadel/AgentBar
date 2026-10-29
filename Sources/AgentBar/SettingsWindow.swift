@@ -169,6 +169,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var exportButton: NSButton!
     private var rulesPageButton: NSButton!
     private var rulesView: RulesView!
+    private var suggestionsView: RuleSuggestionsView!
+    private var suggestionsCard: NSView?
     private let keepAwake = KeepAwakeSettingsPage()
     private let awakeTriggers = KeepAwakeTriggersPage()
     private let phone = PhonePage()
@@ -471,6 +473,13 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             self?.decisionWeek?.reload()
             self?.refit()
         }
+        suggestionsView = RuleSuggestionsView()
+        suggestionsView.onWrite = { [weak self] prefill in self?.addRule(prefill) }
+        suggestionsView.onResize = { [weak self] in
+            guard let self else { return }
+            self.suggestionsCard?.isHidden = self.suggestionsView.isEmpty
+            self.refit()
+        }
         rulesView.onNew = { [weak self] in self?.addRule() }
         rulesView.onEdit = { [weak self] rule in self?.addRule(RuleSheet.Prefill(rule)) }
         decisionWeek = DecisionWeekView()
@@ -700,6 +709,12 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                        control: rulesBox),
                 ]),
                 SettingsChrome.card([SettingsChrome.customRow(rulesView)]),
+                { () -> NSView in
+                    let card = SettingsChrome.card([SettingsChrome.customRow(suggestionsView)])
+                    card.isHidden = suggestionsView.isEmpty
+                    suggestionsCard = card
+                    return card
+                }(),
                 SettingsChrome.header("A rule answers a prompt the way you would have — and "
                                       + "only what you wrote. An approving rule names one "
                                       + "directory, and the command is read again before it "
@@ -837,6 +852,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         rememberBox.state = DecisionLedger.enabled ? .on : .off
         rulesBox.state = RulesStore.enabled ? .on : .off
         rulesView.reload()
+        suggestionsView.reload()
         decisionWeek.reload()
         keepAwake.reload()
         awakeTriggers.reload()
@@ -1200,6 +1216,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                 alert.beginSheetModal(for: window)
             }
             rulesView.reload()
+            suggestionsView.reload()
         }
     }
 
