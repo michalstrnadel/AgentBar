@@ -3,6 +3,36 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.62.0 - 2026-10-29
+
+### Added
+
+- **Peek at the output.** Under the live feed's newest command, the last three
+  lines it printed, dim, or amber when it failed (`npm run build` → "Found 1 error
+  in src/app.ts:14"), so a glance says whether the tests passed.
+- **What was it doing then.** Point at the hour strip under the first row: a small
+  card says the time, whether the session worked or waited on you, and the steps it
+  took within a minute of that moment, from its own transcript.
+- **Compacts soon.** When a session's context has climbed turn after turn, its
+  context figure turns amber a few turns before Claude Code would compact it, and
+  the tooltip says "compacts in about 2 turns". Counted in turns, not minutes, so a
+  session waiting on you never raises it; it needs two real increases before it
+  says anything.
+- **A budget per session.** Settings ▸ Usage ▸ Flag a session that has cost more
+  than $…, off until filled in. Over it, the cost chip turns amber and says "over
+  your $5 budget". It only flags: nothing is stopped or answered.
+- **Over the shoulder for Codex.** Codex sessions get the same live feed: shell
+  commands, patches with their file, web, spawned agents and what the agent said,
+  read from its own rollout file (both the older and the code-mode format).
+
+### Fixed
+
+- **A subagent no longer renames its session's row.** A subagent given its own
+  worktree reported that directory, and the row flickered to "agent-…" while it
+  worked.
+- **The live feed's box fits what it shows**, without a blank band above a short
+  feed.
+
 ## 1.61.0 - 2026-10-29
 
 ### Added
