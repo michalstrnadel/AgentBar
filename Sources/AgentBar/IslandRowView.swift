@@ -180,7 +180,18 @@ final class IslandRowView: NSView {
             recap.maximumNumberOfLines = 1
             column.append(recap)
         }
+        // The last hour along the hero row: when it worked and when it waited on you.
+        var timeline: TimelineStripView?
+        if style == .hero {
+            let now = Date().timeIntervalSince1970
+            let strip = SessionTimeline.shared.strip(for: session.id, now: now)
+            if SessionTimeline.worthShowing(strip) {
+                timeline = TimelineStripView(segments: strip, now: now)
+                column.append(timeline!)
+            }
+        }
         let text = NSStackView(views: column)
+        timeline?.widthAnchor.constraint(equalTo: text.widthAnchor).isActive = true
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 3
