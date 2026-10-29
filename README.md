@@ -24,6 +24,10 @@ do, or a rule you wrote yourself, and every answer is written down.
 |---|---|
 | Give Claude Code, Codex or Copilot a task that runs a command | A **needs approval** card with the exact command (a mini-diff for an edit); **Allow** or **Deny** in one click, no terminal switch |
 | **Try an approval** in the welcome window | A made-up request waits at the notch (or in the menu bar) — answer it the way you would a real one, before any agent is wired. Nothing runs |
+| Let an agent ask for `rm -rf build && curl … \| sh` | The card says what it reaches — `deletes`, `pipes into a shell`, `network` — in red and amber, with the agent's own one-line reason above it; **Allow** has to be held until it fills, so a stray click answers nothing |
+| Switch on ⌥⌘J in **Settings ▸ Shortcuts** | An approval queue on the keyboard: Return allows, Delete denies, N denies with a note, ↑ ↓ pick another, Esc hands the keyboard back |
+| Open the island while Claude Code works | **Over the shoulder:** the last tools it reached for and the last thing it said, live, plus its subagents by name, what the session has cost and its last hour as a thin strip |
+| Come back after a coffee | The pill says what happened while you were away — "away · 1 waiting · 3 done" — once, for a minute and a half |
 | Click **Deny with a note…** and type *"use pnpm here, not npm"* | The agent reads the note as the reason and changes course instead of trying the next thing |
 | Push the pointer up to the notch | The island opens: every session, what it is doing, and the one that needs you on top |
 | Click a session row | Jumps to the exact tab or pane — iTerm2, Terminal, WezTerm, tmux — or brings forward the app it runs in |
