@@ -339,12 +339,30 @@ enum RenderPreview {
         // hour, its subagents by name and what it has cost; and a finished one that
         // left a shell running.
         do {
-            LiveFeed.preview["hero-live"] = [
-                .tool("Read", "SessionStore.swift"),
-                .said("The merge drops the mod's agents; I'll carry them through."),
+            LiveFeed.preview["hero-live"] = LiveFeed.Feed(items: [
                 .tool("Edit", "SessionStore.swift"),
                 .tool("Bash", "swift test --filter ModAgents"),
-            ]
+                .said("All green; the merge carries the mod's agents now."),
+            ], output: LiveFeed.Output(lines: [
+                "✔ Test carriesModAgentsThroughTheMerge() passed after 0.004 seconds.",
+                "✔ Test dropsAgentsOfAnEndedSession() passed after 0.002 seconds.",
+                "✔ Suite ModAgentsTests passed after 0.011 seconds.",
+            ], isError: false, after: 1))
+            // Peek at output: a failed command, and a short feed that hugs its lines.
+            LiveFeed.preview["hero-fail"] = LiveFeed.Feed(items: [
+                .said("Running the build first."),
+                .tool("Bash", "npm run build"),
+            ], output: LiveFeed.Output(lines: [
+                "src/app.ts(14,7): error TS2322: Type 'string' is not assignable to type 'number'.",
+                "Found 1 error in src/app.ts:14",
+            ], isError: true, after: 1))
+            let failing = makeSession("hero-fail", [
+                "agent": "claude", "state": "tool", "label": "Running command",
+                "project": "site", "cwd": "/tmp", "sessionId": "hero-fail", "pid": 1,
+                "started": true, "ts": now, "started_at": now - 300,
+                "prompt": "fix the build", "term_program": "iTerm.app",
+            ])
+            let failHero = IslandRowView(session: failing, mark: mark(for: "claude"), style: .hero, onClick: { _ in })
             var live = makeSession("hero-live", [
                 "agent": "claude", "state": "tool", "label": "Running command",
                 "project": "agentbar", "cwd": "/tmp", "sessionId": "hero-live", "pid": 1,
@@ -376,7 +394,7 @@ enum RenderPreview {
             ])
             finished.background = BackgroundWork(tasks: [.init(type: "shell", what: "npm run dev")], wakeups: 1)
             let compact = IslandRowView(session: finished, mark: mark(for: "claude"), style: .compact, onClick: { _ in })
-            renderSlab([sized(hero, rowW), sized(compact, rowW)], name: "03k-over-the-shoulder")
+            renderSlab([sized(hero, rowW), sized(compact, rowW), sized(failHero, rowW)], name: "03k-over-the-shoulder")
 
             // Scene 3l: auto mode refused a call and the turn went on.
             let refused = makeSession("refused", [
