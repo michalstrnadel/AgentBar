@@ -58,6 +58,7 @@ struct DayWrap: Equatable {
         /// Which session, and when the stretch began — for going back to it.
         var sessionId = ""
         var from: TimeInterval = 0
+        var cwd = ""
     }
 
     struct Waits: Equatable {
@@ -377,7 +378,7 @@ struct DayWrap: Equatable {
             let task = !s.r.prompt.isEmpty ? s.r.prompt : s.r.label
             w.longest = Longest(agent: s.r.agent, project: s.r.project,
                                 task: oneLine(task), seconds: s.to - s.from,
-                                sessionId: s.r.sessionId, from: s.from)
+                                sessionId: s.r.sessionId, from: s.from, cwd: s.r.cwd)
         }
 
         for c in records.compactMap(\.change) {
@@ -662,7 +663,7 @@ struct DayWrap: Equatable {
         }
         if let l = longest {
             w.longest = Longest(agent: l.agent, project: l.project.isEmpty ? "" : "a project",
-                                task: "", seconds: l.seconds, sessionId: l.sessionId, from: l.from)
+                                task: "", seconds: l.seconds, sessionId: l.sessionId, from: l.from, cwd: l.cwd)
         }
         // A command line and a file path both name things: the reach and the
         // agents stay, the words go.

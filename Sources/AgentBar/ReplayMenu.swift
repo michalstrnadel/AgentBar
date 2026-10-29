@@ -31,8 +31,26 @@ final class ReplayMenu: NSObject {
         return out
     }
 
+    /// Your Day's Share menu: the longest run, replayed from the turn under way
+    /// when it began. Only Claude Code's transcript says when each step happened.
+    func items(for w: DayWrap) -> [NSMenuItem] {
+        guard let l = w.longest, l.agent == "claude", !l.sessionId.isEmpty else { return [] }
+        let item = NSMenuItem(title: "Replay the Longest Run…", action: #selector(replayLongest(_:)), keyEquivalent: "")
+        item.target = self
+        item.representedObject = ReplayTurn.Subject(sessionID: l.sessionId, cwd: l.cwd, project: l.project,
+                                                    by: l.from > 0 ? l.from + 1 : nil)
+        item.image = NSImage(systemSymbolName: "play.rectangle", accessibilityDescription: nil)
+        item.toolTip = "Watch the turn that ran longest played back as a little level."
+        return [item]
+    }
+
     @objc private func replay(_ sender: NSMenuItem) {
         guard let s = sender.representedObject as? Session else { return }
         WrapWindow.shared.showReplay(session: s)
+    }
+
+    @objc private func replayLongest(_ sender: NSMenuItem) {
+        guard let subject = sender.representedObject as? ReplayTurn.Subject else { return }
+        WrapWindow.shared.showReplay(subject)
     }
 }

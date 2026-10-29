@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.sessions.filter { $0.state.waitsOnHuman }.count ?? 1
         }
         AgentActions.currentSessions = { [weak self] in self?.sessions ?? [] }
+        WrapWindow.shared.moreItems = { ReplayMenu.shared.items(for: $0) }
 
         URLCommands.sessions = { [weak self] in self?.sessions ?? [] }
         store.onChange = { [weak self] sessions in
