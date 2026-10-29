@@ -103,6 +103,9 @@ final class DecisionLedger {
         /// The tool call's id. Unique: one row per id, ever — what keeps a sidecar
         /// read twice from becoming two decisions.
         var toolUseId = ""
+        /// The subagent that asked (`code-reviewer`), when one did. Empty for the
+        /// session's own thread and for every row written before 1.58.0.
+        var agentType = ""
 
         /// Whether a person made this decision. `rule` and `claude` rows are the
         /// two kinds nobody was asked about, and every count that is a claim about
@@ -124,6 +127,7 @@ final class DecisionLedger {
             if !claudeRule.isEmpty { o["claudeRule"] = claudeRule }
             if !reason.isEmpty { o["reason"] = reason }
             if !toolUseId.isEmpty { o["toolUseId"] = toolUseId }
+            if !agentType.isEmpty { o["agentType"] = agentType }
             return o
         }
 
@@ -162,6 +166,7 @@ final class DecisionLedger {
             claudeRule = o["claudeRule"] as? String ?? ""
             reason = o["reason"] as? String ?? ""
             toolUseId = o["toolUseId"] as? String ?? ""
+            agentType = o["agentType"] as? String ?? ""
         }
     }
 
@@ -189,7 +194,7 @@ final class DecisionLedger {
         return writer.sync { Self.append([r], to: url) }
     }
 
-    private func row(_ decision: String, request: ApprovalRequest, session: Session?,
+    func row(_ decision: String, request: ApprovalRequest, session: Session?,
                      via: String, rule: String, would: String,
                      now: TimeInterval) -> Record? {
         // The switch is about the human's own clicks. A rule's firing is written
@@ -216,6 +221,7 @@ final class DecisionLedger {
         r.via = via
         r.rule = rule
         r.would = would
+        r.agentType = request.subagent ?? ""
         return r
     }
 

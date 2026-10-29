@@ -44,6 +44,11 @@ struct Session {
     // without the mod: nil and 0 there mean "not reported", never "empty".
     var contextPercent: Int?
     var subagents = 0
+    /// The kinds of the subagents working for it, newest last (`subagentRuns`,
+    /// from the hook). `subagents` above is the mod's count when it runs.
+    var subagentTypes: [String] = []
+    /// How many subagents are working, by whichever source saw more.
+    var subagentCount: Int { max(subagents, subagentTypes.count) }
     var modSeen = false
     /// The row is waiting because a mod is holding a call, not because Claude Code
     /// asked: there is no request to answer from here, only a pane in the terminal.
@@ -102,6 +107,9 @@ struct Session {
         recap       = o["recap"] as? String ?? ""
         activity    = (o["activity"] as? [String] ?? []).prefix(5).map { String($0.prefix(40)) }
         url         = o["url"] as? String ?? ""
+        subagentTypes = (o["subagentRuns"] as? [[String: Any]] ?? []).suffix(8).compactMap {
+            ($0["type"] as? String).map { String(Self.displayName($0).prefix(30)) }
+        }.filter { !$0.isEmpty }
     }
 
     /// Who this row belongs to: a known agent, or a generic one named by the row.

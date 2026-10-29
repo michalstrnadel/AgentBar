@@ -363,6 +363,16 @@ final class IslandRowView: NSView {
             c.setAccessibilityLabel(ContextGauge.spoken(s.contextPercent))
             out.append(c)
         }
+        // Work it handed off and is still waiting on: how many, and of what kind.
+        if s.subagentCount > 0 {
+            let n = s.subagentCount
+            let c = chip(n == 1 ? "1 subagent" : "\(n) subagents", tint: NSColor.white.withAlphaComponent(0.85))
+            let kinds = Array(NSOrderedSet(array: s.subagentTypes)) as? [String] ?? []
+            c.toolTip = kinds.isEmpty ? "Working for this session" : kinds.joined(separator: ", ")
+            c.setAccessibilityElement(true)
+            c.setAccessibilityLabel("\(n) subagents working" + (kinds.isEmpty ? "" : ": " + kinds.joined(separator: ", ")))
+            out.append(c)
+        }
         if s.entrypoint == "cloud" {
             out.append(chip("Cloud", tint: .white))
         } else if s.entrypoint == "claude-desktop" {

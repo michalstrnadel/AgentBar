@@ -425,6 +425,10 @@ function run() {
       toolName: p.tool_name || "", display, toolInputPretty: pretty,
       ...(cwd ? { cwd } : {}),
       ...(filePath ? { filePath } : {}),
+      // Which subagent asked, when one did: Claude Code sends both only from inside
+      // a subagent (`agent_type` alone marks a whole session started with --agent).
+      ...(typeof p.agent_id === "string" && p.agent_id ? { agentId: cap(p.agent_id, 100) } : {}),
+      ...(typeof p.agent_type === "string" && p.agent_type ? { agentType: cap(oneLine(p.agent_type), 60) } : {}),
       context: buildContext(p.tool_name, p.tool_input),
       ruleSuggestion: suggestion, pid: process.ppid, hookPid: process.pid,
       ts: Math.floor(Date.now() / 1000),

@@ -16,7 +16,8 @@ extension MenuBuilder {
             what.isEnabled = false
             what.toolTip = r.toolInputPretty
             what.representedObject = tag
-            what.attributedTitle = NSAttributedString(string: "      \(r.display)", attributes: [
+            let from = r.subagent.map { "  · from \($0)" } ?? ""
+            what.attributedTitle = NSAttributedString(string: "      \(r.display)\(from)", attributes: [
                 .font: NSFont.menuFont(ofSize: 11),
                 .foregroundColor: NSColor.secondaryLabelColor,
             ])

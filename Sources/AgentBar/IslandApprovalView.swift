@@ -65,7 +65,7 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
         let plan = request.isPlanRequest ? (request.planText ?? "(plan text missing)") : nil
         isPlan = plan != nil
         offersAlways = request.ruleSuggestion != nil && plan == nil
-        var rows: [NSView] = [Self.header(plan: plan != nil)]
+        var rows: [NSView] = [Self.header(plan: plan != nil, subagent: request.subagent)]
         if plan == nil, !request.intent.isEmpty { rows.append(Self.intentLine(request.intent, width: width)) }
         if plan == nil, let tool = Self.toolLine(request) { rows.append(tool) }
         if let plan {
@@ -324,7 +324,7 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
 
     /// "● Permission Request" / "● Plan Review" — names what this card is, the way
     /// the reference does.
-    private static func header(plan: Bool) -> NSView {
+    private static func header(plan: Bool, subagent: String? = nil) -> NSView {
         let out = NSMutableAttributedString(string: "● ", attributes: [
             .font: NSFont.systemFont(ofSize: 9),
             .foregroundColor: IconRenderer.amberDot,
@@ -334,6 +334,14 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
             .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
             .foregroundColor: NSColor.white.withAlphaComponent(0.55),
         ]))
+        // Which subagent of this session asked: a reviewer asking to run `rm` is a
+        // different question from the session itself asking.
+        if let subagent {
+            out.append(NSAttributedString(string: "  ·  from \(subagent)", attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                .foregroundColor: NSColor.white.withAlphaComponent(0.75),
+            ]))
+        }
         return NSTextField(labelWithAttributedString: out)
     }
 
