@@ -590,6 +590,17 @@ result through unchanged — and writes one file per session:
   refused it.
 - `subagents` counts subagents launched and not yet finished, background ones
   included (`0` when none); foreground ones are dropped when the main turn ends.
+- `agents` (optional, since 1.60.0): one entry per subagent counted in `subagents`,
+  oldest first, at most 8: `{"type", "what"?, "model"?, "background", "since"}` —
+  the subagent type, the Agent call's own few-word `description` (≤ 60 chars, never
+  the prompt), the model it resolved to, and when it started (epoch seconds; `0`
+  for the first instant). Absent when none runs.
+- `failed_agents` (optional): how many subagent turns this session ended in an
+  error or were aborted (`turn.complete`'s `reason`). Absent while none has.
+- `cost_usd` (optional): what the session has cost so far in US dollars, as Claude
+  Code prices it (`session.measure`'s `cost`, rounded to 1/100 of a cent) —
+  absent where Claude Code keeps no ledger. On a subscription it is what the same
+  turns would have cost at API prices, not what was billed.
 - `held`, present only while it lasts: `{"tool", "input", "since"}` (`input` as in
   `decisions`, `since` in epoch seconds) for a call that has not reached Claude
   Code's permission check 3 seconds after it began — something beneath the mod in

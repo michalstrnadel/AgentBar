@@ -125,7 +125,7 @@ final class SessionStore {
         // context percentage climbs while everything else on the row holds still.
         let snapshot = sessions.map {
             "\($0.id):\($0.agentName):\($0.state.rawValue):\($0.label):\($0.project):\($0.gitBranch ?? ""):\($0.recap):\($0.prompt):\($0.model)"
-                + ":\($0.contextPercent ?? -1):\($0.subagents):\($0.subagentTypes.joined(separator: ",")):\($0.todo?.text ?? ""):\($0.background?.text ?? "")"
+                + ":\($0.contextPercent ?? -1):\($0.subagents):\($0.subagentTypes.joined(separator: ",")):\($0.todo?.text ?? ""):\($0.background?.text ?? ""):\($0.subagentDetails.map(\.type)):\($0.failedSubagents):\(CostText.short($0.costUsd) ?? "")"
         }
         guard snapshot != lastSnapshot else { return }
         lastSnapshot = snapshot
@@ -154,6 +154,9 @@ final class SessionStore {
             out.modSeen = true
             out.contextPercent = r.context?.percent
             out.subagents = r.subagents
+            out.subagentDetails = r.agents
+            out.failedSubagents = r.failedAgents
+            out.costUsd = r.costUsd
             if let held = r.held, Self.isHeld(s, since: held.since) {
                 out.state = .permission
                 out.label = heldLabel(held)

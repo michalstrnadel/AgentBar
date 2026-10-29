@@ -53,6 +53,11 @@ struct Session {
     var background: BackgroundWork?
     /// How many subagents are working, by whichever source saw more.
     var subagentCount: Int { max(subagents, subagentTypes.count) }
+    /// What the mod knows about each of them: kind, task, model, since when.
+    var subagentDetails: [ModReport.Subagent] = []
+    var failedSubagents = 0
+    /// What the session has cost so far (the mod's `cost_usd`); nil when unknown.
+    var costUsd: Double?
     var modSeen = false
     /// The row is waiting because a mod is holding a call, not because Claude Code
     /// asked: there is no request to answer from here, only a pane in the terminal.

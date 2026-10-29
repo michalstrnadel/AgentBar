@@ -350,6 +350,46 @@ describe('what Claude Code measures', () => {
   })
 })
 
+describe('what the subagents and the session are', () => {
+  test('each running subagent says its kind, its task in a few words, model and since when', async ($, on) => {
+    const world = worldOf(on)
+    on('agent.spawn', () => ({ model: 'claude-haiku-5-5', agentId: 'a1' }))
+    await $.session.start(SESSION)
+    await $.agent.spawn({ ...(spawn(true) as object), description: 'list files', subagentType: 'Explore' } as never)
+    await world.clock.advance(1000)
+    expect(sidecarOf(world).agents).toEqual([
+      { type: 'Explore', what: 'list files', model: 'claude-haiku-5-5', background: true, since: S0 },
+    ])
+    await $.turn.complete(turn('a1'))
+    await world.clock.advance(1000)
+    expect(sidecarOf(world).agents).toBeUndefined()
+  })
+
+  test('a subagent turn that errors or is aborted is counted as failed', async ($, on) => {
+    const world = worldOf(on)
+    let next = 0
+    on('agent.spawn', () => ({ model: 'haiku', agentId: `a${++next}` }))
+    await $.session.start(SESSION)
+    await $.agent.spawn(spawn(true))
+    await $.agent.spawn(spawn(true))
+    await $.turn.complete({ ...(turn('a1') as object), reason: 'error' } as never)
+    await $.turn.complete(turn('a2'))
+    await world.clock.advance(1000)
+    expect(sidecarOf(world).failed_agents).toBe(1)
+  })
+
+  test('what the session has cost, when Claude Code keeps a ledger; absent otherwise', async ($, on) => {
+    const world = worldOf(on)
+    await $.session.start(SESSION)
+    await $.session.measure({ context: { window: 2 }, rateLimits: [], changed: ['context'] } as never)
+    await world.clock.advance(1000)
+    expect(sidecarOf(world).cost_usd).toBeUndefined()
+    await $.session.measure({ context: { window: 2 }, rateLimits: [], cost: { usd: 0.010682615 }, changed: ['cost'] } as never)
+    await world.clock.advance(1000)
+    expect(sidecarOf(world).cost_usd).toBe(0.0107)
+  })
+})
+
 describe('when the file is written', () => {
   test('changes inside a second share one write; the last change always lands', async ($, on) => {
     const world = worldOf(on)

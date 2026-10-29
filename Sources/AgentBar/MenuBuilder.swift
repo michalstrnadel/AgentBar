@@ -292,10 +292,17 @@ enum MenuBuilder {
         return item
     }
 
-    /// cwd, plus the last turn's recap when the writer carries one.
+    /// cwd, plus the last turn's recap when the writer carries one, its subagents
+    /// and what it has cost when the mod reports them.
     static func rowToolTip(_ s: Session) -> String {
-        s.recap.isEmpty ? s.cwd
+        var out = s.recap.isEmpty ? s.cwd
             : "\(s.cwd)\n\n\(s.agent.name): \(s.recap)"
+        let now = Date().timeIntervalSince1970
+        if !s.subagentDetails.isEmpty {
+            out += "\n\n" + s.subagentDetails.map { "↳ " + SubagentLine.text($0, now: now) }.joined(separator: "\n")
+        }
+        if let cost = CostText.short(s.costUsd) { out += "\n\n\(cost) so far (API prices)" }
+        return out
     }
 
 

@@ -139,6 +139,19 @@ final class IslandRowView: NSView {
             plan.setAccessibilityLabel("\(todo.done) of \(todo.total) steps done" + (todo.now.isEmpty ? "" : ", now \(todo.now)"))
             column.append(plan)
         }
+        // Each subagent at work, in its own few words: "↳ Explore · list files · haiku · 2m".
+        // Only what the mod reports; three at most, the count chip says the rest.
+        if session.state.isWorking || session.state == .done {
+            let now = Date().timeIntervalSince1970
+            for a in session.subagentDetails.suffix(3) {
+                let line = NSTextField(labelWithString: "↳ " + SubagentLine.text(a, now: now))
+                line.font = .monospacedSystemFont(ofSize: 10.5, weight: .regular)
+                line.textColor = IslandInk.quiet
+                line.lineBreakMode = .byTruncatingTail
+                line.maximumNumberOfLines = 1
+                column.append(line)
+            }
+        }
         // The turn's recent tool steps under the live status — a quiet breadcrumb
         // (island plan, Phase 3.2). Only while working, and only once there is
         // more than the current step to show; head-truncated so the newest steps
@@ -390,9 +403,27 @@ final class IslandRowView: NSView {
             let n = s.subagentCount
             let c = chip(n == 1 ? "1 subagent" : "\(n) subagents", tint: NSColor.white.withAlphaComponent(0.85))
             let kinds = Array(NSOrderedSet(array: s.subagentTypes)) as? [String] ?? []
-            c.toolTip = kinds.isEmpty ? "Working for this session" : kinds.joined(separator: ", ")
+            let now = Date().timeIntervalSince1970
+            c.toolTip = !s.subagentDetails.isEmpty
+                ? s.subagentDetails.map { SubagentLine.text($0, now: now) }.joined(separator: "\n")
+                : kinds.isEmpty ? "Working for this session" : kinds.joined(separator: ", ")
             c.setAccessibilityElement(true)
             c.setAccessibilityLabel("\(n) subagents working" + (kinds.isEmpty ? "" : ": " + kinds.joined(separator: ", ")))
+            out.append(c)
+        }
+        // A subagent whose turn errored or was aborted: the result the session got
+        // back may be missing a piece.
+        if s.failedSubagents > 0 {
+            let n = s.failedSubagents
+            let c = chip(n == 1 ? "1 subagent failed" : "\(n) subagents failed", tint: IconRenderer.amberDot)
+            c.toolTip = "A subagent's turn ended in an error or was cancelled"
+            out.append(c)
+        }
+        if let cost = CostText.short(s.costUsd) {
+            let c = chip(cost, tint: NSColor.white.withAlphaComponent(0.6))
+            c.toolTip = CostText.note
+            c.setAccessibilityElement(true)
+            c.setAccessibilityLabel("Cost so far \(cost)")
             out.append(c)
         }
         if s.entrypoint == "cloud" {

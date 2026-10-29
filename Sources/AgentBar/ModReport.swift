@@ -54,9 +54,25 @@ struct ModReport: Equatable {
     var context: Context?
     var rateLimits: [RateLimit] = []
     var subagents = 0
+    /// The subagents behind `subagents`, oldest first (since 1.60.0).
+    var agents: [Subagent] = []
+    /// Subagent turns that ended in an error or were aborted.
+    var failedAgents = 0
+    /// What the session has cost so far, as Claude Code prices it.
+    var costUsd: Double?
     var decisions: [Decision] = []
     /// A call held before it runs — a mod waiting on the person in its own pane.
     var held: Held?
+
+    /// One subagent at work: its kind, its task in the Agent call's own few words,
+    /// its model, and since when.
+    struct Subagent: Equatable {
+        var type: String
+        var what = ""
+        var model = ""
+        var background = false
+        var since: TimeInterval = 0
+    }
 
     struct Held: Equatable {
         var tool: String
@@ -109,6 +125,9 @@ struct ModReport: Equatable {
         r.rateLimits = (o["rate_limits"] as? [Any] ?? []).prefix(maxRateLimits)
             .compactMap(rateLimit)
         r.subagents = int(o["subagents"]).map { min(max($0, 0), 999) } ?? 0
+        r.agents = (o["agents"] as? [Any] ?? []).prefix(8).compactMap(subagent)
+        r.failedAgents = int(o["failed_agents"]).map { min(max($0, 0), 999) } ?? 0
+        if let c = number(o["cost_usd"]), c >= 0, c < 1e6 { r.costUsd = c }
         r.held = held(o["held"])
         var seen = Set<String>()
         // The newest end of the ring: a file listing more than the mod keeps
@@ -117,6 +136,14 @@ struct ModReport: Equatable {
         r.decisions = raw.compactMap { decision($0, fallbackTs: ts) }
             .filter { seen.insert($0.id).inserted }
         return r
+    }
+
+    private static func subagent(_ any: Any?) -> Subagent? {
+        guard let o = any as? [String: Any] else { return nil }
+        let type = text(o["type"], cap: 40)
+        guard !type.isEmpty else { return nil }
+        return Subagent(type: type, what: text(o["what"], cap: 60), model: text(o["model"], cap: 40),
+                        background: bool(o["background"]), since: Session.plausibleTime(o["since"]))
     }
 
     private static func context(_ any: Any?) -> Context? {

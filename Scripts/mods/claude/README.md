@@ -11,7 +11,11 @@ measures itself. Contract: [`docs/protocol.md`, "mods.d"](../../../docs/protocol
   when the session ends:
   - `context` and `rate_limits`: Claude Code's own figures, a missing one left out,
     never zeroed;
-  - `subagents`: how many subagents are running;
+  - `subagents`: how many subagents are running, and `agents`: each one's type,
+    the Agent call's own few-word description (never the prompt), its model and
+    since when;
+  - `failed_agents`: subagent turns that ended in an error or were aborted;
+  - `cost_usd`: what the session has cost so far, as Claude Code prices it;
   - `decisions`: the newest 200 verdicts reached without a prompt (`allow` or
     `deny`), each naming who decided: a settings `rule`, the permission `mode`, or
     a `hook`. Read-only tools are left out, and only `command`, `file_path`, `url`

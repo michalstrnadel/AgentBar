@@ -67,7 +67,9 @@ const S = {
   asking: new Map(),   // tool_use_id -> { at } while an ask is unsettled
   pending: new Map(),  // tool_use_id -> { tool, input, at, timer } until tool.check or the end
   held: null,          // { id, tool, input, since } while a call is held before it runs
-  running: new Map(),  // subagent id -> { background }
+  running: new Map(),  // subagent id -> { background, type, what, model, since }
+  costUsd: null,       // what the session has cost so far, where Claude Code keeps a ledger
+  failedAgents: 0,     // subagent turns that ended in an error or were aborted
   finished: new Set(), // subagent ids whose turn.complete came before their spawn resolved
   ended: new Set(),    // session ids already written with ended:true
   timer: null,
@@ -176,6 +178,19 @@ export const rateLimitsOf = (list) => {
   return out;
 };
 
+// The subagents working for this session as the app shows them, oldest first:
+// what kind, what they were asked to do in the Agent call's own few words, which
+// model, and whether they run in the background. Never the prompt.
+export const agentsOf = (running) => [...running.values()].slice(-8).map((a) => {
+  const row = { type: a.type, background: a.background, since: a.since };
+  if (a.what) row.what = a.what;
+  if (a.model) row.model = a.model;
+  return row;
+});
+
+// A turn that did not end in an answer: Claude Code says why on turn.complete.
+export const failedTurn = (reason) => reason === "error" || reason === "aborted";
+
 const remember = (set, id, cap) => {
   set.add(id);
   if (set.size > cap) set.delete(set.values().next().value);
@@ -197,6 +212,9 @@ export const snapshot = (now) => {
   if (S.context) body.context = S.context;
   body.rate_limits = S.rateLimits;
   body.subagents = S.running.size;
+  if (S.running.size) body.agents = agentsOf(S.running);
+  if (S.costUsd !== null) body.cost_usd = S.costUsd;
+  if (S.failedAgents) body.failed_agents = S.failedAgents;
   if (S.held) {
     body.held = { tool: S.held.tool, input: S.held.input, since: Math.floor(S.held.since / 1000) };
   }
@@ -217,6 +235,8 @@ const resetSession = () => {
   S.held = null;
   S.running = new Map();
   S.finished = new Set();
+  S.costUsd = null;
+  S.failedAgents = 0;
   S.dirty = false;
 };
 
@@ -419,6 +439,7 @@ function onMeasure($, e) {
   const limits = rateLimitsOf(e.rateLimits);
   // An empty list off a subscription is news; an absent one is not.
   if (Array.isArray(e.rateLimits)) S.rateLimits = limits;
+  if (e.cost && finite(e.cost.usd) && e.cost.usd >= 0) S.costUsd = Math.round(e.cost.usd * 10000) / 10000;
   schedule($);
 }
 
@@ -554,13 +575,26 @@ function onSpawn($, e, r) {
   if (!agentId) return;
   // Already finished before the spawn resolved: never counted, never leaked.
   if (S.finished.delete(agentId)) return;
-  S.running.set(agentId, { background: !!(e && e.background) });
+  // Measured on 2.1.312: the spawn carries description, subagentType and
+  // background; the resolved model comes back on the result.
+  S.running.set(agentId, {
+    background: !!(e && e.background),
+    type: capChars(String((e && e.subagentType) || "subagent"), 40),
+    what: capChars(String((e && e.description) || ""), 60),
+    model: capChars(String((r && r.model) || (e && e.model) || ""), 40),
+    since: 0,
+  });
+  $.clock.now().then((now) => {
+    const a = S.running.get(agentId);
+    if (a) { a.since = Math.floor(now / 1000); schedule($); }
+  }).catch(() => {});
   schedule($);
 }
 
 function onTurn($, e) {
   const agentId = e && typeof e.agentId === "string" ? e.agentId : "";
   if (agentId) {
+    if (failedTurn(e && e.reason)) { S.failedAgents += 1; schedule($); }
     if (S.running.delete(agentId)) schedule($);
     else remember(S.finished, agentId, 64);
     return;
