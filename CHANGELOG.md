@@ -3,6 +3,26 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.63.0 - 2026-10-29
+
+### Added
+
+- **Auto mode's refusals are in your decision history.** Each refusal is written
+  once as Claude Code's own decision (never counted as yours), so the week of
+  decisions, Your Day's answers tile, Settings ▸ Answered without you and
+  `agentbar approvals` can say "auto mode refused 14 (curl 12×)".
+- **The away recap names a failure.** Back at the Mac, the pill and the island say
+  "tests failed in agentbar" (or "a command failed in …", "an error in …") for the
+  newest failure while you were away, "+N more" past it.
+- **Codex in depth.** A Codex row now has its context fill, so the context figure
+  and the compacts-soon warning work for Codex too, and the subagents its current
+  turn started, read from its rollout file as it grows.
+
+### Fixed
+
+- The model chip no longer appears just because another row reports no model.
+- A row redraws when one subagent replaces another of the same kind.
+
 ## 1.62.0 - 2026-10-29
 
 ### Changed
