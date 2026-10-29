@@ -14,15 +14,19 @@ protocol IslandGame: NSView {
     func stop()
 }
 
-/// The games on offer, in the order the picker lists them.
+/// What the island can open into for a break, in the order the picker lists
+/// them: the two games, and the office (`Office`) — no game, no score, but opened
+/// and closed by the same rules.
 enum GameChoice: String, CaseIterable {
     case spaceBugs = "space"
     case bugHunt = "hunt"
+    case office = "office"
 
     var title: String {
         switch self {
         case .spaceBugs: return "Space Bugs"
         case .bugHunt: return "Bug Hunt"
+        case .office: return "Office"
         }
     }
 
@@ -30,6 +34,7 @@ enum GameChoice: String, CaseIterable {
         switch self {
         case .spaceBugs: return "Clawd vs. a formation of bugs. Arrows and Space."
         case .bugHunt: return "Shoot the bugs out of the sky; the dog fetches. Aim and click."
+        case .office: return "Everyone at their desk, doing what they are doing right now. Click a desk to go there."
         }
     }
 
@@ -37,13 +42,24 @@ enum GameChoice: String, CaseIterable {
         switch self {
         case .spaceBugs: return "gamecontroller"
         case .bugHunt: return "scope"
+        case .office: return "building.2"
         }
+    }
+
+    /// A game keeps a score and is "the last game played"; the office does neither.
+    var isGame: Bool { self != .office }
+
+    /// The way back to it once it was put aside: a game says its score, the
+    /// office has none to say.
+    func backTitle(score: Int) -> String {
+        isGame ? "Back to the break — \(title) \(IslandController.grouped(score))" : "Back to the office"
     }
 
     func make(defaults: UserDefaults = .standard) -> NSView & IslandGame {
         switch self {
         case .spaceBugs: return BreakGameView(defaults: defaults)
         case .bugHunt: return HuntGameView(defaults: defaults)
+        case .office: return OfficeView()
         }
     }
 
@@ -51,7 +67,13 @@ enum GameChoice: String, CaseIterable {
 
     /// The game last started, listed first next time.
     static var last: GameChoice {
-        get { UserDefaults.standard.string(forKey: "islandLastGame").flatMap(GameChoice.init) ?? .spaceBugs }
-        set { UserDefaults.standard.set(newValue.rawValue, forKey: "islandLastGame") }
+        get {
+            UserDefaults.standard.string(forKey: "islandLastGame").flatMap(GameChoice.init)
+                .flatMap { $0.isGame ? $0 : nil } ?? .spaceBugs
+        }
+        set {
+            guard newValue.isGame else { return }
+            UserDefaults.standard.set(newValue.rawValue, forKey: "islandLastGame")
+        }
     }
 }

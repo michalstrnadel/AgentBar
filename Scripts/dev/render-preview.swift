@@ -672,6 +672,49 @@ enum RenderPreview {
             }
         }
 
+        // Scene 6: the office — a desk for each session, a hand up at the one
+        // waiting, helpers beside a busy desk, a Codex desk, and one asleep.
+        do {
+            func officeSession(_ id: String, _ fields: [String: Any]) -> Session {
+                var o: [String: Any] = ["cwd": "/tmp", "pid": 1, "started": true, "ts": now,
+                                        "started_at": now - 900, "term_program": "iTerm.app"]
+                o.merge(fields) { $1 }
+                return makeSession(id, o)
+            }
+            let waiting = officeSession("office-wait", [
+                "agent": "claude", "state": "permission", "label": "Bash: npm publish", "project": "auth-api"])
+            var busy = officeSession("office-busy", [
+                "agent": "claude", "state": "tool", "label": "Running command", "project": "webshop"])
+            busy.subagents = 3
+            busy.subagentDetails = [
+                ModReport.Subagent(type: "Explore", what: "find the checkout queries", model: "claude-haiku-5-5",
+                                   since: TimeInterval(now - 120)),
+                ModReport.Subagent(type: "code-reviewer", what: "review the cart diff", model: "claude-opus-5",
+                                   since: TimeInterval(now - 40)),
+                ModReport.Subagent(type: "Plan", what: "plan the migration", since: TimeInterval(now - 10)),
+            ]
+            let reading = officeSession("office-read", [
+                "agent": "claude", "state": "tool", "label": "Reading", "project": "landing"])
+            let codex = officeSession("office-codex", [
+                "agent": "codex", "state": "tool", "label": "Running command", "project": "billing"])
+            let done = officeSession("office-done", [
+                "agent": "claude", "state": "done", "label": "", "project": "docs"])
+            let gemini = officeSession("office-gemini", [
+                "agent": "gemini", "state": "question", "label": "", "project": "infra"])
+            let office = OfficeView()
+            office.update(sessions: [waiting, gemini, busy, reading, codex, done], requests: [])
+            office.seek(frame: 7)
+            render(office, name: "06-office", size: OfficeView.size)
+            let full = OfficeView()
+            full.update(sessions: (0..<10).map { i in
+                officeSession("office-full-\(i)", ["agent": i % 3 == 2 ? "codex" : "claude",
+                                                   "state": ["tool", "thinking", "done", "permission"][i % 4],
+                                                   "label": "Editing", "project": "repo-\(i)"])
+            }, requests: [])
+            full.seek(frame: 3)
+            render(full, name: "06b-office-full", size: OfficeView.size)
+        }
+
         // Scene 5b: Settings ▸ Usage, where the session budget lives.
         do {
             let settings = SettingsWindow.shared

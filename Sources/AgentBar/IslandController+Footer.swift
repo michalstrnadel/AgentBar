@@ -51,8 +51,8 @@ extension IslandController {
         let resumable = breakGame != nil
         b.contentTintColor = resumable ? .controlAccentColor : NSColor.white.withAlphaComponent(0.55)
         b.toolTip = resumable
-            ? "Back to the break — \(breakChoice?.title ?? "") \(Self.grouped(breakGame?.score ?? 0))"
-            : "Take a break — Space Bugs or Bug Hunt, set aside the moment an agent needs you"
+            ? (breakChoice ?? .spaceBugs).backTitle(score: breakGame?.score ?? 0)
+            : "Take a break — Space Bugs, Bug Hunt or the Office, set aside the moment an agent needs you"
         b.setAccessibilityLabel(b.toolTip)
         return b
     }
