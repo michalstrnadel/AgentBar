@@ -1,8 +1,8 @@
 import Cocoa
 
 /// **Take a break**: the island opened into a small game — Space Bugs or Bug
-/// Hunt (`GameChoice`) — on the person's click from its ⋯ menu or
-/// the joystick, and only then. It holds the island open and takes the keys
+/// Hunt (`GameChoice`) — or into the office (`Office`), on the person's click
+/// from its ⋯ menu or the joystick, and only then. It holds the island open and takes the keys
 /// the way a denial note does (`IslandController+Composing`), and gives both back
 /// when it closes.
 ///
@@ -10,6 +10,11 @@ import Cocoa
 /// a session asking — the game pauses and the island shows its rows, with that
 /// request in them; the ⋯ menu offers the way back, score intact. A click
 /// elsewhere pauses it too. Closed, paused or yielded, its clock does not run.
+///
+/// The office yields the same way with one exception: a session already at a
+/// desk that starts waiting raises its hand there instead (`Office.yields`). A
+/// click on that hand closes the office onto the rows; a click on any other desk
+/// brings its terminal forward and leaves the keys there.
 extension IslandController {
     /// A paused game is kept this long for "Back to the break"; after that the
     /// break is over and the next one starts fresh.
@@ -29,7 +34,7 @@ extension IslandController {
             dropBreak()
         }
         if let game = breakGame, let choice = breakChoice {
-            let item = NSMenuItem(title: "Back to the break — \(choice.title) \(Self.grouped(game.score))",
+            let item = NSMenuItem(title: choice.backTitle(score: game.score),
                                   action: #selector(breakClicked(_:)), keyEquivalent: "")
             item.target = self
             item.image = NSImage(systemSymbolName: choice.symbol, accessibilityDescription: nil)
@@ -38,19 +43,21 @@ extension IslandController {
         // Both games are a break; the header says so, the rows say which.
         let header = NSMenuItem(title: "Take a break", action: nil, keyEquivalent: "")
         header.isEnabled = false
-        return [header] + Self.gameOrder.map { choice in
+        return [header] + (Self.gameOrder + [.office]).map { choice in
             let item = NSMenuItem(title: "\(choice.title)…", action: #selector(gameChosen(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = choice.rawValue
             item.image = NSImage(systemSymbolName: choice.symbol, accessibilityDescription: nil)
-            item.toolTip = choice.detail + " It steps aside the moment an agent needs you."
+            item.toolTip = choice.detail + (choice.isGame
+                ? " It steps aside the moment an agent needs you."
+                : " A session at a desk that needs you raises its hand; anyone else steps it aside.")
             return item
         }
     }
 
-    /// The last game played first.
+    /// The last game played first; the office after the games.
     static var gameOrder: [GameChoice] {
-        [GameChoice.last] + GameChoice.allCases.filter { $0 != GameChoice.last }
+        [GameChoice.last] + GameChoice.allCases.filter { $0 != GameChoice.last && $0.isGame }
     }
 
     /// The joystick, or the way back: a game put aside comes straight back; with
@@ -87,6 +94,7 @@ extension IslandController {
         // arrives after this does the game step aside for.
         breakWaiting = waitingKeys
         breakShown = true
+        if let office = view as? OfficeView { office.update(sessions: visibleSessions, requests: requests) }
         if keysCameFrom == nil {
             let front = NSWorkspace.shared.frontmostApplication
             keysCameFrom = front?.processIdentifier == getpid() ? nil : front
@@ -110,6 +118,33 @@ extension IslandController {
         handBackKeys()
     }
 
+    /// A desk in the office was clicked. A raised hand closes the office onto the
+    /// rows, the request among them — it never focuses that session, which would
+    /// hand its request back to the terminal. Any other desk brings its terminal
+    /// forward and the office closes without taking the keys back from it.
+    func officePicked(_ target: Office.Target) {
+        guard breakGame is OfficeView else { return }
+        switch target {
+        case .showRequest:
+            dropBreak()
+            handBackKeys(stayOpen: true)
+        case .focus(let id):
+            guard let s = sessions.first(where: { $0.id == id }) else { return }
+            // It started waiting since the room was drawn: the rows, not the terminal.
+            if s.state.waitsOnHuman { return officePicked(.showRequest(sessionID: id)) }
+            dropBreak()
+            handBackKeys(reactivate: false)
+            // No requests passed: whatever happens, this click answers nothing.
+            AgentActions.focus(s, requests: [])
+        }
+    }
+
+    /// The office is open: it is told who is in, on every store change.
+    func updateOffice() {
+        guard let office = breakGame as? OfficeView else { return }
+        office.update(sessions: visibleSessions, requests: requests)
+    }
+
     /// Something new waits on the person: the game steps aside, kept for later.
     func yieldBreak() {
         guard let view = breakGame, breakShown else { return }
@@ -122,7 +157,15 @@ extension IslandController {
     /// Called from `apply` on every store change.
     func checkBreakYield() {
         guard breakShown else { return }
-        if BreakGame.yields(before: breakWaiting, now: waitingKeys) {
+        let yields: Bool
+        if let office = breakGame as? OfficeView {
+            yields = Office.yields(before: breakWaiting, now: waitingKeys, seated: office.seated,
+                                   requestSessions: Dictionary(requests.map { ($0.fileName, $0.sessionId) },
+                                                               uniquingKeysWith: { a, _ in a }))
+        } else {
+            yields = BreakGame.yields(before: breakWaiting, now: waitingKeys)
+        }
+        if yields {
             yieldBreak()
         } else {
             // Something answered meanwhile: forget it, so a new one still counts.
@@ -133,6 +176,10 @@ extension IslandController {
     private func makeBreakView(_ choice: GameChoice) -> NSView & IslandGame {
         let view = choice.make()
         view.onClose = { [weak self] in self?.endBreak() }
+        (view as? OfficeView)?.onPick = { [weak self] target in
+            // After the click has finished: closing the panel under it would eat the mouse-up.
+            DispatchQueue.main.async { self?.officePicked(target) }
+        }
         view.onWantsKeys = { [weak self, weak view] in
             guard let self, let view, self.breakShown else { return }
             self.panel.acceptsKeys = true
@@ -157,7 +204,9 @@ extension IslandController {
     }
 
     /// The keyboard back to the app that had it, and the island back to the pointer.
-    private func handBackKeys(stayOpen: Bool = false) {
+    /// `reactivate: false` when a click already sent the person somewhere else —
+    /// a desk's terminal — so the app from before must not take the front back.
+    private func handBackKeys(stayOpen: Bool = false, reactivate: Bool = true) {
         stopWatchingKey()
         panel.makeFirstResponder(nil)
         panel.acceptsKeys = false
@@ -170,7 +219,7 @@ extension IslandController {
             wantsExpanded = hovered
             peeking = hovered
         }
-        if let app = keysCameFrom, !app.isTerminated { app.activate() }
+        if reactivate, let app = keysCameFrom, !app.isTerminated { app.activate() }
         keysCameFrom = nil
         rebuild(animated: true)
         layout(animated: true, force: true)

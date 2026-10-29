@@ -308,6 +308,8 @@ final class IslandController: NSObject {
         }
         let celebrate = personality.observe(sessions)
         // Before the rebuild: a game that has to step aside should not be drawn once more.
+        // The office first, so it yields by who is at a desk now.
+        updateOffice()
         checkBreakYield()
         rebuild(animated: true)
         checkQueue()

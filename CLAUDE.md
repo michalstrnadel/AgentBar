@@ -81,6 +81,16 @@ open "build/AgentBar.app"
    back on Esc or Close; it pauses the moment the panel loses the keyboard, and it
    steps aside the instant something new waits on the person, showing the rows with
    that request in them. Closed, paused or yielded, its clock does not run.
+   The **Office** (`Office`, `OfficeView`) opens the same way and is under the same
+   contract, but it is no game: a desk for each session on screen, everyone in the
+   pose they are in, no score. It makes one exception to the yield, and only one: a
+   session that already has a desk and starts waiting raises its hand there instead of
+   stepping the room aside, because the hand is the signal and the pill still turns
+   amber. Anything waiting from a session without a desk steps it aside, as it would a
+   game (`Office.yields`). A click on a desk leads somewhere and answers nothing. On a
+   raised hand it closes onto the rows with that request in them, and never focuses the
+   session, because a focus defers the request. On any other desk it brings that
+   terminal forward.
    `RuleSheet` is a sheet on Settings, not a fourth surface: it is modal to a window
    the user already opened and it closes when it is answered.
    **Keep Mac Awake** (`KeepAwake`) is the cup in the island's footer and a row in

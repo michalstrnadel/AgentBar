@@ -22,6 +22,9 @@
 //                        stay awake" switched on, then Keep Awake's closed-lid
 //                        section after another app turned sleep back on. Also
 //                        .mp4, a .jpg poster and keep-awake-triggers.png.
+//   office.gif         — the island opened into the Office: a desk per session,
+//                        each in the pose it is in, and a hand going up at one
+//                        desk while the room stays open. Also .mp4 and a .jpg.
 //
 // Run: Scripts/demo/make-gifs.sh [out-dir] [scene]. The optional scene (the
 // output's name without extension, e.g. `hand-a-file`) renders only that one. How it works and how to add a GIF:
@@ -44,6 +47,7 @@ enum FeatureGIFs {
             ("agentbar-tour", { Tour.write(to: out.appendingPathComponent("agentbar-tour")) }),
             ("hand-a-file", { HandAFile.write(to: out.appendingPathComponent("hand-a-file.gif")) }),
             ("keep-awake", { KeepAwakeScene.write(to: out.appendingPathComponent("keep-awake")) }),
+            ("office", { OfficeScene.write(to: out.appendingPathComponent("office")) }),
         ]
         guard only == nil || scenes.contains(where: { $0.0 == only }) else {
             fatalError("no scene \(only!) — one of \(scenes.map(\.0).joined(separator: ", "))")
@@ -1470,6 +1474,78 @@ enum KeepAwakeScene {
             }
             frames.append(img)
             if f == cut - 20 { poster = img }
+        }
+        Stage.writeGIF(frames, delay: delay, to: base.appendingPathExtension("gif"))
+        Stage.writeMP4(frames, delay: delay, to: base.appendingPathExtension("mp4"))
+        if let poster { Stage.writeJPEG(poster, to: base.appendingPathExtension("jpg")) }
+    }
+}
+
+// MARK: - The office
+
+/// The island opened into the Office (`OfficeView`, the real one, drawn every
+/// frame): six sessions at their desks, then one desk's hand goes up — and the
+/// room stays open, because the hand is the signal.
+enum OfficeScene {
+    static let W: CGFloat = 1200, H: CGFloat = 900
+
+    static func write(to base: URL) {
+        let now = Int(Date().timeIntervalSince1970)
+        func session(_ id: String, _ o: [String: Any]) -> Session {
+            var o = o
+            o.merge(["cwd": "/tmp", "pid": 1, "started": true, "ts": now, "started_at": now - 900,
+                     "term_program": "iTerm.app"]) { a, _ in a }
+            return Session(fileURL: Stage.tmp(id, o))!
+        }
+        var busy = session("office-busy", ["agent": "claude", "state": "tool", "label": "Running command",
+                                           "project": "webshop"])
+        busy.subagents = 2
+        let reading = session("office-read", ["agent": "claude", "state": "tool", "label": "Reading",
+                                              "project": "landing"])
+        let codex = session("office-codex", ["agent": "codex", "state": "tool", "label": "Running command",
+                                             "project": "billing"])
+        let gemini = session("office-gemini", ["agent": "gemini", "state": "thinking", "label": "",
+                                               "project": "infra"])
+        let done = session("office-done", ["agent": "claude", "state": "done", "label": "", "project": "docs"])
+        let typing = session("office-auth", ["agent": "claude", "state": "tool", "label": "Editing",
+                                             "project": "auth-api"])
+        let asking = session("office-auth", ["agent": "claude", "state": "permission",
+                                             "label": "Bash: npm publish", "project": "auth-api"])
+        let office = OfficeView()
+
+        let k: CGFloat = 1.6
+        let size = NSSize(width: OfficeView.size.width * k, height: OfficeView.size.height * k)
+        let pad: CGFloat = 22
+        let panel = NSRect(x: (W - size.width) / 2 - pad, y: H - size.height - pad - 8,
+                           width: size.width + pad * 2, height: size.height + pad + 8)
+        func caption(_ s: String) {
+            let t = Stage.text(s, 27, .white, weight: .semibold)
+            let r = NSRect(x: (W - t.size().width) / 2 - 20, y: 18, width: t.size().width + 40, height: 54)
+            Stage.rgb(0x000000, 0.38).setFill(); Stage.rounded(r, 16).fill()
+            t.draw(at: NSPoint(x: r.minX + 20, y: r.midY - t.size().height / 2))
+        }
+
+        // 0–44 everyone at work; from 45 auth-api asks and its hand goes up.
+        let delay = 0.08
+        let raise = 45, end = 110
+        var frames: [CGImage] = []
+        var poster: CGImage?
+        for f in 0..<end {
+            let first = f < raise ? typing : asking
+            office.update(sessions: [first, busy, reading, codex, gemini, done], requests: [],
+                          now: TimeInterval(now))
+            office.seek(frame: f)
+            let shot = Stage.snapshot(office)
+            let img = Stage.frame(W, H) {
+                Stage.wallpaper(W, H)
+                Stage.menuBar(W, H, app: "Terminal", notch: true)
+                Stage.fill(Stage.island(panel, ear: 0), .black)
+                shot.draw(in: NSRect(x: panel.minX + pad, y: panel.minY + pad, width: size.width, height: size.height))
+                caption(f < raise ? "The Office: everyone at their desk, doing what they do"
+                                  : "A hand goes up. The room stays open: the hand is the signal")
+            }
+            frames.append(img)
+            if f == raise + 20 { poster = img }
         }
         Stage.writeGIF(frames, delay: delay, to: base.appendingPathExtension("gif"))
         Stage.writeMP4(frames, delay: delay, to: base.appendingPathExtension("mp4"))
