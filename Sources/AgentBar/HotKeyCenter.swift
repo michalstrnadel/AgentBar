@@ -23,11 +23,17 @@ struct KeyCombo: Equatable {
     static let defaultAwake = KeyCombo(keyCode: UInt32(kVK_ANSI_K),
                                        carbonModifiers: UInt32(controlKey | optionKey | cmdKey), display: "⌃⌥⌘K")
 
+    /// The keyboard queue on the island. ⌥⌘J — beside A, D and N, and claimed by
+    /// no system shortcut.
+    static let defaultQueue = KeyCombo(keyCode: UInt32(kVK_ANSI_J),
+                                       carbonModifiers: UInt32(optionKey | cmdKey), display: "⌥⌘J")
+
     /// The currently configured combos (defaults when never customized).
     static var allow: KeyCombo { stored("allowHotKey", fallback: .defaultAllow) }
     static var deny: KeyCombo { stored("denyHotKey", fallback: .defaultDeny) }
     static var launch: KeyCombo { stored("launchHotKey", fallback: .defaultLaunch) }
     static var awake: KeyCombo { stored("awakeHotKey", fallback: .defaultAwake) }
+    static var queue: KeyCombo { stored("queueHotKey", fallback: .defaultQueue) }
 
     static func stored(_ key: String, fallback: KeyCombo) -> KeyCombo {
         guard let d = UserDefaults.standard.dictionary(forKey: key),

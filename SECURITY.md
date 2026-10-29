@@ -235,6 +235,19 @@ drawn are answered — one that arrives a moment later is not part of the click 
 and each is written to the ledger as its own decision by the person. It is not a
 rule, and plans and questions never batch (`ApprovalBatch`).
 
+**Allow all N** is not offered for a request that reaches far (`BlastRadius`
+medium or high): one click for many is only for what one click would answer.
+
+## Held Allow and the keyboard queue
+
+What a request can reach is named on the card (`BlastRadius`: deletes, network,
+outside repo, secrets…). It is display only and never feeds a rule. On the island,
+Allow for a request that reaches far is **held** until it fills (`HoldButton`,
+0.6 s or 1.2 s); letting go early, or sliding off, answers nothing. The global
+Allow chord does not answer such a request: it opens the keyboard queue on it,
+where Return is held the same way. The menu cannot hold a button, so there the
+chips are the whole warning. VoiceOver's press answers, because it cannot hold.
+
 **Try an approval** (`DemoApproval`) puts one made-up request on screen. It is
 never written to `requests.d`, never reaches the history, the ledger, the
 notifications or a rule, and answering it writes no answer file: the answer path
@@ -257,9 +270,11 @@ Mac. It is held to that:
 - **You cannot approve what you cannot read.** Allow is offered only for a shell
   command that went along whole — at most 1 200 characters, no control or invisible
   format characters, and not from a request file whose JSON had a BOM stripped
-  (`ApprovalRequest.droppedInvisible`). Edits, writes, plans, longer commands and
-  everything with the command switched off get **Deny** only. There is never an
-  **Always**.
+  (`ApprovalRequest.droppedInvisible`) — and not one the island would make you
+  hold Allow for longest (`BlastRadius`, high: deleting recursively, piping into a
+  shell, sudo, secrets, an agent's own configuration). Edits, writes, plans, longer
+  commands, those, and everything with the command switched off get **Deny** only.
+  There is never an **Always**.
 - **The topic is the key.** ntfy topics are readable and writable by whoever knows
   the name, so the name is 130 random bits, minted on the Mac, and the page says to
   treat it like a password. Anyone holding it can read what is pushed and answer

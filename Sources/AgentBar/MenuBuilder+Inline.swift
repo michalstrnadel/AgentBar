@@ -21,6 +21,16 @@ extension MenuBuilder {
                 .foregroundColor: NSColor.secondaryLabelColor,
             ])
             menu.addItem(what)
+            if !r.intent.isEmpty {
+                let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+                item.isEnabled = false
+                item.representedObject = tag
+                let said = r.intent.count > 70 ? String(r.intent.prefix(69)) + "…" : r.intent
+                item.attributedTitle = NSAttributedString(string: "      “\(said)”", attributes: [
+                    .font: NSFont.menuFont(ofSize: 12), .foregroundColor: NSColor.labelColor])
+                item.toolTip = r.intent
+                menu.addItem(item)
+            }
 
             // Inline detail: the mini-diff / full command, when the hook supplied it.
             if let context = r.context {
@@ -28,6 +38,18 @@ extension MenuBuilder {
                 ctx.view = ApprovalContextView(context: context)
                 ctx.representedObject = tag
                 menu.addItem(ctx)
+            }
+            // What it can reach. The menu cannot hold a button down — it closes on
+            // the click — so here the chips are the whole of the warning.
+            let chips = r.isPlanRequest ? [] : BlastRadius.chips(for: r, cwd: r.cwd.isEmpty ? s.cwd : r.cwd)
+            if let line = BlastChipsView.menuTitle(chips) {
+                let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+                item.isEnabled = false
+                item.representedObject = tag
+                let title = NSMutableAttributedString(string: "      ")
+                title.append(line)
+                item.attributedTitle = title
+                menu.addItem(item)
             }
 
             // What you did about this exact prompt before, at the moment you are
@@ -78,7 +100,7 @@ extension MenuBuilder {
             // identifier, so a request that arrives later is never part of the click.
             let alike = ApprovalBatch.alike(r, in: allRequests, cwd: { q in
                 allSessions.first { $0.id == q.sessionId }?.cwd ?? "" })
-            if alike.count > 1, !plan(r) {
+            if alike.count > 1, !plan(r), BlastRadius.severity(of: chips) == .low {
                 let item = NSMenuItem(title: "", action: #selector(StatusItemController.allowAllAlike(_:)),
                                       keyEquivalent: "")
                 item.target = controller

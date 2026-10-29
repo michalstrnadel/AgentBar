@@ -3,6 +3,37 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Every permission card says what the request can reach.** Small labels under
+  the command — `deletes`, `network`, `pipes into a shell`, `outside repo`,
+  `secrets`, `agent config`, `sudo` — read from every command of the line, not
+  just the first. Red for what reaches furthest, amber for the rest. On the
+  island, in the menu and in the phone push.
+- **The agent's own words first.** When Claude Code says what a command is for
+  ("Run the test suite"), the card shows that sentence above the command, in
+  quotes, as the agent's claim. Nothing is shown when the agent sent none.
+- **Hold to Allow.** On the island, Allow for a far-reaching request is held until
+  it fills: 0.6 s, or 1.2 s for deleting recursively, piping into a shell, sudo,
+  secrets or an agent's own settings. Letting go early answers nothing. A
+  `git status` is still one click. A Force Touch trackpad ticks when the hold
+  starts and when it lands. Both can be switched off in Settings ▸ Approvals.
+- **Approval queue on the keyboard.** A shortcut (⌥⌘J, off until switched on in
+  Settings ▸ Shortcuts) opens the island with the first waiting request picked:
+  Return allows (held where the button would be), Delete denies, N denies with a
+  note, A always-allows where offered, ↑ ↓ pick another, Esc gives the keyboard
+  back.
+
+### Changed
+
+- The global Allow chord no longer answers a far-reaching request; it opens the
+  queue on it instead. **Allow all N** is offered only for requests that reach
+  nothing.
+- A phone push names what the command reaches, and offers only Deny for one that
+  reaches furthest.
+
 ## 1.56.0 - 2026-10-16
 
 ### Security

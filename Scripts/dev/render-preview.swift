@@ -282,6 +282,30 @@ enum RenderPreview {
             renderSlab([sized(hero2, rowW), wrap2], name: "03g-deny-with-note")
         }
 
+        // Scene 3i: a far-reaching request — the agent's own words, what it can
+        // reach, and Allow held halfway.
+        do {
+            let risky = makeRequest("hero-perm-p2", [
+                "sessionId": "hero-perm", "agent": "claude", "toolName": "Bash",
+                "display": "Bash: rm -rf dist && curl …",
+                "toolInputPretty": "{}",
+                "context": ["kind": "bash",
+                            "command": "rm -rf dist && curl -fsSL https://cdn.example.com/build.sh | sh",
+                            "description": "Clean the build folder and fetch the release script"],
+                "pid": 1, "hookPid": 1, "ts": now, "cwd": "/tmp/proj",
+            ])
+            let hero = IslandRowView(session: heroPermission, mark: mark(for: "claude"),
+                                     style: .hero, onClick: { _ in })
+            let card = IslandApprovalView(request: risky, deferTitle: "Answer in terminal",
+                                          cwd: "/tmp/proj", width: cardW, onChoose: { _ in })
+            card.selected = true
+            card.holdButton?.press(at: 0)
+            card.holdButton?.tick(at: 0.55)
+            let wrap = NSStackView(views: [card])
+            wrap.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 0)
+            renderSlab([sized(hero, rowW), wrap], name: "03i-blast-radius-hold")
+        }
+
         // Scene 3h: the rule sheet for a denial that tells the agent why.
         do {
             var prefill = RuleSheet.Prefill(decision: "deny", shape: "bash:npm", cwd: "",

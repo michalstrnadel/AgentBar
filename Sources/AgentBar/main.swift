@@ -207,6 +207,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let wanted = Presentation.current.showsIsland
         guard wanted != islandRunning else { return }
         islandRunning = wanted
+        controller.openQueue = wanted ? { [weak self] file in self?.island.beginQueue(selecting: file) } : nil
         if wanted {
             island.start()
             island.apply(sessions: DemoApproval.shared.merged(sessions),

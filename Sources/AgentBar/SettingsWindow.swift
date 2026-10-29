@@ -104,6 +104,10 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var launchRecorder: ShortcutRecorder!
     private var awakeBox: NSSwitch!
     private var awakeRecorder: ShortcutRecorder!
+    private var queueBox: NSSwitch!
+    private var queueRecorder: ShortcutRecorder!
+    private var holdBox: NSSwitch!
+    private var hapticsBox: NSSwitch!
     private var soundsBox: NSSwitch!
     private var volumeSlider: NSSlider!
     private var testButton: NSButton!
@@ -207,7 +211,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     /// away keeps an app-wide key monitor swallowing keystrokes and every global
     /// shortcut suspended until something ends it.
     private func cancelCaptures() {
-        for recorder in [allowRecorder, denyRecorder, launchRecorder, awakeRecorder] { recorder?.cancelCapture() }
+        for recorder in [allowRecorder, denyRecorder, launchRecorder, awakeRecorder, queueRecorder] { recorder?.cancelCapture() }
     }
 
     private func build() {
@@ -369,7 +373,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         launchRecorder = ShortcutRecorder(defaultsKey: "launchHotKey", fallback: .defaultLaunch)
         awakeBox = SettingsChrome.toggle(target: self, action: #selector(toggleAwakeShortcut))
         awakeRecorder = ShortcutRecorder(defaultsKey: "awakeHotKey", fallback: .defaultAwake)
-        for recorder in [allowRecorder!, denyRecorder!, launchRecorder!, awakeRecorder!] {
+        queueBox = SettingsChrome.toggle(target: self, action: #selector(toggleQueueShortcut))
+        queueRecorder = ShortcutRecorder(defaultsKey: "queueHotKey", fallback: .defaultQueue)
+        holdBox = SettingsChrome.toggle(target: self, action: #selector(toggleHold))
+        hapticsBox = SettingsChrome.toggle(target: self, action: #selector(toggleHaptics))
+        for recorder in [allowRecorder!, denyRecorder!, launchRecorder!, awakeRecorder!, queueRecorder!] {
             recorder.onCaptureChange = { [weak self, weak recorder] capturing in
                 guard let self else { return }
                 if capturing {
@@ -377,7 +385,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                     // must reach the recorder, not the Carbon hotkey — suspend,
                     // then re-register on the way out.
                     let others: [ShortcutRecorder?] = [self.allowRecorder, self.denyRecorder,
-                                                       self.launchRecorder, self.awakeRecorder]
+                                                       self.launchRecorder, self.awakeRecorder,
+                                                       self.queueRecorder]
                     for other in others where other !== recorder { other?.cancelCapture() }
                     HotKeyCenter.shared.suspend()
                 } else {
@@ -391,7 +400,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                 // only on the machine you are not building on.
                 guard let self else { return false }
                 let all: [ShortcutRecorder?] = [self.allowRecorder, self.denyRecorder,
-                                                self.launchRecorder, self.awakeRecorder]
+                                                self.launchRecorder, self.awakeRecorder,
+                                                self.queueRecorder]
                 return all.contains { $0 !== recorder && $0?.combo == combo }
             }
             recorder.onRecord = { [weak self] in self?.onChange?() }
@@ -588,6 +598,14 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                     SettingsChrome.row("Deny", control: denyRecorder),
                 ]),
                 SettingsChrome.card([
+                    SettingsChrome.row("Approval queue",
+                                       "Opens the island with the first waiting request picked: "
+                                       + "Return allows, Delete denies, N denies with a note, "
+                                       + "↑ ↓ pick another, Esc gives the keyboard back.",
+                                       control: queueBox),
+                    SettingsChrome.row("Open the queue", control: queueRecorder),
+                ]),
+                SettingsChrome.card([
                     SettingsChrome.row("Launcher",
                                        "A project you have worked in, an agent, and what you "
                                        + "want it to do. The menu opens it either way.",
@@ -627,6 +645,14 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                        + "“Allowed 23× here”, and so a rule can be offered "
                                        + "from it.",
                                        control: rememberBox),
+                    SettingsChrome.row("Hold Allow for far-reaching requests",
+                                       "Deleting, pushing, the network, secrets, anything outside "
+                                       + "the project: Allow on the island is held until it fills. "
+                                       + "The menu can't hold a button, so there it only names them.",
+                                       control: holdBox),
+                    SettingsChrome.row("Trackpad feedback",
+                                       "A tick when a hold starts, and when it lands.",
+                                       control: hapticsBox),
                     SettingsChrome.row("Rules",
                                        "What AgentBar may answer on your behalf lives on its "
                                        + "own page.",
@@ -793,6 +819,10 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         launchRecorder.reload()
         awakeBox.state = KeepAwakePrefs.shortcut() ? .on : .off
         awakeRecorder.reload()
+        queueBox.state = StatusItemController.queueShortcutEnabled ? .on : .off
+        queueRecorder.reload()
+        holdBox.state = HoldButton.enabled ? .on : .off
+        hapticsBox.state = Haptics.enabled ? .on : .off
         soundsBox.state = SoundCenter.enabled ? .on : .off
         volumeSlider.doubleValue = SoundCenter.volume
         hideIslandBox.state = IslandVisibility.Prefs.hideWhenEmpty ? .on : .off
@@ -831,6 +861,23 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         if awakeBox.state == .off { awakeRecorder.cancelCapture() }
         syncRecorderState()
         keepAwake.reload()
+        onChange?()
+    }
+
+    @objc private func toggleQueueShortcut() {
+        UserDefaults.standard.set(queueBox.state == .on, forKey: StatusItemController.queueShortcutKey)
+        if queueBox.state == .off { queueRecorder.cancelCapture() }
+        syncRecorderState()
+        onChange?()
+    }
+
+    @objc private func toggleHold() {
+        UserDefaults.standard.set(holdBox.state == .on, forKey: HoldButton.enabledKey)
+        onChange?()
+    }
+
+    @objc private func toggleHaptics() {
+        UserDefaults.standard.set(hapticsBox.state == .on, forKey: Haptics.key)
         onChange?()
     }
 
@@ -1346,6 +1393,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         denyRecorder.isEnabled = on
         launchRecorder.isEnabled = launchBox.state == .on
         awakeRecorder.isEnabled = awakeBox.state == .on
+        queueRecorder.isEnabled = queueBox.state == .on
     }
 
     private func syncSoundControls() {

@@ -39,8 +39,8 @@ open "build/AgentBar.app"
    thing that sends work off it, so they are fenced harder than banners: off until
    switched on in Settings ▸ Phone (no link, rule or agent output may), only what
    wants an answer, by default only while the person is away, **Allow only with a
-   shell command that went along whole and readable** (everything else is Deny or
-   the Mac), and a reply answers exactly the one request its push was for, once. A
+   shell command that went along whole and readable, and that reaches nothing
+   `BlastRadius` calls high** (everything else is Deny or the Mac), and a reply answers exactly the one request its push was for, once. A
    tap is the person's own answer through `AgentActions.answer`, written
    `via: "phone"` — a click made elsewhere, not a rule 3 exception.
    Windows are the exception, not the pattern: only `WelcomeWindow`,
@@ -53,6 +53,11 @@ open "build/AgentBar.app"
    sidebar of pages (`SettingsChrome` is its furniture), not a scroll: a new
    preference joins a page or earns one, and never lengthens a column until the
    last section falls off the screen.
+   The **approval queue** (`IslandController+Queue`) is the island taking the
+   keyboard on a deliberate shortcut (off until switched on), the way a note does:
+   never when a request arrives, and it hands the keys back on Esc, an empty
+   queue, or the panel losing focus. Return on a far-reaching request is held
+   like the button (`HoldButton`); nothing in it answers without a key pressed.
    `LauncherPanel` is the third surface and the only one summoned by a keystroke.
    It earns that by the same test the banners do: it takes no space until asked,
    it appears only on a deliberate keypress, a menu click (**Continue in…**, the

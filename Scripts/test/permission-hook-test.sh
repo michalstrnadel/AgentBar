@@ -27,6 +27,23 @@ check "allow decision on stdout"    'grep -q "\"behavior\":\"allow\"" "$HOME/out
 check "request cleaned up"          '[ ! -e "$HOME/.agentbar/requests.d/$REQ" ]'
 check "answer cleaned up"           '[ ! -e "$HOME/.agentbar/answers.d/$REQ" ]'
 
+# 1b. the agent's own description rides along in the bash context; none, none written
+fresh_home
+DESC_EVENT='{"session_id":"testsess","prompt_id":"p1d","tool_name":"Bash","tool_input":{"command":"swift test","description":"Run the test suite"}}'
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=$ANSWER_TIMEOUT "$NODE" "$HOOK" <<<"$DESC_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+check "bash context carries description" 'grep -q "\"description\":\"Run the test suite\"" "$HOME/.agentbar/requests.d/$REQ"'
+printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+fresh_home
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=$ANSWER_TIMEOUT "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+check "no description, none invented" '! grep -q "\"description\"" "$HOME/.agentbar/requests.d/$REQ"'
+printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+
 # 2. deny round-trip
 fresh_home
 AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=$ANSWER_TIMEOUT "$NODE" "$HOOK" <<<"$EVENT" >"$HOME/out.json" &

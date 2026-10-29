@@ -178,12 +178,15 @@ final class PhoneRelay {
     /// The verbs a push for this request offers. A plan's Allow is a keystroke in
     /// the session's own dialog, which a phone cannot make; a question's answer is
     /// a list of labels, which a notification button cannot carry; and Allow goes
-    /// only with a command that went along whole (`readable`).
+    /// only with a command that went along whole (`readable`) and reaches nothing
+    /// the island would make you hold Allow for long (`BlastRadius`, `.high`): a
+    /// tap on a lock screen is the least deliberate answer there is.
     static func verbs(for request: ApprovalRequest, detail: Detail) -> [String] {
         if request.questions != nil { return [] }
         if request.isPlanRequest { return ["deny"] }
         guard detail == .full, !request.droppedInvisible,
-              case .bash(let command)? = request.context, readable(command)
+              case .bash(let command)? = request.context, readable(command),
+              BlastRadius.severity(of: BlastRadius.chips(for: request, cwd: request.cwd)) < .high
         else { return ["deny"] }
         return ["allow", "deny"]
     }
@@ -198,7 +201,9 @@ final class PhoneRelay {
             return "\(agentName) is waiting for you\(place). Open the Mac to see what it wants."
         }
         if case .bash(let command)? = request.context, readable(command), !request.droppedInvisible {
-            return "\(agentName)\(place):\n\(command)"
+            let chips = BlastRadius.chips(for: request, cwd: request.cwd)
+            let reach = chips.isEmpty ? "" : " · \(BlastChipsView.plain(chips))"
+            return "\(agentName)\(place)\(reach):\n\(command)"
         }
         if request.isPlanRequest {
             return "\(agentName)\(place) has a plan ready. Read it on the Mac to approve it."

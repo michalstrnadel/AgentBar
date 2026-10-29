@@ -20,6 +20,34 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
     /// Internal rather than private so the render harness can draw it filled in.
     let noteField = IslandNoteField()
     private(set) var composing = false
+    /// The Allow button when it is a held one; the keyboard queue drives it.
+    private(set) var holdButton: HoldButton?
+    /// What this request can reach, as shown on the card.
+    let chips: [BlastRadius.Chip]
+    private var offersAlways = false
+    private var isPlan = false
+
+    /// Picked in the keyboard queue: a thin bar in the indent beside the card, the
+    /// only mark it needs. Outside the card's own bounds, so nothing in it moves.
+    var selected = false {
+        didSet {
+            guard selected != oldValue else { return }
+            wantsLayer = true
+            if selectionBar.superlayer == nil {
+                selectionBar.backgroundColor = NSColor.white.withAlphaComponent(0.7).cgColor
+                selectionBar.cornerRadius = 1
+                layer?.addSublayer(selectionBar)
+            }
+            selectionBar.isHidden = !selected
+            needsLayout = true
+        }
+    }
+    private let selectionBar = CALayer()
+
+    override func layout() {
+        super.layout()
+        selectionBar.frame = CGRect(x: -8, y: 2, width: 2, height: max(0, bounds.height - 4))
+    }
 
     init(request: ApprovalRequest, deferTitle: String, cwd: String = "", width: CGFloat,
          alike: [ApprovalRequest] = [],
@@ -29,11 +57,16 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
         self.onChoose = onChoose
         self.onDenyNote = onDenyNote
         self.onCompose = onCompose
+        self.chips = request.isPlanRequest ? []
+            : BlastRadius.chips(for: request, cwd: cwd.isEmpty ? request.cwd : cwd)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
         let plan = request.isPlanRequest ? (request.planText ?? "(plan text missing)") : nil
+        isPlan = plan != nil
+        offersAlways = request.ruleSuggestion != nil && plan == nil
         var rows: [NSView] = [Self.header(plan: plan != nil)]
+        if plan == nil, !request.intent.isEmpty { rows.append(Self.intentLine(request.intent, width: width)) }
         if plan == nil, let tool = Self.toolLine(request) { rows.append(tool) }
         if let plan {
             // The whole plan, readable in place — this card is a review, not a
@@ -57,6 +90,7 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
             rows.append(box)
             if let summary = Self.diffSummary(context) { rows.append(summary) }
         }
+        if let chipRow = BlastChipsView.islandRow(chips) { rows.append(chipRow) }
 
         // What you did about this exact prompt before, where you are deciding it
         // again. Absent below two, because "allowed 1× here" is the thing you just
@@ -77,9 +111,18 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
         let deny = Self.button(plan != nil ? "Keep planning" : "Deny",
                                hint: shortcuts ? KeyCombo.deny.display : nil,
                                prominent: false, target: self, action: #selector(denyClicked))
-        let allow = Self.button(plan != nil ? "Approve plan" : "Allow",
+        let hold = plan == nil ? HoldButton.duration(for: chips) : 0
+        let allow: NSView
+        if hold > 0 {
+            let held = HoldButton(title: "Allow", hint: shortcuts ? KeyCombo.allow.display : nil,
+                                  hold: hold) { [weak self] in self?.onChoose("allow") }
+            holdButton = held
+            allow = held
+        } else {
+            allow = Self.button(plan != nil ? "Approve plan" : "Allow",
                                 hint: shortcuts ? KeyCombo.allow.display : nil,
                                 prominent: true, target: self, action: #selector(allowClicked))
+        }
         if plan != nil {
             // Say where the click lands: this one leaves the island and answers
             // the session's own dialog.
@@ -109,7 +152,9 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
         }
         // The same request waiting in other sessions too: one click for all of them,
         // and only the ones on screen now (`ApprovalBatch`).
-        if alike.count > 1, plan == nil {
+        // A batch is one click for every copy, so it is offered only where one copy
+        // would be a click too: nothing far-reaching is allowed in bulk.
+        if alike.count > 1, plan == nil, BlastRadius.severity(of: chips) == .low {
             let all = Self.link(ApprovalBatch.title(alike.count), target: self,
                                 action: #selector(allowAllClicked))
             all.toolTip = "Allows these \(alike.count) identical requests — "
@@ -229,6 +274,24 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
         return true
     }
 
+    // MARK: - The keyboard queue
+
+    /// Answers as the button with that verb would; the queue's keys land here.
+    func choose(_ behavior: String) {
+        if behavior == "always", !offersAlways { NSSound.beep(); return }
+        onChoose(behavior)
+    }
+
+    /// Return went down: a held Allow starts its clock, a plain one answers.
+    func pressAllow() {
+        if let holdButton { holdButton.press() } else { onChoose("allow") }
+    }
+
+    /// Return came up: early, a held Allow answers nothing.
+    func releaseAllow() { holdButton?.release() }
+
+    func cancelHold() { holdButton?.cancel() }
+
     @objc private func allowClicked() { onChoose("allow") }
     @objc private func denyClicked() { onChoose("deny") }
     @objc private func alwaysClicked() { onChoose("always") }
@@ -237,6 +300,20 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
     /// Not a decision about this request: it opens the rule sheet and leaves the
     /// card exactly where it was, still pending, still yours to answer.
     @objc private func ruleClicked() { onChoose("rule") }
+
+    /// What the agent says it is doing, in its own words, above what it will run.
+    /// Quoted and attributed, so it reads as the agent's claim and not AgentBar's.
+    private static func intentLine(_ intent: String, width: CGFloat) -> NSView {
+        let l = NSTextField(labelWithString: "“\(intent)”")
+        l.font = .systemFont(ofSize: 12.5, weight: .medium)
+        l.textColor = NSColor.white.withAlphaComponent(0.92)
+        l.lineBreakMode = .byTruncatingTail
+        l.maximumNumberOfLines = 2
+        l.cell?.wraps = true
+        l.preferredMaxLayoutWidth = width
+        l.toolTip = "In the agent's words — the command below is what runs"
+        return l
+    }
 
     /// "● Permission Request" / "● Plan Review" — names what this card is, the way
     /// the reference does.

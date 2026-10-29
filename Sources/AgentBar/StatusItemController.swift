@@ -97,11 +97,21 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private var lastHotkey = Date.distantPast
 
+    /// The keyboard queue's shortcut (off until switched on in Settings ▸ Shortcuts).
+    static let queueShortcutKey = "queueShortcut"
+    static var queueShortcutEnabled: Bool { UserDefaults.standard.bool(forKey: queueShortcutKey) }
+    /// Opens the island's keyboard queue, picking the named request when given.
+    /// Set by the app once the island exists; nil while it is not shown.
+    var openQueue: ((String?) -> Void)?
+
     private func applyHotKeyState() {
         var bindings: [(combo: KeyCombo, handler: () -> Void)] = []
         if approvalShortcutEnabled {
             bindings.append((KeyCombo.allow, { [weak self] in self?.hotkeyAnswer("allow") }))
             bindings.append((KeyCombo.deny, { [weak self] in self?.hotkeyAnswer("deny") }))
+        }
+        if Self.queueShortcutEnabled {
+            bindings.append((KeyCombo.queue, { [weak self] in self?.openQueue?(nil) }))
         }
         if LauncherPanel.shortcutEnabled {
             bindings.append((KeyCombo.launch, { LauncherPanel.shared.toggle() }))
@@ -124,6 +134,15 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         lastHotkey = now
         guard let r = shownRequests.first(where: { $0.questions == nil })
         else { return }  // no-op when nothing answerable is pending
+        // A chord is the least deliberate answer there is. What the island would
+        // make you hold Allow for is not allowed by one: the queue opens on it
+        // instead, where Return is held the same way.
+        if behavior == "allow", !r.isPlanRequest,
+           HoldButton.duration(for: BlastRadius.chips(for: r, cwd: r.cwd.isEmpty
+               ? sessions.first(where: { $0.id == r.sessionId })?.cwd ?? "" : r.cwd)) > 0 {
+            if let openQueue { openQueue(r.fileName) } else { NSSound.beep() }
+            return
+        }
         // Routed through the same path the buttons use, so a plan gets its
         // keystroke approval instead of an allow the hook is obliged to
         // swallow — the chord must never tick success over a no-op.

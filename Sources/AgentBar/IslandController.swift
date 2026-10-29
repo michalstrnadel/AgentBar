@@ -71,6 +71,11 @@ final class IslandController: NSObject {
     var breakWaiting: Set<String> = []
     var breakSuspendedAt: Date?
     var breakKeyWatch: NSObjectProtocol?
+    /// The keyboard queue (`IslandController+Queue`), while it is open: the key
+    /// reader, the picked request, and the watch that closes it on losing the key.
+    var queueKeys: IslandQueueKeys?
+    var queueSelection: String?
+    var queueKeyWatch: NSObjectProtocol?
     /// A fresh arrival at the notch asked for the pill while it was hidden. Set with
     /// the hover, cleared only by the grace timer on the way out — the same timer
     /// that closes an open panel — so a pointer crossing a gap doesn't make the pill
@@ -297,6 +302,7 @@ final class IslandController: NSObject {
         // Before the rebuild: a game that has to step aside should not be drawn once more.
         checkBreakYield()
         rebuild(animated: true)
+        checkQueue()
         // Inside the pill or not at all: an open panel, a flash or a pill on its
         // way out lets the finish pass unmarked.
         if celebrate, mode == .collapsed, flash == nil, !hidden, panel.isVisible, !hiding {

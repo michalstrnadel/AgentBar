@@ -22,6 +22,11 @@ struct ApprovalRequest {
     let filePath: String
     let ruleSuggestion: [String: Any]?  // Claude-supplied; passed back verbatim on Always allow
     let context: Context?           // structured detail for the inline mini-diff / command
+    /// What the agent says it is doing and why, in its own words — Claude Code's
+    /// Bash `description` ("Run the test suite"). Empty when the agent sent none;
+    /// never made up here, because a sentence AgentBar wrote would read as the
+    /// agent's and could be wrong about the command under it.
+    let intent: String
     let pid: Int32                  // the waiting hook's parent (the claude process)
     let hookPid: Int32              // the waiting hook itself; primary liveness handle
     let ts: TimeInterval
@@ -90,6 +95,7 @@ struct ApprovalRequest {
         filePath        = o["filePath"] as? String ?? ""
         ruleSuggestion  = o["ruleSuggestion"] as? [String: Any]
         context         = Self.decodeContext(o["context"] as? [String: Any])
+        intent          = Self.oneLine((o["context"] as? [String: Any])?["description"] as? String ?? "")
         // Same guard as Session.pid: a malformed pid degrades to 0 (no liveness
         // handle, expiry prune applies), never traps on an Int32 overflow.
         pid             = max(0, Int32(exactly: o["pid"] as? Int ?? 0) ?? 0)
@@ -100,6 +106,13 @@ struct ApprovalRequest {
         // escaped quote followed by one reads as one too, which costs a prompt.
         droppedInvisible = data.range(of: Data([0x22, 0xEF, 0xBB, 0xBF])) != nil
             || String(decoding: data, as: UTF8.self).range(of: "\"\\ufeff", options: .caseInsensitive) != nil
+    }
+
+    /// Line breaks and runs of blanks folded to single spaces, ends trimmed: the
+    /// intent is drawn on one line, and a line break inside it would push the
+    /// command it describes off the card.
+    static func oneLine(_ s: String) -> String {
+        s.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).joined(separator: " ")
     }
 
     private static func decodeContext(_ c: [String: Any]?) -> Context? {

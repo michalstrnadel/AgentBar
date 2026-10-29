@@ -197,6 +197,11 @@ parsing `toolInputPretty`.
 `{kind:"write", preview}`, `{kind:"question", questions}`, `{kind:"plan", plan}`,
 or absent.
 
+A `bash` context MAY carry `description`: the agent's own one-line account of the
+command (Claude Code's `tool_input.description`), capped at 200 chars. A writer
+MUST omit it when the agent sent none and MUST NOT compose one; a reader shows it
+above the command as the agent's words and never treats it as what will run.
+
 `kind:"plan"` marks a **plan review** (Claude's `ExitPlanMode`): `plan` is the
 plan markdown, capped at 8 000 chars. The plan dialog renders in the terminal
 alongside the hook's wait (like the question wizard). `deny` becomes a

@@ -180,8 +180,24 @@ extension IslandController {
         if any { flashAnswer("allow") }
     }
 
+    /// The pill says `text` for a beat — an answer's echo, or the keyboard queue
+    /// saying there is nothing in it.
+    func flashText(_ text: String, tint: NSColor) {
+        flash = (text, tint)
+        rebuild(animated: true)
+        flashWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.flash = nil
+            self.rebuild(animated: true)
+        }
+        flashWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6, execute: work)
+    }
+
     private func flashAnswer(_ behavior: String, plan: Bool = false) {
-        wantsExpanded = false
+        // The keyboard queue stays open on the next request; a click closes.
+        wantsExpanded = queueKeys != nil
         collapseWork?.cancel()
         expandWork?.cancel()
         let green = NSColor(srgbRed: 0.35, green: 0.85, blue: 0.45, alpha: 1)

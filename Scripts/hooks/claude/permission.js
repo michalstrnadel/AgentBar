@@ -114,7 +114,13 @@ const cap = (s, n) => {
 // inline (not just a hover tooltip). Null for tools where the one-line display is enough.
 function buildContext(tool, input) {
   const t = String(tool || ""), i = input || {};
-  if (t === "Bash") return { kind: "bash", command: cap(i.command, 2000) };
+  if (t === "Bash") {
+    // The agent's own one-line account of the command ("Run the test suite"),
+    // drawn above it on the card. Only when it sent one; never invented.
+    const c = { kind: "bash", command: cap(i.command, 2000) };
+    if (typeof i.description === "string" && i.description.trim()) c.description = cap(i.description, 200);
+    return c;
+  }
   if (t === "Edit") return { kind: "diff", old: cap(i.old_string, 1500), new: cap(i.new_string, 1500), more: 0 };
   if (t === "MultiEdit") {
     const edits = Array.isArray(i.edits) ? i.edits : [];
