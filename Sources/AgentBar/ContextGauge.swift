@@ -15,10 +15,12 @@ enum ContextGauge {
     static let highFrom = 85
     static let criticalFrom = 95
 
-    static func level(_ percent: Int?) -> Level {
+    /// A forecast (`ContextTrend`) lifts a quiet figure to amber: a compaction a
+    /// couple of turns out is worth a glance even at 76%. It never makes red.
+    static func level(_ percent: Int?, forecast: ContextTrend.Forecast? = nil) -> Level {
         guard let p = percent, p >= showFrom else { return .hidden }
         if p >= criticalFrom { return .critical }
-        if p >= highFrom { return .high }
+        if p >= highFrom || forecast != nil { return .high }
         return .notice
     }
 
@@ -28,10 +30,17 @@ enum ContextGauge {
         return "ctx \(p)%"
     }
 
+    /// The figure with its forecast, for a tooltip: "ctx 84% · compacts in about
+    /// 2 turns". Just the figure when there is no forecast.
+    static func detail(_ percent: Int?, forecast: ContextTrend.Forecast?) -> String? {
+        guard let t = text(percent) else { return nil }
+        return forecast.map { "\(t) · \($0.text)" } ?? t
+    }
+
     /// The words a screen reader gets for the same fact.
-    static func spoken(_ percent: Int?) -> String? {
+    static func spoken(_ percent: Int?, forecast: ContextTrend.Forecast? = nil) -> String? {
         guard let p = percent, level(p) != .hidden else { return nil }
-        return "context \(p)% full"
+        return "context \(p)% full" + (forecast.map { ", \($0.text)" } ?? "")
     }
 
     /// The island's dark surface. `notice` is the same quiet white the model chip

@@ -409,6 +409,50 @@ enum RenderPreview {
             renderSlab([sized(refusedHero, rowW), sized(refusedRow, rowW)], name: "03l-auto-mode-refused")
         }
 
+        // Scene 3m: compacts soon — a session whose context climbed 4 points a
+        // turn for three watched turns (amber, with a forecast), next to one at
+        // the same 76% with no history (quiet white, no forecast).
+        do {
+            var near = makeSession("ctx-near", [
+                "agent": "claude", "state": "done", "project": "agentbar", "cwd": "/tmp",
+                "sessionId": "ctx-near", "pid": 1, "started": true, "ts": now, "started_at": now - 3000,
+                "prompt": "split the store", "model": "claude-opus-5",
+            ])
+            for (p, st) in [(64, "done"), (66, "tool"), (68, "done"), (70, "thinking"),
+                            (72, "done"), (74, "tool"), (76, "done"), (78, "tool")] {
+                near.contextPercent = p
+                near.state = Session.State(rawValue: st)!
+                ContextTrend.shared.observe([near])
+            }
+            var fresh = makeSession("ctx-fresh", [
+                "agent": "claude", "state": "tool", "label": "Editing ContextGauge.swift",
+                "project": "site", "cwd": "/tmp", "sessionId": "ctx-fresh", "pid": 1,
+                "started": true, "ts": now, "started_at": now - 600, "model": "claude-sonnet-5-5",
+            ])
+            fresh.contextPercent = 78
+            ContextTrend.shared.observe([near, fresh])
+            near.label = "Editing ContextTrend.swift"
+            print("3m tooltip:", ContextGauge.detail(near.contextPercent,
+                                                    forecast: ContextTrend.shared.forecast(for: near)) ?? "-")
+            print("3m fresh tooltip:", ContextGauge.detail(fresh.contextPercent,
+                                                          forecast: ContextTrend.shared.forecast(for: fresh)) ?? "-")
+            let hero = IslandRowView(session: near, mark: mark(for: "claude"), style: .hero, onClick: { _ in })
+            let other = IslandRowView(session: fresh, mark: mark(for: "claude"), style: .hero, onClick: { _ in })
+            renderSlab([sized(hero, rowW), sized(other, rowW)], name: "03m-compacts-soon")
+            let rows = [near, fresh].map { s -> NSView in
+                let v = SessionRowView(session: s, mark: mark(for: "claude") ?? NSImage(size: NSSize(width: 16, height: 16)))
+                v.appearance = NSAppearance(named: .darkAqua)
+                v.translatesAutoresizingMaskIntoConstraints = false
+                v.heightAnchor.constraint(equalToConstant: SessionRowView.height).isActive = true
+                return sized(v, 380)
+            }
+            let stack = NSStackView(views: rows)
+            stack.orientation = .vertical
+            stack.wantsLayer = true
+            stack.layer?.backgroundColor = NSColor(white: 0.16, alpha: 1).cgColor
+            render(stack, name: "03m-compacts-soon-menu")
+        }
+
         // Scene 3h: the rule sheet for a denial that tells the agent why.
         do {
             var prefill = RuleSheet.Prefill(decision: "deny", shape: "bash:npm", cwd: "",

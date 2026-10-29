@@ -47,6 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.mascot.update(sessions: DemoApproval.shared.merged(sessions), systemColor: IconColor.system)
             LookingAt.shared.update(sessions)
             SessionTimeline.shared.observe(sessions)
+            ContextTrend.shared.observe(sessions)
             SoundCenter.shared.observe(sessions)
             // Takes the git baseline a session's record is later measured against.
             // A session that appears and ends inside one tick gets none, which is

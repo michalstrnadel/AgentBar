@@ -419,9 +419,11 @@ final class IslandRowView: NSView {
         if let m = s.modelChip { out.append(chip(m, tint: NSColor.white.withAlphaComponent(0.85))) }
         // Next to the model, whose window it is: only once it is worth knowing.
         if let ctx = ContextGauge.text(s.contextPercent) {
-            let c = chip(ctx, tint: ContextGauge.islandTint(ContextGauge.level(s.contextPercent)))
+            let soon = ContextTrend.shared.forecast(for: s)
+            let c = chip(ctx, tint: ContextGauge.islandTint(ContextGauge.level(s.contextPercent, forecast: soon)))
+            c.toolTip = ContextGauge.detail(s.contextPercent, forecast: soon)
             c.setAccessibilityElement(true)
-            c.setAccessibilityLabel(ContextGauge.spoken(s.contextPercent))
+            c.setAccessibilityLabel(ContextGauge.spoken(s.contextPercent, forecast: soon))
             out.append(c)
         }
         // Work it handed off and is still waiting on: how many, and of what kind.

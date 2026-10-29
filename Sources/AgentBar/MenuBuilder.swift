@@ -302,6 +302,8 @@ enum MenuBuilder {
             out += "\n\n" + s.subagentDetails.map { "↳ " + SubagentLine.text($0, now: now) }.joined(separator: "\n")
         }
         if let cost = CostText.short(s.costUsd) { out += "\n\n\(cost) so far (API prices)" }
+        if let soon = ContextTrend.shared.forecast(for: s),
+           let ctx = ContextGauge.detail(s.contextPercent, forecast: soon) { out += "\n\n" + ctx }
         if let b = s.blocked { out += "\n\n" + b.text + (b.detail.isEmpty ? "" : "\n" + b.detail) }
         return out
     }

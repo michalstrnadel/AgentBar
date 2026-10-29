@@ -29,6 +29,9 @@ final class SessionRowView: NSView {
         /// then and for every row the mod does not report on (`ContextGauge`).
         var context = ""
         var contextLevel: ContextGauge.Level = .hidden
+        /// "compacts in about 2 turns" when `ContextTrend` has a forecast, else "".
+        /// Spoken and in the row's tooltip; the row itself keeps to the figure.
+        var contextForecast = ""
     }
 
     static func content(for s: Session, ended: Bool = false) -> Content {
@@ -72,16 +75,19 @@ final class SessionRowView: NSView {
             detail = b.text
         }
         // Accurate as of the render; a menu stays open too briefly to need ticking.
+        let soon = ContextTrend.shared.forecast(for: s)
         return Content(dot: dot, name: name, detail: detail, elapsed: s.elapsed ?? "",
                        agent: agent, agentID: s.agentID,
                        context: ContextGauge.text(s.contextPercent) ?? "",
-                       contextLevel: ContextGauge.level(s.contextPercent))
+                       contextLevel: ContextGauge.level(s.contextPercent, forecast: soon),
+                       contextForecast: soon?.text ?? "")
     }
 
     /// The same words as one line, for accessibility and type-to-select.
     static func plainTitle(_ c: Content) -> String {
         let context = c.context.replacingOccurrences(of: "ctx ", with: "context ")
             + (c.context.isEmpty ? "" : " full")
+            + (c.context.isEmpty || c.contextForecast.isEmpty ? "" : ", " + c.contextForecast)
         return [c.name, c.detail, context, c.elapsed, c.agent].filter { !$0.isEmpty }
             .joined(separator: ", ")
     }
