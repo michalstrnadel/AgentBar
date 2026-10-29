@@ -5,11 +5,20 @@ All notable changes to AgentBar are documented here. This project follows
 
 ## 1.62.0 - 2026-10-29
 
+### Changed
+
+- **A calmer island.** With five sessions open it read like a log. Now a small row
+  is the mascot, the task and the time, plus only what is amber (refused, quiet,
+  over budget, about to compact). The first row keeps cost, shows the model only
+  when sessions differ, puts its subagents on one line ("find the merge +2") and
+  its live feed on two: the newest step and the newest words, with a command's
+  output only when it failed. Commands drop the `cd <dir> &&` in front.
+
 ### Added
 
-- **Peek at the output.** Under the live feed's newest command, the last three
-  lines it printed, dim, or amber when it failed (`npm run build` → "Found 1 error
-  in src/app.ts:14"), so a glance says whether the tests passed.
+- **Peek at a failure.** When the live feed's newest command fails, the last lines
+  it printed sit under it in amber (`npm run build` → "Found 1 error in
+  src/app.ts:14").
 - **What was it doing then.** Point at the hour strip under the first row: a small
   card says the time, whether the session worked or waited on you, and the steps it
   took within a minute of that moment, from its own transcript.
@@ -32,6 +41,8 @@ All notable changes to AgentBar are documented here. This project follows
   worked.
 - **The live feed's box fits what it shows**, without a blank band above a short
   feed.
+- **"You:" no longer shows a `<pasted_content>` tag.** The task is what you typed
+  around a paste, or "(pasted text)".
 
 ## 1.61.0 - 2026-10-29
 

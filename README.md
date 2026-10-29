@@ -26,7 +26,7 @@ do, or a rule you wrote yourself, and every answer is written down.
 | **Try an approval** in the welcome window | A made-up request waits at the notch (or in the menu bar) — answer it the way you would a real one, before any agent is wired. Nothing runs |
 | Let an agent ask for `rm -rf build && curl … \| sh` | The card says what it reaches — `deletes`, `pipes into a shell`, `network` — in red and amber, with the agent's own one-line reason above it; **Allow** has to be held until it fills, so a stray click answers nothing |
 | Switch on ⌥⌘J in **Settings ▸ Shortcuts** | An approval queue on the keyboard: Return allows, Delete denies, N denies with a note, ↑ ↓ pick another, Esc hands the keyboard back |
-| Open the island while Claude Code or Codex works | **Over the shoulder:** the last tools it reached for and the last thing it said, live, with the tail of the command it just ran, plus its subagents by name, what the session has cost and its last hour as a thin strip |
+| Open the island while Claude Code or Codex works | **Over the shoulder:** the last tools it reached for and the last thing it said, live, with the tail of a command that failed, plus its subagents, what the session has cost and its last hour as a thin strip |
 | Point at that strip | **What was it doing then:** the time, whether it worked or waited on you, and the steps it took around that minute |
 | Set a budget in Settings ▸ Usage | A session that costs more turns its cost chip amber. It only flags; nothing is stopped |
 | Come back after a coffee | The pill says what happened while you were away — "away · 1 waiting · 3 done" — once, for a minute and a half |
