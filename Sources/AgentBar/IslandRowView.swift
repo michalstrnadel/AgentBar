@@ -456,10 +456,13 @@ final class IslandRowView: NSView {
             out.append(c)
         }
         if let cost = CostText.short(s.costUsd) {
-            let c = chip(cost, tint: NSColor.white.withAlphaComponent(0.6))
-            c.toolTip = CostText.note
+            // Over the budget the person set: amber, and the tooltip says whose
+            // line it crossed. It only flags; nothing stops the session.
+            let over = CostBudget.note(s.costUsd)
+            let c = chip(cost, tint: over == nil ? NSColor.white.withAlphaComponent(0.6) : IconRenderer.amberDot)
+            c.toolTip = over.map { "\(cost) so far, \($0).\n\n" + CostText.note } ?? CostText.note
             c.setAccessibilityElement(true)
-            c.setAccessibilityLabel("Cost so far \(cost)")
+            c.setAccessibilityLabel("Cost so far \(cost)" + (over.map { ", \($0)" } ?? ""))
             out.append(c)
         }
         if s.entrypoint == "cloud" {

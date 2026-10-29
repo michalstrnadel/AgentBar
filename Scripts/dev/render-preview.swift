@@ -453,6 +453,33 @@ enum RenderPreview {
             render(stack, name: "03m-compacts-soon-menu")
         }
 
+        // Scene 3n: a session over the budget set in Settings ▸ Usage — its cost
+        // chip amber, beside one under it in the usual quiet grey.
+        do {
+            let savedBudget = UserDefaults.standard.object(forKey: CostBudget.key)
+            CostBudget.limit = 5
+            var over = makeSession("budget-over", [
+                "agent": "claude", "state": "thinking", "label": "Thinking…", "project": "billing",
+                "cwd": "/tmp", "sessionId": "budget-over", "pid": 1, "started": true, "ts": now,
+                "started_at": now - 2400, "prompt": "Rewrite the invoice exporter",
+                "model": "claude-opus-5", "term_program": "WarpTerminal",
+            ])
+            over.costUsd = 6.2
+            var under = makeSession("budget-under", [
+                "agent": "claude", "state": "tool", "label": "Running tests", "project": "auth-api",
+                "cwd": "/tmp", "sessionId": "budget-under", "pid": 1, "started": true, "ts": now,
+                "started_at": now - 600, "prompt": "fix the auth bug in middleware",
+                "term_program": "WarpTerminal",
+            ])
+            under.costUsd = 1.4
+            let hero = IslandRowView(session: over, mark: mark(for: "claude"), style: .hero, onClick: { _ in })
+            let c1 = IslandRowView(session: over, mark: mark(for: "claude"), style: .compact, onClick: { _ in })
+            let c2 = IslandRowView(session: under, mark: mark(for: "claude"), style: .compact, onClick: { _ in })
+            renderSlab([sized(hero, rowW), sized(c1, rowW), sized(c2, rowW)], name: "03n-over-budget")
+            print("menu tooltip: " + MenuBuilder.rowToolTip(over).replacingOccurrences(of: "\n", with: " | "))
+            UserDefaults.standard.set(savedBudget, forKey: CostBudget.key)
+        }
+
         // Scene 3h: the rule sheet for a denial that tells the agent why.
         do {
             var prefill = RuleSheet.Prefill(decision: "deny", shape: "bash:npm", cwd: "",
@@ -573,6 +600,29 @@ enum RenderPreview {
                         if let png = rep.representation(using: .png, properties: [:]) {
                             try! png.write(to: URL(fileURLWithPath: outDir).appendingPathComponent("05-settings.png"))
                             print("wrote \(outDir)/05-settings.png (\(Int(size.width))x\(Int(size.height)))")
+                        }
+                    }
+                }
+                w.close()
+            }
+        }
+
+        // Scene 5b: Settings ▸ Usage, where the session budget lives.
+        do {
+            let settings = SettingsWindow.shared
+            settings.show(page: .usage)
+            if let w = (Mirror(reflecting: settings).children.first { $0.label == "window" }?
+                .value as? NSWindow?) ?? nil {
+                w.orderOut(nil)
+                if let content = w.contentView {
+                    let size = w.frame.size
+                    content.frame = NSRect(origin: .zero, size: size)
+                    content.layoutSubtreeIfNeeded()
+                    if let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) {
+                        content.cacheDisplay(in: content.bounds, to: rep)
+                        if let png = rep.representation(using: .png, properties: [:]) {
+                            try! png.write(to: URL(fileURLWithPath: outDir).appendingPathComponent("05b-settings-usage.png"))
+                            print("wrote \(outDir)/05b-settings-usage.png")
                         }
                     }
                 }

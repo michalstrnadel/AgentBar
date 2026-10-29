@@ -121,6 +121,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var personalityBox: NSSwitch!
     private var screenshotBox: NSSwitch!
     private var quietPopup: NSPopUpButton!
+    private var budgetField: NSTextField!
     private var modBandBox: NSSwitch!
     private var diagnostics: DiagnosticsView!
     private var configChangesButton: NSButton!
@@ -370,6 +371,17 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         quietPopup.translatesAutoresizingMaskIntoConstraints = false
         quietPopup.widthAnchor.constraint(equalToConstant: 84).isActive = true
         modBandBox = SettingsChrome.toggle(target: self, action: #selector(toggleModBand))
+        budgetField = NSTextField(string: "")
+        budgetField.controlSize = .small
+        budgetField.font = .monospacedDigitSystemFont(ofSize: NSFont.smallSystemFontSize, weight: .regular)
+        budgetField.alignment = .right
+        budgetField.placeholderString = "off"
+        budgetField.target = self
+        budgetField.action = #selector(budgetChanged)
+        (budgetField.cell as? NSTextFieldCell)?.sendsActionOnEndEditing = true
+        budgetField.setAccessibilityLabel("Session budget in dollars")
+        budgetField.translatesAutoresizingMaskIntoConstraints = false
+        budgetField.widthAnchor.constraint(equalToConstant: 64).isActive = true
         autoUpdateBox = SettingsChrome.toggle(target: self, action: #selector(toggleAutoUpdate))
 
         enableBox = SettingsChrome.toggle(target: self, action: #selector(toggleEnabled))
@@ -655,6 +667,15 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                 ]),
                 SettingsChrome.header("Codex and Copilot need none of this — both are read "
                                       + "off this Mac."),
+                SettingsChrome.card([
+                    // Titled alone, like the quiet flag: the field is wider than the
+                    // switch the caption column leaves room for.
+                    SettingsChrome.row("Flag a session that has cost more than",
+                                       control: budgetFieldRow()),
+                    SettingsChrome.noteRow(SettingsChrome.caption(
+                        "Its cost chip turns amber and says so. It only flags — the session "
+                        + "carries on. Claude Code only, at API prices. Empty is off.")),
+                ]),
             ])
         case .approvals:
             add([
@@ -860,6 +881,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         personalityBox.state = MascotPersonality.Prefs.enabled ? .on : .off
         screenshotBox.state = ScreenshotShelf.enabled ? .on : .off
         quietPopup.selectItem(withTag: QuietWatch.minutes)
+        budgetField.stringValue = CostBudget.limit.map { String(CostBudget.amount($0).dropFirst()) } ?? ""
         modBandBox.state = ModBandPrefs.isOn() ? .on : .off
         autoUpdateBox.state = UpdateChecker.shared.autoUpdate ? .on : .off
         claudeQuotaBox.state = ClaudeQuota.enabled ? .on : .off
@@ -1423,6 +1445,26 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
     @objc private func quietChanged() {
         QuietWatch.minutes = quietPopup.selectedTag()
+        onChange?()
+    }
+
+    /// "$ [  5 ]": the field with its currency in front, so the field holds a number.
+    private func budgetFieldRow() -> NSView {
+        let dollar = NSTextField(labelWithString: "$")
+        dollar.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        dollar.textColor = .secondaryLabelColor
+        let row = NSStackView(views: [dollar, budgetField])
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 4
+        return row
+    }
+
+    /// Whatever was typed, read as a budget or as off — and written back the way it
+    /// was understood, so "abc" turns into an empty field rather than staying there.
+    @objc private func budgetChanged() {
+        CostBudget.limit = CostBudget.parse(budgetField.stringValue)
+        budgetField.stringValue = CostBudget.limit.map { String(CostBudget.amount($0).dropFirst()) } ?? ""
         onChange?()
     }
 
