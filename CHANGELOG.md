@@ -9,8 +9,8 @@ All notable changes to AgentBar are documented here. This project follows
 
 - **Clawd is alive.** While a session waits on you he looks toward its terminal
   window; he walks faster when an agent is busy and stops to think when it stalls;
-  three failed tool calls in a row make him sweat, a turn ending in an error makes
-  him sad for a moment; test runs get their own label ("Running tests") and a test
+  three failed tool calls in a row make him sweat, a turn ending in an error or a
+  subagent failing makes him sad for a moment; test runs get their own label ("Running tests") and a test
   tube; a backpack on the pill fills as the context nears compaction.
 - **The comeback.** Tests going red to green, or a pull request opened, is the one
   thing Clawd celebrates — a hop and a little confetti in the island, once, never
@@ -38,7 +38,8 @@ All notable changes to AgentBar are documented here. This project follows
   in Your Day, and an amber chip on both live rows ("also edited by Codex · 3m"),
   in the island and in `agentbar status`.
 - **New on the card:** the high score (most agents at once), the longest hands-off
-  stretch, and two personas — the Night-Shift Conductor and Hands-Off.
+  stretch, and three personas — the Night-Shift Conductor, Hands-Off and the Comeback Kid
+  (tests back to green, or pull requests opened, three times or more).
 - `history.jsonl` keeps what a session cost (`costUsd`); the Claude Code hook
   writes `fails`, `tests`, `comeback` and `edits` (docs/protocol.md) and listens to
   `PostToolUseFailure` from Claude Code 2.1.119.
