@@ -27,6 +27,35 @@ check "allow decision on stdout"    'grep -q "\"behavior\":\"allow\"" "$HOME/out
 check "request cleaned up"          '[ ! -e "$HOME/.agentbar/requests.d/$REQ" ]'
 check "answer cleaned up"           '[ ! -e "$HOME/.agentbar/answers.d/$REQ" ]'
 
+# 1c. a MultiEdit sends the edits after the first; a Write says whether it makes
+# the file or replaces it, and how long each is
+fresh_home
+printf 'one\ntwo\nthree\n' > "$HOME/existing.txt"
+ME_EVENT='{"session_id":"testsess","prompt_id":"p1e","tool_name":"MultiEdit","tool_input":{"file_path":"/x.swift","edits":[{"old_string":"a","new_string":"b"},{"old_string":"c","new_string":"d","replace_all":true}]}}'
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=$ANSWER_TIMEOUT "$NODE" "$HOOK" <<<"$ME_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+check "multiedit context carries the rest" 'grep -q "\"rest\":\[{\"old\":\"c\",\"new\":\"d\"}\]" "$HOME/.agentbar/requests.d/$REQ" && grep -q "\"all\":true" "$HOME/.agentbar/requests.d/$REQ"'
+printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+fresh_home
+printf 'one\ntwo\nthree\n' > "$HOME/existing.txt"
+W_EVENT='{"session_id":"testsess","prompt_id":"p1f","tool_name":"Write","tool_input":{"file_path":"'"$HOME"'/existing.txt","content":"x\ny"}}'
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=$ANSWER_TIMEOUT "$NODE" "$HOOK" <<<"$W_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+check "write over a file says how long it was" 'grep -q "\"lines\":2,\"exists\":true,\"oldLines\":3" "$HOME/.agentbar/requests.d/$REQ"'
+printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+fresh_home
+W_EVENT='{"session_id":"testsess","prompt_id":"p1g","tool_name":"Write","tool_input":{"file_path":"'"$HOME"'/new.txt","content":"x"}}'
+AGENTBAR_FORCE_APP=1 AGENTBAR_APPROVAL_TIMEOUT=$ANSWER_TIMEOUT "$NODE" "$HOOK" <<<"$W_EVENT" >"$HOME/out.json" &
+hookpid=$!
+wait_req
+check "write of a new file says so" 'grep -q "\"lines\":1,\"exists\":false" "$HOME/.agentbar/requests.d/$REQ"'
+printf '{"behavior":"deny"}' > "$HOME/.agentbar/answers.d/$REQ"
+wait "$hookpid"
+
 # 1b. the agent's own description rides along in the bash context; none, none written
 fresh_home
 DESC_EVENT='{"session_id":"testsess","prompt_id":"p1d","tool_name":"Bash","tool_input":{"command":"swift test","description":"Run the test suite"}}'

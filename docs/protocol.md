@@ -230,6 +230,14 @@ command (Claude Code's `tool_input.description`), capped at 200 chars. A writer
 MUST omit it when the agent sent none and MUST NOT compose one; a reader shows it
 above the command as the agent's words and never treats it as what will run.
 
+A `diff` context MAY carry `rest`: the edits after the first of a `MultiEdit`, as
+`[{old, new}]`, at most 4, each side capped at 600 chars (`more` still counts every
+edit after the first), and `all: true` when any edit replaces every occurrence
+(`replace_all`). A `write` context MAY carry `lines` (the new content's line
+count), `exists` (whether a regular file is already there; omitted when the writer
+could not tell) and `oldLines` (that file's line count, only for one under 2 MB).
+A reader shows what it was given and never infers the rest.
+
 `kind:"plan"` marks a **plan review** (Claude's `ExitPlanMode`): `plan` is the
 plan markdown, capped at 8 000 chars. The plan dialog renders in the terminal
 alongside the hook's wait (like the question wizard). `deny` becomes a

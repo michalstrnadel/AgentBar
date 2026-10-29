@@ -121,19 +121,56 @@ function buildContext(tool, input) {
     if (typeof i.description === "string" && i.description.trim()) c.description = cap(i.description, 200);
     return c;
   }
-  if (t === "Edit") return { kind: "diff", old: cap(i.old_string, 1500), new: cap(i.new_string, 1500), more: 0 };
-  if (t === "MultiEdit") {
-    const edits = Array.isArray(i.edits) ? i.edits : [];
-    const first = edits[0] || {};
-    return { kind: "diff", old: cap(first.old_string, 1500), new: cap(first.new_string, 1500),
-             more: Math.max(0, edits.length - 1) };
+  if (t === "Edit") {
+    const c = { kind: "diff", old: cap(i.old_string, 1500), new: cap(i.new_string, 1500), more: 0 };
+    // Every occurrence, not one: the card has to say so, or a one-line diff
+    // approves a rename across the whole file.
+    if (i.replace_all === true) c.all = true;
+    return c;
   }
-  if (t === "Write") return { kind: "write", preview: cap(i.content, 1200) };
+  if (t === "MultiEdit") {
+    const edits = Array.isArray(i.edits) ? i.edits.filter((e) => e && typeof e === "object") : [];
+    const first = edits[0] || {};
+    const c = { kind: "diff", old: cap(first.old_string, 1500), new: cap(first.new_string, 1500),
+                more: Math.max(0, edits.length - 1) };
+    // The edits after the first, so the card can show them too — four more,
+    // smaller; `more` still counts all of them.
+    const rest = edits.slice(1, 5).map((e) => ({ old: cap(e.old_string, 600), new: cap(e.new_string, 600) }));
+    if (rest.length) c.rest = rest;
+    if (edits.some((e) => e.replace_all === true)) c.all = true;
+    return c;
+  }
+  if (t === "Write") return { kind: "write", preview: cap(i.content, 1200), ...writeTarget(i) };
   if (t === "AskUserQuestion") return { kind: "question", questions: cappedQuestions(i) };
   // The plan is the whole point of an ExitPlanMode request — carry it, so the
   // island can show the full text. Allow approves the plan; deny keeps planning.
   if (t === "ExitPlanMode") return { kind: "plan", plan: cap(i.plan, 8000) };
   return null;
+}
+
+// Whether a Write makes a file or replaces one, and how long each is: "new file ·
+// 42 lines" and "replaces 120 lines with 42" are different requests. Only a
+// regular file under 2 MB is measured; anything else is left unsaid, never guessed.
+function writeTarget(i) {
+  const out = { lines: lineCount(String(i.content == null ? "" : i.content)) };
+  const f = typeof i.file_path === "string" ? i.file_path : "";
+  if (!f || !path.isAbsolute(f)) return out;
+  try {
+    const st = fs.statSync(f);
+    if (!st.isFile()) return out;
+    out.exists = true;
+    if (st.size <= 2 * 1024 * 1024) out.oldLines = lineCount(fs.readFileSync(f, "utf8"));
+  } catch (e) {
+    if (e && e.code === "ENOENT") out.exists = false;
+  }
+  return out;
+}
+
+function lineCount(s) {
+  if (!s) return 0;
+  let n = 1;
+  for (let k = 0; k < s.length; k++) if (s.charCodeAt(k) === 10) n++;
+  return s.endsWith("\n") ? n - 1 : n;
 }
 
 // The tool allows up to 4 questions of up to 4 options; cap defensively anyway so a

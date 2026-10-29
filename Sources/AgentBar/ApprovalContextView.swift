@@ -83,25 +83,37 @@ final class ApprovalContextView: NSView {
 
     // MARK: - Content
 
+    /// The lines as text, for tests.
+    static func texts(for context: ApprovalRequest.Context) -> [String] { lines(for: context).map(\.text) }
+
     private static func lines(for context: ApprovalRequest.Context) -> [Line] {
         switch context {
         case .bash(let cmd):
             return take(cmd.split(separator: "\n", omittingEmptySubsequences: false).map(String.init),
                         max: 5, kind: .plain)
-        case .write(let preview):
-            return take(preview.split(separator: "\n", omittingEmptySubsequences: false).map(String.init),
-                        max: 5, kind: .plain)
-        case .diff(let old, let new, let more):
-            var out = LineDiff.rows(old: splitNonEmpty(old), new: splitNonEmpty(new),
-                                    context: 1, limit: 10).map { row -> Line in
-                switch row.kind {
-                case .add:  return Line(text: row.text, kind: .add, emphasis: row.emphasis)
-                case .del:  return Line(text: row.text, kind: .del, emphasis: row.emphasis)
-                case .same: return Line(text: row.text, kind: .plain)
-                case .gap:  return Line(text: row.text, kind: .gap)
-                }
+        case .write(let preview, let target):
+            var out = take(preview.split(separator: "\n", omittingEmptySubsequences: false).map(String.init),
+                           max: 5, kind: .plain)
+            // Whether this makes a file or replaces one is the first thing to know.
+            if let target { out.insert(Line(text: target.text, kind: .gap), at: 0) }
+            return out
+        case .diff(let old, let new, let more, let rest, let all):
+            // Every edit the hook sent, one after another, under one row budget:
+            // a MultiEdit used to show its first edit and "+4 more edits".
+            var out: [Line] = []
+            if all { out.append(Line(text: "every occurrence in the file", kind: .gap)) }
+            let edits = [ApprovalRequest.Context.Edit(old: old, new: new)] + rest
+            let budget = rest.isEmpty ? 10 : 16
+            var shown = 0
+            for (n, e) in edits.enumerated() {
+                let left = budget - out.count
+                guard n == 0 || left > 2 else { break }
+                if edits.count > 1 { out.append(Line(text: "edit \(n + 1) of \(more + 1)", kind: .gap)) }
+                out += diffLines(old: e.old, new: e.new, limit: left - (edits.count > 1 ? 1 : 0))
+                shown += 1
             }
-            if more > 0 { out.append(Line(text: "+\(more) more edit\(more == 1 ? "" : "s")", kind: .plain)) }
+            let unseen = more + 1 - shown
+            if unseen > 0 { out.append(Line(text: "+\(unseen) more edit\(unseen == 1 ? "" : "s")", kind: .plain)) }
             return out.isEmpty ? [Line(text: "(no change)", kind: .plain)] : out
         case .question(let qs):
             // Questions render their own answerable cards; this fallback only
@@ -111,6 +123,18 @@ final class ApprovalContextView: NSView {
             // A taste of the plan; the island card renders the whole thing.
             return take(splitNonEmpty(text), max: 8, kind: .plain)
         }
+    }
+
+    private static func diffLines(old: String, new: String, limit: Int) -> [Line] {
+        LineDiff.rows(old: splitNonEmpty(old), new: splitNonEmpty(new), context: 1, limit: max(1, limit))
+            .map { row -> Line in
+                switch row.kind {
+                case .add:  return Line(text: row.text, kind: .add, emphasis: row.emphasis)
+                case .del:  return Line(text: row.text, kind: .del, emphasis: row.emphasis)
+                case .same: return Line(text: row.text, kind: .plain)
+                case .gap:  return Line(text: row.text, kind: .gap)
+                }
+            }
     }
 
     private static func splitNonEmpty(_ s: String) -> [String] {

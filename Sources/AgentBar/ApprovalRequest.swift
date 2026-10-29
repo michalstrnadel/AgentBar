@@ -44,10 +44,37 @@ struct ApprovalRequest {
     /// What's being approved, in enough detail to render inline without the terminal.
     enum Context {
         case bash(String)                              // full command
-        case diff(old: String, new: String, more: Int) // Edit/MultiEdit (more = extra edits)
-        case write(String)                             // Write content preview
+        /// Edit/MultiEdit: the first edit, how many more, the next few of them, and
+        /// whether any replaces every occurrence rather than one.
+        case diff(old: String, new: String, more: Int, rest: [Edit] = [], all: Bool = false)
+        case write(String, target: WriteTarget? = nil) // Write content preview
         case question([Question])                      // AskUserQuestion — answerable in place
         case plan(String)                              // ExitPlanMode — the plan markdown
+
+        struct Edit: Equatable {
+            let old: String
+            let new: String
+        }
+
+        /// What a Write does to the file it names: makes it, or replaces how much.
+        struct WriteTarget: Equatable {
+            /// Nil when the hook could not tell.
+            var exists: Bool?
+            var oldLines: Int?
+            var lines: Int
+
+            /// "new file · 42 lines", "replaces 120 lines with 42".
+            var text: String {
+                let n = "\(lines) line\(lines == 1 ? "" : "s")"
+                switch exists {
+                case false?: return "new file · \(n)"
+                case true?:
+                    if let old = oldLines { return "replaces \(old) line\(old == 1 ? "" : "s") with \(lines)" }
+                    return "overwrites the file · \(n)"
+                case nil: return n
+                }
+            }
+        }
 
         /// One AskUserQuestion entry, options included, so a frontend can offer
         /// the same choices the terminal wizard does.
@@ -134,8 +161,19 @@ struct ApprovalRequest {
         case "bash":  return .bash(c["command"] as? String ?? "")
         case "diff":  return .diff(old: c["old"] as? String ?? "",
                                    new: c["new"] as? String ?? "",
-                                   more: c["more"] as? Int ?? 0)
-        case "write": return .write(c["preview"] as? String ?? "")
+                                   more: c["more"] as? Int ?? 0,
+                                   rest: (c["rest"] as? [[String: Any]] ?? []).prefix(4).map {
+                                       Context.Edit(old: $0["old"] as? String ?? "", new: $0["new"] as? String ?? "")
+                                   },
+                                   all: c["all"] as? Bool ?? false)
+        case "write":
+            let lines = (c["lines"] as? NSNumber)?.intValue
+            let target = lines.map {
+                Context.WriteTarget(exists: c["exists"] as? Bool,
+                                    oldLines: ((c["oldLines"] as? NSNumber)?.intValue).map { max(0, $0) },
+                                    lines: max(0, $0))
+            }
+            return .write(c["preview"] as? String ?? "", target: target)
         case "question":
             let qs = (c["questions"] as? [[String: Any]] ?? []).map { q in
                 Context.Question(

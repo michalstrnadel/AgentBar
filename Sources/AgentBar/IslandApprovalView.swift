@@ -415,14 +415,17 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
     /// itself already ends with "+N more edits" when truncated, so only the line
     /// counts live here.
     private static func diffSummary(_ context: ApprovalRequest.Context) -> NSView? {
-        guard case .diff(let old, let new, _) = context else { return nil }
+        guard case .diff(let old, let new, _, let rest, _) = context else { return nil }
         // What actually moved. Counting the whole old and new blocks reported a
         // one-character edit inside an eight-line window as "+8 −8", which is a
         // number somebody would repeat.
         func lines(_ s: String) -> [String] {
             s.isEmpty ? [] : s.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         }
-        let count = LineDiff.counts(old: lines(old), new: lines(new))
+        // Summed over every edit the card shows, not just the first.
+        let count = ([ApprovalRequest.Context.Edit(old: old, new: new)] + rest)
+            .map { LineDiff.counts(old: lines($0.old), new: lines($0.new)) }
+            .reduce((added: 0, removed: 0)) { ($0.added + $1.added, $0.removed + $1.removed) }
         let out = NSMutableAttributedString(string: "+\(count.added)", attributes: [
             .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold),
             .foregroundColor: NSColor.systemGreen,
