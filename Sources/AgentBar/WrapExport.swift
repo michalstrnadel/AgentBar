@@ -31,7 +31,17 @@ enum WrapExport {
     /// calling queue with 0…1.
     static func writeMP4(_ wrap: DayWrap, to url: URL, shape: Shape = .story, fps: Int = 30,
                          progress: (Double) -> Void = { _ in }) throws {
-        let size = shape.pixels
+        try writeMP4(to: url, size: shape.pixels, seconds: movingSeconds, fps: fps, progress: progress) { t, size, ctx in
+            WrapRenderer.draw(at: t, wrap: wrap, size: size, in: ctx)
+        }
+    }
+
+    /// Any deterministic drawing as an H.264 MP4: `draw` is called once per frame
+    /// with its time, into a flipped context. The card and a replay both go
+    /// through here.
+    static func writeMP4(to url: URL, size: CGSize, seconds: Double, fps: Int = 30,
+                         progress: (Double) -> Void = { _ in },
+                         draw: (Double, CGSize, CGContext) -> Void) throws {
         try? FileManager.default.removeItem(at: url)
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
@@ -53,7 +63,7 @@ enum WrapExport {
         guard writer.startWriting() else { throw writer.error ?? ExportError("the video writer did not start") }
         writer.startSession(atSourceTime: .zero)
 
-        let total = Int(movingSeconds * Double(fps))
+        let total = Int(seconds * Double(fps))
         for n in 0..<total {
             while !input.isReadyForMoreMediaData { Thread.sleep(forTimeInterval: 0.002) }
             guard let pool = adaptor.pixelBufferPool else { throw ExportError("no pixel buffer pool") }
@@ -67,9 +77,7 @@ enum WrapExport {
                                    space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                    bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
                                        | CGBitmapInfo.byteOrder32Little.rawValue) {
-                drawFlipped(ctx, size: size) {
-                    WrapRenderer.draw(at: Double(n) / Double(fps), wrap: wrap, size: size, in: ctx)
-                }
+                drawFlipped(ctx, size: size) { draw(Double(n) / Double(fps), size, ctx) }
             }
             CVPixelBufferUnlockBaseAddress(pb, [])
             adaptor.append(pb, withPresentationTime: CMTime(value: CMTimeValue(n), timescale: CMTimeScale(fps)))
@@ -108,6 +116,39 @@ enum WrapExport {
             guard let cg = rep.cgImage else { continue }
             CGImageDestinationAddImage(dest, cg, frame(last ? movingSeconds - WrapRenderer.buildSeconds : 1 / fps))
             progress(Double(n + 1) / Double(building + 1))
+        }
+        guard CGImageDestinationFinalize(dest) else { throw ExportError("the GIF could not be written") }
+    }
+
+    /// Any deterministic drawing as a looping GIF: `frame` gives the bitmap for a
+    /// moment. A frame that comes out the same as the one before is the one before
+    /// shown for longer. Flat pixel art needs no dither; a fade does.
+    static func writeGIF(to url: URL, seconds: Double, fps: Double = 15, dither shouldDither: Bool = false,
+                         progress: (Double) -> Void = { _ in },
+                         frame: (Double) -> NSBitmapImageRep?) throws {
+        let count = max(1, Int(seconds * fps))
+        var images: [(image: CGImage, delay: Double)] = []
+        var lastBytes: Data?
+        for n in 0..<count {
+            guard let rep = frame(Double(n) / fps) else { continue }
+            if shouldDither { dither(rep) }
+            let bytes = rep.bitmapData.map { Data(bytes: $0, count: rep.bytesPerRow * rep.pixelsHigh) }
+            if let bytes, bytes == lastBytes, !images.isEmpty {
+                images[images.count - 1].delay += 1 / fps
+            } else if let cg = rep.cgImage {
+                images.append((cg, 1 / fps))
+                lastBytes = bytes
+            }
+            progress(Double(n + 1) / Double(count))
+        }
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString,
+                                                         images.count, nil)
+        else { throw ExportError("the GIF could not be created") }
+        CGImageDestinationSetProperties(dest, [kCGImagePropertyGIFDictionary:
+            [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        for (cg, delay) in images {
+            CGImageDestinationAddImage(dest, cg, [kCGImagePropertyGIFDictionary:
+                [kCGImagePropertyGIFDelayTime: delay, kCGImagePropertyGIFUnclampedDelayTime: delay]] as CFDictionary)
         }
         guard CGImageDestinationFinalize(dest) else { throw ExportError("the GIF could not be written") }
     }

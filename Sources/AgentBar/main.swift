@@ -238,6 +238,16 @@ if let i = CommandLine.arguments.firstIndex(of: "--render-wrap"),
                                           receipt: args.contains("--receipt")) ? 0 : 1)
 }
 
+// A replay of a made-up turn: frames, both shapes, a GIF (and an MP4 with
+// --video), and the window's replay pane. Offscreen; only --demo exists, since a
+// real turn's words are not something to leave in a folder by accident.
+if let i = CommandLine.arguments.firstIndex(of: "--render-replay"),
+   CommandLine.arguments.indices.contains(i + 1), CommandLine.arguments.contains("--demo") {
+    _ = NSApplication.shared
+    exit(ReplayExport.renderForVerification(to: URL(fileURLWithPath: CommandLine.arguments[i + 1]),
+                                            video: CommandLine.arguments.contains("--video")) ? 0 : 1)
+}
+
 // Silent verification of the synthesized cues (offline render, writes WAVs and
 // asserts audibility/headroom). MUST run before the kill-other-copies loop below,
 // or checking the sounds would terminate the user's live AgentBar.
