@@ -935,7 +935,10 @@ OUT="$(AGENTBAR_NOW=1790100000 "$CLI" unwire copilot opencode 2>&1)"
 check "unwire copilot deletes our file"     '[ ! -e "$HOME/.copilot/hooks/agentbar.json" ] && [ "$(cat "$HOME/.copilot/hooks/mine.json")" = "{\"version\":1,\"hooks\":{}}" ]'
 check "unwire copilot keeps it first"       'ls "$HOME/.copilot/hooks" | grep -q "^agentbar\.json\.agentbar-bak-20" && ! ls "$HOME/.copilot/hooks" | grep "agentbar-bak" | grep -q "\.json$"'
 check "unwire opencode deletes the plugin"  '[ ! -e "$HOME/.config/opencode/plugins/agentbar.js" ] && ls "$HOME/.config/opencode/plugins" | grep -q "^agentbar\.js\.agentbar-bak-"'
-check "unwire prints the removal diff"      'echo "$OUT" | grep -q "^+++ /dev/null"'
+# A here-string, not `echo | grep -q`: the diff of a whole plugin is longer than a
+# pipe holds, grep -q leaves at the first hit, and pipefail turned echo's SIGPIPE
+# into a failure (seen on CI, 1.62.0).
+check "unwire prints the removal diff"      'grep -q "^+++ /dev/null" <<<"$OUT"'
 check "wire-disabled lists all, sorted"     '[ "$(WD | grep -v "^#" | tr "\n" " ")" = "antigravity claude codex copilot cursor gemini opencode qwen " ]'
 check "wire-disabled has the app header"    '[ "$(WD | head -2)" = "$(printf "# Agents AgentBar leaves unwired, one id per line.\n# Written by AgentBar (Settings > Agents) and the agentbar CLI.")" ]'
 check "wire-disabled is 0644"               '[ "$(stat -c %a "$HOME/.agentbar/wire-disabled" 2>/dev/null || stat -f %Lp "$HOME/.agentbar/wire-disabled")" = 644 ]'
