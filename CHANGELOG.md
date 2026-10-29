@@ -3,6 +3,40 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Over the shoulder.** In the open island, the first working Claude Code session
+  shows what it is doing right now: the last few tools it reached for, each with
+  its argument (`Read SessionStore.swift`, `Bash swift test`), and the last thing
+  it said. Read from the end of its own transcript every 1.5 s while the island is
+  open, without rebuilding the panel, so a hold on Allow is never cut short.
+  Settings ▸ General ▸ Show what it's doing right now.
+- **The last hour as a strip.** Under the first row, a thin line shows when that
+  session worked, waited on you and failed over the last hour, as far as AgentBar
+  saw it.
+- **Subagents by name.** With the Claude Code mod, each subagent at work gets its
+  own line under its session: kind, the task in the Agent call's own few words,
+  model and how long it has run (`↳ Explore · find the merge · haiku · 1m`). A
+  subagent whose turn errored or was cancelled is counted in an amber chip.
+- **What a session has cost.** With the mod, a quiet `$1.84` chip on the island and
+  a line in the menu row's tooltip: Claude Code's own figure at API prices (on a
+  subscription it is not what you are billed).
+- **Done, but not quite.** A turn that ended with a shell, subagent or monitor
+  still running in the background, or a wakeup scheduled, says so on its row:
+  "2 still running · shell, subagent · wakes again later".
+- **Every edit of a MultiEdit** is on the card now, up to five, each under its own
+  "edit 2 of 5"; one that replaces every occurrence says so. A **Write** says
+  whether it makes a new file or replaces one, and how long each is: "new file ·
+  42 lines", "replaces 120 lines with 42".
+
+### Changed
+
+- The island moves more like a physical thing: a row that changes place slides
+  there, the pill crossfades its words instead of snapping, and its session count
+  rolls. All of it stays still under Reduce Motion.
+
 ## 1.59.0 - 2026-10-29
 
 ### Added
