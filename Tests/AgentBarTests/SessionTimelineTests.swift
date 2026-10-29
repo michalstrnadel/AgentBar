@@ -40,4 +40,20 @@ import Testing
         t.observe([], now: 10)
         #expect(t.segments.isEmpty)
     }
+
+    @Test func aSteadySessionsStripRunsToNowWithoutAnotherObserve() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("tl-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("s.json")
+        let row: [String: Any] = ["agent": "claude", "state": "tool", "label": "Running", "pid": Int(getpid()),
+                                  "started": true, "ts": 1000]
+        try JSONSerialization.data(withJSONObject: row).write(to: url)
+        let s = try #require(Session(fileURL: url))
+        let t = SessionTimeline()
+        t.observe([s], now: 1000)
+        let strip = t.strip(for: s.id, now: 1000 + 600)
+        #expect(strip.last?.end == 1600)
+        #expect(SessionTimeline.worthShowing(strip))
+    }
 }

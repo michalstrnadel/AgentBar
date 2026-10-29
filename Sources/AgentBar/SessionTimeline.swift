@@ -55,8 +55,16 @@ final class SessionTimeline {
     }
 
     /// The segments inside the window ending `now`, clipped to it.
+    /// The last segment is still going: the store only calls `observe` when a
+    /// session changes, so a session that works steadily for an hour would
+    /// otherwise end its strip at its last change.
     func strip(for session: String, now: TimeInterval = Date().timeIntervalSince1970) -> [Segment] {
-        Self.clip(segments[session] ?? [], now: now)
+        var list = segments[session] ?? []
+        if var last = list.last, last.end < now {
+            last.end = now
+            list[list.count - 1] = last
+        }
+        return Self.clip(list, now: now)
     }
 
     static func clip(_ list: [Segment], now: TimeInterval) -> [Segment] {
