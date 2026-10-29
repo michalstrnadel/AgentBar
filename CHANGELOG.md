@@ -3,10 +3,28 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## 1.64.0 - 2026-10-29
 
 ### Added
 
+- **Clawd is alive.** While a session waits on you he looks toward its terminal
+  window; he walks faster when an agent is busy and stops to think when it stalls;
+  three failed tool calls in a row make him sweat, a turn ending in an error makes
+  him sad for a moment; test runs get their own label ("Running tests") and a test
+  tube; a backpack on the pill fills as the context nears compaction.
+- **The comeback.** Tests going red to green, or a pull request opened, is the one
+  thing Clawd celebrates — a hop and a little confetti in the island, once, never
+  on an ordinary finish, and never with Reduce Motion on.
+- **Replay.** Right-click a Claude Code session ▸ **Replay Last Turn…** (or Your
+  Day's Share menu ▸ **Replay the Longest Run…**): the turn plays back as a small
+  level — a station per step, pits for errors, a gate where it waited on you, a
+  flag at the end — and saves as an image, video or GIF. What it said stays out
+  unless you include it.
+- **The office.** The island's ⋯ ▸ **Office…** opens every session at its own desk:
+  who is working, who is done, subagents beside their desk, and a raised hand on the
+  one waiting on you. A desk click goes to that terminal; a raised hand opens its
+  request and answers nothing. It stays open when a desk starts waiting — the hand
+  is the signal.
 - **Your Day has a month.** A third range, the last thirty days (`agentbar://month`),
   and a week or a month is now a skyline: a flat column a day, stacked in the
   agents' colours, with your prompts as dots on the roofs.
@@ -21,7 +39,9 @@ All notable changes to AgentBar are documented here. This project follows
   in the island and in `agentbar status`.
 - **New on the card:** the high score (most agents at once), the longest hands-off
   stretch, and two personas — the Night-Shift Conductor and Hands-Off.
-- `history.jsonl` keeps what a session cost (`costUsd`).
+- `history.jsonl` keeps what a session cost (`costUsd`); the Claude Code hook
+  writes `fails`, `tests`, `comeback` and `edits` (docs/protocol.md) and listens to
+  `PostToolUseFailure` from Claude Code 2.1.119.
 
 ## 1.63.0 - 2026-10-29
 

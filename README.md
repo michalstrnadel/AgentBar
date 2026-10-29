@@ -46,6 +46,11 @@ do, or a rule you wrote yourself, and every answer is written down.
 | Drag a screenshot or a file onto a session in the island | Its path lands in that agent's prompt — pasted into the right tab, never with Return |
 | Let a quota window run hot | The meter says when it runs out at this pace — "out ~15:40" — when that is before it resets |
 | Right-click a session in the island | **Continue in** another agent: the launcher opens in the same project with a prompt that says where the work got to — Return is still yours |
+| Fail a test, then fix it | Clawd sweats through the failures and celebrates the comeback — once, a hop and a little confetti |
+| Let a session wait on you while you're in another window | Clawd looks toward the terminal that needs you |
+| The island's ⋯ ▸ **Office…** | Every session at its desk; the one waiting on you raises a hand. Click a desk to go there |
+| Right-click a Claude Code session ▸ **Replay Last Turn…** | The turn plays back as a little level — errors are pits, waits are gates — and saves as a GIF or video |
+| **Your Day ▸ Share ▸ Save Receipt…** | The day, week or month as a till slip: tool calls, what you approved and denied, what auto mode stopped, the riskiest stopped command, the cost |
 | `open agentbar://focus` from Shortcuts or Raycast | Jumps to the session waiting on you — and no link can approve or deny anything |
 
 **What it covers.** Agents: Claude Code and Claude Cowork, Codex, Cursor CLI, Gemini

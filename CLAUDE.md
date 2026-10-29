@@ -45,8 +45,11 @@ open "build/AgentBar.app"
    `via: "phone"` — a click made elsewhere, not a rule 3 exception.
    Windows are the exception, not the pattern: only `WelcomeWindow`,
    `SettingsWindow` and `WrapWindow` (Your Day), all small, all opened by the user —
-   Your Day from a menu row or an `agentbar://day|week` link, never on a schedule:
-   a recap nobody asked for is a window unfolding on its own. `UpdatePrompt`
+   Your Day from a menu row or an `agentbar://day|week|month` link, never on a
+   schedule: a recap nobody asked for is a window unfolding on its own. A
+   **Replay** (`ReplayTurn`, `WrapWindow+Replay`) plays inside that same window and
+   only from a click — a row's **Replay Last Turn…** or Your Day's Share menu —
+   never from a link or a turn ending. `UpdatePrompt`
    answers a click on **Check for Updates…** (the click closes the menu that would
    have shown the answer) and nothing else: the daily check and the automatic
    install never open it. Settings is a
