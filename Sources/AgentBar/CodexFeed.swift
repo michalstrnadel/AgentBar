@@ -142,7 +142,7 @@ enum CodexFeed {
     static func read(_ s: Session) -> [Item] {
         let id = s.id.hasPrefix("codex-") ? String(s.id.dropFirst(6)) : s.id
         guard !id.isEmpty, let url = rollout(id),
-              let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+              let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
         else { return [] }
         if let hit = cache[url.path], hit.mtime == mtime { return hit.items }
         let items = Self.items(LiveFeed.tail(url, bytes: tailBytes))
@@ -150,7 +150,7 @@ enum CodexFeed {
         return items
     }
 
-    private static func rollout(_ id: String) -> URL? {
+    static func rollout(_ id: String) -> URL? {
         if let known = located[id] {
             if let url = known.url, FileManager.default.fileExists(atPath: url.path) { return url }
             if known.url == nil, Date().timeIntervalSince(known.at) < 30 { return nil }
