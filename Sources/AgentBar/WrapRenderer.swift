@@ -67,7 +67,8 @@ enum WrapRenderer {
             empty(f, y: y + (f.square ? 40 : 80) * f.u)
         } else {
             y = hero(f, y: y + (f.square ? 34 : 64) * f.u)
-            y = chart(f, y: y + (f.square ? 34 : 70) * f.u)
+            y = f.w.range == .today ? chart(f, y: y + (f.square ? 34 : 70) * f.u)
+                : skyline(f, y: y + (f.square ? 34 : 70) * f.u)
             rows(f, y: y + (f.square ? 26 : 56) * f.u)
         }
         footer(f)
@@ -91,18 +92,18 @@ enum WrapRenderer {
     /// The numbers are still being read: one quiet line, nothing that looks like
     /// a result.
     private static func adding(_ f: Frame, y: CGFloat) {
-        S.text("Adding up \(f.w.range == .today ? "your day" : "your week")…",
+        S.text("Adding up \(f.w.range.title.lowercased())…",
                S.font(36 * f.u, .regular), S.secondary, x: f.m, y: y, width: f.inner, lineHeight: 1.3, alpha: 1)
     }
 
     private static func empty(_ f: Frame, y: CGFloat) {
         let w = f.w
         let a = f.a(0.15, 0.7)
-        let h = S.text(w.range == .today ? "A quiet day." : "A quiet week.",
+        let h = S.text("A quiet \(w.range == .today ? "day" : w.range == .week ? "week" : "month").",
                        S.font((f.square ? 110 : 140) * f.u, .semibold), S.ink, x: f.m, y: y + f.rise(a, 30),
                        width: f.inner, tracking: -30, lineHeight: 1.0, alpha: CGFloat(a))
         let b = f.a(0.4)
-        S.text("Nothing has finished yet \(w.range == .today ? "today" : "this week"). "
+        S.text("Nothing has finished yet \(w.range.phrase). "
                + "Come back when your agents have worked.",
                S.font(36 * f.u, .regular), S.secondary,
                x: f.m, y: y + h + 24 * f.u + f.rise(b, 20), width: f.inner, lineHeight: 1.3, alpha: CGFloat(b))
@@ -245,6 +246,182 @@ enum WrapRenderer {
         return ly + (seen.isEmpty && maxYou == 0 ? 0 : 40 * f.u) + (f.square ? 10 : 30) * f.u
     }
 
+    // MARK: Skyline — the shape of a week or a month
+
+    /// A week or a month as a row of buildings: one flat isometric column a day,
+    /// as tall as that day's agent time and stacked in the agents' colours, with
+    /// your prompts and answers as dots on the roofs. Three flat tones per colour
+    /// — front, side, roof — and nothing that glows; the columns rise once as the
+    /// card builds, each a beat after the one before, the same at every frame.
+    private static func skyline(_ f: Frame, y: CGFloat) -> CGFloat {
+        let w = f.w
+        let bins = w.bins
+        guard let maxBin = bins.max(), maxBin > 0 else { return y }
+        let month = w.range == .month
+        let n = bins.count
+        let la = f.a(0.6)
+        if !f.square {
+            S.text(month ? "Through the month" : "Through the week", S.font(28 * f.u, .semibold), S.secondary,
+                   x: f.m, y: y, width: f.inner, alpha: CGFloat(la))
+        }
+        let g = Skyline(f: f, n: n)
+        let chartH = (f.square ? 130 : 270) * f.u
+        let top = y + (f.square ? 44 : 104) * f.u
+        let bottom = top + chartH
+        // The tallest column's roof stays clear of the best day's words above it.
+        let tallest = chartH - g.lift - 26 * f.u
+        let best = bins.indices.max { bins[$0] < bins[$1] }
+        let maxYou = w.youBins.max() ?? 0
+
+        S.fill(CGRect(x: f.m, y: bottom, width: f.inner, height: max(1, 2 * f.u)), S.hairline)
+        var roofs: [CGFloat] = Array(repeating: bottom, count: n)
+        for i in 0..<n {
+            let x = g.x(i)
+            let rise = S.easeOut(f.a(0.55 + Double(i) * (month ? 0.025 : 0.08), 0.6))
+            let h = bins[i] > 0 ? max(4 * f.u, tallest * CGFloat(bins[i] / maxBin)) * CGFloat(rise) : 0
+            // An empty day is a lot with nothing on it: its footprint, in hairline.
+            guard h > 0 else {
+                g.roof(x: x, y: bottom, S.hairline.withAlphaComponent(CGFloat(la)))
+                continue
+            }
+            let slices = w.stacks.indices.contains(i) && !w.stacks[i].isEmpty
+                ? w.stacks[i] : [DayWrap.Slice(agent: w.binAgents.indices.contains(i) ? w.binAgents[i] : "",
+                                               seconds: bins[i])]
+            let total = slices.reduce(0) { $0 + $1.seconds }
+            var floor = bottom
+            for s in slices {
+                let sh = h * CGFloat(s.seconds / max(1, total))
+                guard sh > 0.2 else { continue }
+                let c = S.onPaper(s.agent)
+                g.block(x: x, from: floor, to: floor - sh, front: c, side: S.mix(c, S.ink, 0.3))
+                floor -= sh
+            }
+            let roofColour = S.mix(S.onPaper(slices.last?.agent ?? ""), S.paper, 0.4)
+            g.roof(x: x, y: bottom - h, roofColour)
+            roofs[i] = bottom - h
+        }
+        // You, on the roofs: more dots for more of you, in a grid the roof can hold.
+        if maxYou > 0 {
+            for (i, c) in w.youBins.enumerated() where c > 0 {
+                let d = f.a(0.95 + Double(i) * (month ? 0.02 : 0.06), 0.4)
+                guard d > 0 else { continue }
+                let cap = g.cols * g.rows
+                let k = max(1, Int((Double(cap) * (Double(c) / Double(maxYou)).squareRoot()).rounded()))
+                for j in 0..<min(cap, k) {
+                    let u = (CGFloat(j % g.cols) + 0.5) / CGFloat(g.cols)
+                    let v = (CGFloat(j / g.cols) + 0.5) / CGFloat(g.rows)
+                    S.circle(g.onRoof(x: g.x(i), y: roofs[i], u: u, v: v), g.dot * CGFloat(S.easeOut(d)),
+                             S.ink.withAlphaComponent(0.8))
+                }
+            }
+        }
+
+        // The days under the columns: every one in a week, every seventh back
+        // from today in a month.
+        let labelFont = { (b: Bool) in S.font(22 * f.u, b ? .semibold : .regular) }
+        for i in 0..<n where !month || (n - 1 - i) % 7 == 0 {
+            let t = mid(w, i)
+            let l = month ? dayNumber(t) : weekday(t, short: true)
+            S.text(l, labelFont(i == best), i == best ? S.ink : S.tertiary,
+                   x: g.x(i) - 40 * f.u, y: bottom + 14 * f.u, width: g.bw + 80 * f.u, align: .center,
+                   alpha: CGFloat(la))
+        }
+
+        // The best day: one thin line down to its roof, and a few words.
+        if let best, bins[best] > 0 {
+            let d = f.a(1.4, 0.5)
+            let mx = g.x(best) + (g.bw + g.depth) / 2
+            let lineTop = top - 34 * f.u
+            let roof = roofs[best] - g.lift - 6 * f.u
+            if roof > lineTop {
+                S.fill(CGRect(x: mx - 1 * f.u, y: lineTop, width: max(1, 2 * f.u), height: roof - lineTop),
+                       S.ink.withAlphaComponent(0.55 * CGFloat(d)))
+            }
+            let label = "Best day, \(month ? dayName(mid(w, best)) : weekday(mid(w, best), short: false)): "
+                + HistoryDigest.duration(bins[best])
+            let font = S.font(24 * f.u, .medium)
+            let tw = S.measure(label, font).width
+            let left = mx + 12 * f.u + tw <= f.W - f.m
+            S.text(label, font, S.ink, x: left ? mx + 12 * f.u : mx - 12 * f.u - tw, y: lineTop - 6 * f.u,
+                   width: tw + 4 * f.u, alpha: CGFloat(d))
+        }
+
+        // Which colour is whom, and you.
+        var seen: [String] = []
+        for bin in w.stacks { for s in bin where !s.agent.isEmpty && !seen.contains(s.agent) { seen.append(s.agent) } }
+        if seen.isEmpty { for a in w.binAgents where !a.isEmpty && !seen.contains(a) { seen.append(a) } }
+        let ly = bottom + (f.square ? 54 : 70) * f.u
+        legend(f, agents: seen, you: maxYou > 0 ? "You — dots on the roofs" : nil, y: ly, alpha: la)
+        return ly + 40 * f.u + (f.square ? 10 : 30) * f.u
+    }
+
+    /// The skyline's geometry: column width, the gap, how far a column's side
+    /// and roof reach back, and where things sit on a roof.
+    private struct Skyline {
+        let f: Frame
+        let n: Int
+        var gap: CGFloat { (n <= 7 ? 30 : 6) * f.u }
+        /// How deep a column is, as a share of its width.
+        var k: CGFloat { n <= 7 ? 0.36 : 0.5 }
+        var bw: CGFloat { (f.inner - gap * CGFloat(n - 1)) / (CGFloat(n) + k) }
+        var depth: CGFloat { bw * k }
+        /// How far up the back edge is: the roof's slant.
+        var lift: CGFloat { depth * 0.5 }
+        var cols: Int { n <= 7 ? 5 : 1 }
+        var rows: Int { n <= 7 ? 2 : 2 }
+        var dot: CGFloat { (n <= 7 ? 4.5 : 3.2) * f.u }
+        func x(_ i: Int) -> CGFloat { f.m + CGFloat(i) * (bw + gap) }
+
+        /// A point on the roof at `y`: `u` across the front edge, `v` back.
+        func onRoof(x: CGFloat, y: CGFloat, u: CGFloat, v: CGFloat) -> CGPoint {
+            CGPoint(x: x + u * bw + v * depth, y: y - v * lift)
+        }
+
+        /// One storey: its front face and its side, from `from` (lower) up to `to`.
+        func block(x: CGFloat, from: CGFloat, to: CGFloat, front: NSColor, side: NSColor) {
+            S.fill(CGRect(x: x, y: to, width: bw, height: from - to + 0.5), front)
+            let p = NSBezierPath()
+            p.move(to: CGPoint(x: x + bw, y: from))
+            p.line(to: CGPoint(x: x + bw, y: to))
+            p.line(to: CGPoint(x: x + bw + depth, y: to - lift))
+            p.line(to: CGPoint(x: x + bw + depth, y: from - lift))
+            p.close()
+            side.setFill()
+            p.fill()
+        }
+
+        func roof(x: CGFloat, y: CGFloat, _ colour: NSColor) {
+            let p = NSBezierPath()
+            p.move(to: CGPoint(x: x, y: y))
+            p.line(to: CGPoint(x: x + bw, y: y))
+            p.line(to: CGPoint(x: x + bw + depth, y: y - lift))
+            p.line(to: CGPoint(x: x + depth, y: y - lift))
+            p.close()
+            colour.setFill()
+            p.fill()
+        }
+    }
+
+    /// Swatches and names, left to right, as many as fit; then you.
+    private static func legend(_ f: Frame, agents: [String], you: String?, y ly: CGFloat, alpha la: Double) {
+        var lx = f.m
+        let lf = S.font(22 * f.u, .regular)
+        for id in agents.prefix(5) {
+            let name = Agent.byID(id).name
+            let sw = 14 * f.u
+            guard lx + sw + 10 * f.u + S.measure(name, lf).width <= f.W - f.m else { break }
+            S.pill(CGRect(x: lx, y: ly + 5 * f.u, width: sw, height: sw), S.onPaper(id).withAlphaComponent(CGFloat(la)),
+                   radius: 3 * f.u)
+            lx += sw + 10 * f.u
+            S.text(name, lf, S.secondary, x: lx, y: ly, width: 300 * f.u, alpha: CGFloat(la))
+            lx += S.measure(name, lf).width + 28 * f.u
+        }
+        if let you, lx + 24 * f.u + S.measure(you, lf).width <= f.W - f.m {
+            S.circle(CGPoint(x: lx + 7 * f.u, y: ly + 12 * f.u), 7 * f.u, S.ink.withAlphaComponent(0.8 * CGFloat(la)))
+            S.text(you, lf, S.secondary, x: lx + 24 * f.u, y: ly, width: 400 * f.u, alpha: CGFloat(la))
+        }
+    }
+
     // MARK: Rows — the rest of the day
 
     struct Tile {
@@ -276,20 +453,31 @@ enum WrapRenderer {
             out.append(Tile(caption: "Changed", value: "+" + S.grouped(w.linesAdded), detail: detail, color: S.added,
                             second: ("−" + S.grouped(w.linesRemoved), S.removed)))
         }
+        // Trust: what was decided, and what auto mode stopped on its own — beside
+        // your answers, never in the figure: nobody asked you about those.
         let decided = w.waits.answered + w.waits.byRules
-        if decided > 0 {
+        let stopped = w.waits.autoRefused.count
+        if decided > 0 || stopped > 0 {
             var bits: [String] = []
+            if decided > 0, stopped > 0 { bits.append("\(stopped) stopped by auto mode") }
             if w.waits.byRules > 0 { bits.append("\(w.waits.byRules) by your rules") }
-            // Beside your answers, never in the figure: nobody asked you about these.
-            if w.waits.autoRefused.count > 0 { bits.append("auto mode refused \(w.waits.autoRefused.count)") }
             if w.waits.waited >= 60 { bits.append("they waited \(HistoryDigest.duration(w.waits.waited))") }
             else if let fast = w.waits.fastest { bits.append("fastest \(S.shortWait(fast))") }
-            out.append(Tile(caption: "Your answers", value: S.grouped(decided),
-                            detail: bits.joined(separator: ", "), color: S.ink))
+            out.append(Tile(caption: "Trust",
+                            value: decided > 0 ? "\(S.grouped(decided)) answered" : "\(S.grouped(stopped)) stopped",
+                            detail: decided > 0 ? bits.joined(separator: " · ") : "by auto mode", color: S.ink))
         }
         if w.prompts > 0 {
             let at = w.yourBin.map { "most around \(hourLabel(w, $0))" } ?? ""
             out.append(Tile(caption: "Your prompts", value: S.grouped(w.prompts), detail: at, color: S.ink))
+        }
+        if let c = w.crossings.last {
+            let many = w.crossings.count > 1 && !c.path.isEmpty ? " · \(w.crossings.count) in all" : ""
+            // Shared without names, the count stands where the file's name was.
+            let n = w.crossings.count
+            out.append(Tile(caption: "Crossed paths", value: c.path.isEmpty ? (n == 1 ? "once" : "\(n) times") : c.file,
+                            detail: "\(Flyby.who(c.second.agent, c.first.agent)), \(Flyby.apart(c.gap))\(many)",
+                            color: S.ink))
         }
         if let l = w.longest, l.seconds >= 60 {
             out.append(Tile(caption: "Longest run", value: HistoryDigest.duration(l.seconds),
@@ -299,6 +487,16 @@ enum WrapRenderer {
         if let b = w.busiestBin {
             out.append(Tile(caption: w.range == .today ? "Busiest hour" : "Busiest day", value: hourLabel(w, b),
                             detail: "\(HistoryDigest.duration(w.bins[b])) of agent work", color: S.ink))
+        }
+        if w.peak >= 2 {
+            let when = DayWrap.clock(w.peakAt) + (w.range == .today ? "" : ", " + dayName(w.peakAt))
+            out.append(Tile(caption: "High score", value: "\(w.peak) at once", detail: "agents working at \(when)",
+                            color: S.ink))
+        }
+        if w.handsOffLongest >= 15 * 60 {
+            let when = DayWrap.clock(w.handsOffAt) + (w.range == .today ? "" : ", " + dayName(w.handsOffAt))
+            out.append(Tile(caption: "Longest hands-off", value: HistoryDigest.duration(w.handsOffLongest),
+                            detail: "from \(when), nothing from you", color: S.ink))
         }
         if w.keptAwake >= 60 {
             let forAgents = w.keptAwakeForAgents >= w.keptAwake / 2
@@ -374,6 +572,10 @@ enum WrapRenderer {
             if !t.detail.isEmpty, !f.square {
                 let room = right - (f.m + f.inner * 0.34)
                 var d = t.detail
+                // Whole parts first: "answered · 3 stopped by auto mode" loses its
+                // last part before any word is cut.
+                while d.contains(" · "), S.measure(d, detailFont).width > room,
+                      let cut = d.range(of: " · ", options: .backwards) { d = String(d[..<cut.lowerBound]) }
                 while d.count > 4, S.measure(d, detailFont).width > room { d = String(d.dropLast(2)) + "…" }
                 if S.measure(d, detailFont).width <= room { put(d, detailFont, S.tertiary) }
             }
@@ -382,9 +584,14 @@ enum WrapRenderer {
 
     // MARK: Footer
 
-    /// "14:00–15:00" for a day's bin, "Tuesday" for a week's.
+    /// The middle of bin `i`: what a day's name is read at, so a day an hour
+    /// longer or shorter (the clocks changing) is still called by its own name.
+    private static func mid(_ w: DayWrap, _ i: Int) -> TimeInterval { w.binStart(i) + w.binLength / 2 }
+
+    /// "14:00–15:00" for a day's bin, "Tuesday" for a week's, "Tue 14 Oct" for a month's.
     static func hourLabel(_ w: DayWrap, _ i: Int) -> String {
-        guard w.range == .today else { return weekday(w.binStart(i), short: false) }
+        if w.range == .month { return dayName(mid(w, i)) }
+        guard w.range == .today else { return weekday(mid(w, i), short: false) }
         return String(format: "%02d:00–%02d:00", i, (i + 1) % 24)
     }
 
@@ -416,11 +623,27 @@ enum WrapRenderer {
         case .today:
             f.dateFormat = "EEEE, d MMMM"
             return f.string(from: Date(timeIntervalSince1970: w.start))
-        case .week:
+        case .week, .month:
             f.dateFormat = "d MMM"
             return f.string(from: Date(timeIntervalSince1970: w.start)) + " – "
                 + f.string(from: Date(timeIntervalSince1970: w.end))
         }
+    }
+
+    /// "Tue 14 Oct".
+    static func dayName(_ t: TimeInterval) -> String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US")
+        df.dateFormat = "EEE d MMM"
+        return df.string(from: Date(timeIntervalSince1970: t))
+    }
+
+    /// "14".
+    private static func dayNumber(_ t: TimeInterval) -> String {
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "en_US")
+        df.dateFormat = "d"
+        return df.string(from: Date(timeIntervalSince1970: t))
     }
 
     private static func weekday(_ t: TimeInterval, short: Bool) -> String {

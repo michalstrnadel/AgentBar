@@ -82,6 +82,26 @@ seed_session h5 tool $$
 seed_session h5 done $$
 "$CLI" status >/dev/null 2>&1
 check "a CLI line keeps the app's spans" '[ "$(tail -1 "$HOME/.agentbar/history.jsonl" | grep -c "\"spans\":\[\[100,200\]\]")" = 1 ]'
+# And what the session cost (`costUsd`), which only the app reads from the mod.
+fresh_home
+mkdir -p "$HOME/.agentbar"
+printf '{"agent":"claude","sessionId":"h6","state":"done","startedAt":1,"endedAt":2,"costUsd":4.25}\n' > "$HOME/.agentbar/history.jsonl"
+seed_session h6 tool $$
+"$CLI" status >/dev/null 2>&1
+seed_session h6 done $$
+"$CLI" status >/dev/null 2>&1
+check "a CLI line keeps the app's cost" '[ "$(tail -1 "$HOME/.agentbar/history.jsonl" | grep -c "\"costUsd\":4.25")" = 1 ]'
+# Crossed paths (Flyby): two live sessions on one file minutes apart say so on the
+# row; a third on another file does not.
+fresh_home
+T=$(date +%s)
+printf '{"agent":"claude","state":"tool","project":"one","pid":%s,"ts":%s,"edits":[{"path":"/r/Auth.swift","ts":%s}]}' "$$" "$T" "$((T-200))" > "$HOME/.agentbar/state.d/fa.json"
+printf '{"agent":"codex","state":"tool","project":"two","pid":%s,"ts":%s,"edits":[{"path":"/r/auth.swift","ts":%s}]}' "$$" "$T" "$((T-190))" > "$HOME/.agentbar/state.d/fb.json"
+printf '{"agent":"gemini","state":"tool","project":"three","pid":%s,"ts":%s,"edits":[{"path":"/r/Other.swift","ts":%s},{"path":"rel.swift","ts":%s}]}' "$$" "$T" "$((T-190))" "$((T-190))" > "$HOME/.agentbar/state.d/fc.json"
+OUT=$("$CLI" status 2>&1)
+check "flyby: one row says who else edited"   'echo "$OUT" | grep "one" | grep -q "also edited by Codex · 3m"'
+check "flyby: the other row says so too"      'echo "$OUT" | grep "two" | grep -q "also edited by Claude"'
+check "flyby: a row on another file does not" '! echo "$OUT" | grep "three" | grep -q "also edited"'
 # `idle` is where a session waits between turns — not an ending.
 fresh_home
 seed_session h3 tool $$

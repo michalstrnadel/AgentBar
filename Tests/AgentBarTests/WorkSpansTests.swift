@@ -48,6 +48,50 @@ import Testing
         #expect(r.prompts.isEmpty && r.spans.isEmpty)
     }
 
+    /// Every tool call counted by name, and the files the editing ones name —
+    /// read in bytes, and never out of a string the agent wrote.
+    @Test func toolCallsAreTalliedAndEditsCollected() {
+        let edit = #"[{"type":"tool_use","id":"t1","name":"Edit","input":{"file_path":"/r/App/Auth.swift","old_string":"{\"type\":\"tool_use\",\"name\":\"Fake\"}","new_string":"b"}}]"#
+        let two = #"[{"type":"text","text":"x"},{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"ls"}},{"type":"tool_use","id":"t3","name":"Write","input":{"file_path":"/r/App/Néw.swift","content":"\"file_path\":\"/fake\""}}]"#
+        let nb = #"[{"type":"tool_use","id":"t4","name":"NotebookEdit","input":{"notebook_path":"/r/a.ipynb","new_source":"x"}}]"#
+        let rel = #"[{"type":"tool_use","id":"t5","name":"Edit","input":{"file_path":"relative.swift"}}]"#
+        let r = WorkSpans.claude(lines: [
+            line("user", "10:00:00", content: prompt),
+            line("assistant", "10:00:10", content: edit),
+            line("assistant", "10:00:20", content: two),
+            line("assistant", "10:00:30", content: nb),
+            line("assistant", "10:00:40", content: rel),
+            Substring(#"{"type":"assistant","isSidechain":true,"timestamp":"2026-10-07T10:00:50Z","message":{"content":[{"type":"tool_use","id":"t6","name":"Edit","input":{"file_path":"/r/side.swift"}}]}}"#),
+        ])
+        #expect(r.tools == ["Edit": 2, "Bash": 1, "Write": 1, "NotebookEdit": 1])
+        #expect(r.edits.map(\.path) == ["/r/App/Auth.swift", "/r/App/Néw.swift", "/r/a.ipynb"])
+        #expect(r.edits.first?.ts == 1_791_367_210)
+        #expect(r.spans.count == 1)   // the tally does not disturb the stretches
+    }
+
+    /// The scan carries its counts between reads, so a transcript that grew is
+    /// read from where it stopped without counting the old calls twice.
+    @Test func theTallySurvivesAnIncrementalRead() throws {
+        let home = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("ws-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: home) }
+        let cwd = "/tmp/tally-proj"
+        let dir = home.appendingPathComponent(".claude/projects/" + cwd.replacingOccurrences(of: "/", with: "-"))
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("tally.jsonl")
+        let call = #"[{"type":"tool_use","id":"t","name":"Bash","input":{"command":"ls"}}]"#
+        try (String(line("user", "10:00:00", content: prompt)) + "\n"
+             + String(line("assistant", "10:00:10", content: call)) + "\n").write(to: url, atomically: true, encoding: .utf8)
+        guard let first = WorkSpans.claude(sessionId: "tally", cwd: cwd, home: home) else {
+            Issue.record("transcript not found under \(dir.path)"); return
+        }
+        #expect(first.tools["Bash"] == 1)
+        let h = try FileHandle(forWritingTo: url)
+        h.seekToEndOfFile()
+        h.write(Data((String(line("assistant", "10:00:20", content: call)) + "\n").utf8))
+        try h.close()
+        #expect(WorkSpans.claude(sessionId: "tally", cwd: cwd, home: home)?.tools["Bash"] == 2)
+    }
+
     @Test func nearlyTouchingStretchesAreOne() {
         let j = WorkSpans.joined([.init(start: 0, end: 10), .init(start: 25, end: 40), .init(start: 100, end: 110)])
         #expect(j == [.init(start: 0, end: 40), .init(start: 100, end: 110)])

@@ -64,12 +64,12 @@ import Testing
 
     @Test func tilesAreOnlyTheFactsThatExist() {
         let facts = WrapRenderer.tileFacts(wrap).map(\.caption)
-        #expect(Array(facts.prefix(4)) == ["Top agent", "Changed", "Your answers", "Your prompts"])
+        #expect(Array(facts.prefix(5)) == ["Top agent", "Changed", "Trust", "Your prompts", "Crossed paths"])
         var bare = wrap
         bare.changeMeasured = 0
         bare.waits = DayWrap.Waits()
         let left = WrapRenderer.tileFacts(bare).map(\.caption)
-        #expect(!left.contains("Changed") && !left.contains("Your answers"))
+        #expect(!left.contains("Changed") && !left.contains("Trust"))
         #expect(left.first == "Top agent")
     }
 
@@ -95,6 +95,46 @@ import Testing
         let spoken = WrapCardView.spoken(wrap)
         #expect(spoken.contains(wrap.persona.title))
         #expect(spoken.contains("Top agent: Claude"))
+    }
+
+    /// Trust: what was answered, and beside it — never in it — what auto mode
+    /// stopped without asking anybody.
+    @Test func theTrustTileSaysWhatWasStopped() {
+        let tile = WrapRenderer.tileFacts(wrap).first { $0.caption == "Trust" }
+        #expect(tile?.value == "27 answered")
+        #expect(tile?.detail.hasPrefix("3 stopped by auto mode") == true)
+        var onlyStopped = wrap
+        onlyStopped.waits = DayWrap.Waits()
+        onlyStopped.waits.autoRefused.count = 2
+        #expect(WrapRenderer.tileFacts(onlyStopped).first { $0.caption == "Trust" }?.value == "2 stopped")
+    }
+
+    /// A week and a month are a skyline: columns that rise as the card builds,
+    /// in the agents' colours, the same at every frame.
+    @Test func aWeekAndAMonthAreASkyline() throws {
+        let size = CGSize(width: 540, height: 960)
+        for range in [DayWrap.Range.week, .month] {
+            let w = WrapDemo.wrap(range)
+            #expect(w.stacks.count == range.days)
+            #expect(w.stacks.contains { $0.count >= 2 }, "no stacked column in \(range)")
+            let still = try #require(WrapRenderer.bitmap(at: 0, wrap: w, pixels: size, still: true))
+            let rising = try #require(WrapRenderer.bitmap(at: 0.9, wrap: w, pixels: size))
+            #expect(pixels(rising) != pixels(still))
+            // The tallest column is Claude's colour at its foot, on the still card.
+            let claude = WrapStyle.onPaper("claude").usingColorSpace(.sRGB)!
+            var found = false
+            for x in stride(from: 40, to: 500, by: 3) {
+                guard let c = still.colorAt(x: x, y: 515)?.usingColorSpace(.sRGB) else { continue }
+                if abs(c.redComponent - claude.redComponent) < 0.04, abs(c.greenComponent - claude.greenComponent) < 0.04 {
+                    found = true; break
+                }
+            }
+            #expect(found, "no Claude column at the skyline's foot in \(range)")
+        }
+        // And the month's card is not the week's.
+        let week = try #require(WrapRenderer.bitmap(at: 0, wrap: WrapDemo.wrap(.week), pixels: size, still: true))
+        let month = try #require(WrapRenderer.bitmap(at: 0, wrap: WrapDemo.wrap(.month), pixels: size, still: true))
+        #expect(pixels(week) != pixels(month))
     }
 
     @Test func aGIFIsWritten() throws {

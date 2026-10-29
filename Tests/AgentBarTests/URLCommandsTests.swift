@@ -45,6 +45,8 @@ import Testing
         #expect(parse("agentbar://appearance") == .welcome)
         #expect(parse("agentbar://day") == .recap(.today))
         #expect(parse("agentbar://week") == .recap(.week))
+        #expect(parse("agentbar://month") == .recap(.month))
+        #expect(parse("agentbar://month/share") == nil)
         #expect(parse("agentbar://day/share") == nil)
     }
 

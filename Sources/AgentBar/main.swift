@@ -224,16 +224,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 // The recap, every slide as a still and the share cards, drawn to files. `--demo`
 // draws the made-up day in `WrapDemo`; otherwise this Mac's own history.
-// `--frames` also writes mid-animation frames, for checking the motion.
+// `--frames` also writes mid-animation frames, for checking the motion; `--receipt`
+// the Trust Receipt and its shared twin. `week` or `month` picks the range.
 if let i = CommandLine.arguments.firstIndex(of: "--render-wrap"),
    CommandLine.arguments.indices.contains(i + 1) {
     _ = NSApplication.shared
     let args = CommandLine.arguments
-    let range: DayWrap.Range = args.contains("week") ? .week : .today
+    let range: DayWrap.Range = args.contains("month") ? .month : args.contains("week") ? .week : .today
     exit(WrapExport.renderForVerification(to: URL(fileURLWithPath: args[i + 1]), range: range,
                                           demo: args.contains("--demo"),
                                           frames: args.contains("--frames"),
-                                          video: args.contains("--video")) ? 0 : 1)
+                                          video: args.contains("--video"),
+                                          receipt: args.contains("--receipt")) ? 0 : 1)
 }
 
 // Silent verification of the synthesized cues (offline render, writes WAVs and

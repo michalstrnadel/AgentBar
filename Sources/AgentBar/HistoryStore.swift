@@ -69,6 +69,10 @@ final class HistoryStore {
         /// real "agent time", where the session's own span is how long it was open.
         /// Nil for a line written before this was kept, or by a writer that does not.
         var spans: [WorkSpans.Span]? = nil
+        /// What the session had cost when the line was written, in US dollars at API
+        /// prices (the Claude Code mod's `cost_usd`, `Session.costUsd`). Nil means
+        /// nobody measured it — never free — and the key is omitted then.
+        var costUsd: Double? = nil
 
         /// Who the record belongs to, resolved the way a live row is.
         var resolvedAgent: Agent { Agent.byID(agent, name: agentName) }
@@ -85,6 +89,7 @@ final class HistoryStore {
             if let change { o["change"] = change.json }
             if !agentName.isEmpty { o["agentName"] = agentName }
             if let spans, !spans.isEmpty { o["spans"] = WorkSpans.json(spans) }
+            if let costUsd { o["costUsd"] = (costUsd * 10_000).rounded() / 10_000 }
             return o
         }
 
@@ -101,6 +106,7 @@ final class HistoryStore {
             self.endedAt = endedAt
             state = s.state.rawValue
             decayed = s.decayed
+            costUsd = s.costUsd
         }
     }
 
@@ -203,6 +209,15 @@ final class HistoryStore {
         var due = Self.records(from: previous, to: sessions, now: now)
         for i in due.indices { due[i].spans = stretches[due[i].sessionId] }
         guard !due.isEmpty else { return }
+        // A cost seen on an earlier line outlives a later one written without it
+        // (the mod's sidecar gone before the row): the last line wins, so it must
+        // carry what is known, as `spans` does.
+        if due.contains(where: { $0.costUsd == nil }) {
+            let prior = Self.cached(url: url)
+            for i in due.indices where due[i].costUsd == nil {
+                due[i].costUsd = prior.last { $0.sessionId == due[i].sessionId }?.costUsd
+            }
+        }
         writer.async { [weak self] in
             guard let self else { return }
             self.append(due.map(self.enrich))
@@ -348,5 +363,8 @@ extension HistoryStore.Record {
         // Cleaned again on the way back in: the file is the user's to edit.
         agentName = Session.displayName(o["agentName"])
         spans = WorkSpans.spans(fromJSON: o["spans"])
+        // The same bounds the mod's report is read with: a number that is not a
+        // plausible bill reads as unmeasured.
+        if let c = (o["costUsd"] as? NSNumber)?.doubleValue, c.isFinite, c >= 0, c < 1e6 { costUsd = c }
     }
 }

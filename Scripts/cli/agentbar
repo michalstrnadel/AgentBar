@@ -213,6 +213,7 @@ const FINISHED = { done: 1, error: 1 };   // deliberately not "idle" — see His
 
 function recordHistory(ss) {
   spansCache = null;   // per pass: a long `watch` must not write the spans it read at start
+  costsCache = null;
   try {
     const live = {};
     for (const s of ss) if (s.started !== false) live[s.id] = s;
@@ -256,6 +257,10 @@ function recordHistory(ss) {
       // here without them would erase them — carry the newest known ones forward.
       const known = priorSpans()[id];
       if (known) o.spans = known;
+      // What it cost (`costUsd`) comes from the app's mod sidecar, which this
+      // frontend does not read — carried forward like `spans`, for the same reason.
+      const cost = priorCosts()[id];
+      if (cost !== undefined) o.costUsd = cost;
       return o;
     };
     const out = [];
@@ -278,11 +283,25 @@ function recordHistory(ss) {
 
 // The newest `spans` each session's history carries, read once per write pass.
 let spansCache = null;
+let costsCache = null;
 function priorSpans() {
   if (spansCache) return spansCache;
   spansCache = {};
-  for (const r of readHistory()) if (Array.isArray(r.spans) && r.spans.length) spansCache[r.sessionId] = r.spans;
+  costsCache = {};
+  for (const r of readHistory()) {
+    if (Array.isArray(r.spans) && r.spans.length) spansCache[r.sessionId] = r.spans;
+    // HistoryStore.Record's bounds: a number that is not a plausible bill is none.
+    if (typeof r.costUsd === "number" && Number.isFinite(r.costUsd) && r.costUsd >= 0 && r.costUsd < 1e6) {
+      costsCache[r.sessionId] = r.costUsd;
+    }
+  }
   return spansCache;
+}
+
+// The newest `costUsd` each session's history carries, read with the spans.
+function priorCosts() {
+  priorSpans();
+  return costsCache;
 }
 
 // Seconds a history line says the session was working, inside [since, until] —
@@ -1389,7 +1408,40 @@ function elapsed(startedAt) {
   return `${Math.floor(d / 3600)}h${String(Math.floor((d % 3600) / 60)).padStart(2, "0")}`;
 }
 
-function sessionLine(s) {
+// Crossed paths (Flyby.swift): two live sessions edited one file within ten
+// minutes, the later edit in the last fifteen. Read from each row's `edits` ring
+// with Session.edits' care — absolute paths, plausible times, the newest 20.
+const FLYBY_WINDOW = 600, FLYBY_FRESH = 900;
+function rowEdits(s) {
+  if (!Array.isArray(s.edits)) return [];
+  return s.edits.slice(-20).filter((e) => e && typeof e.path === "string" && e.path.startsWith("/")
+    && e.path.length <= 1024 && !/[\x00-\x1f\x7f]/.test(e.path) && plausibleTime(e.ts) > 0);
+}
+function flybyNorm(p) { return path.normalize(p).replace(/\/+$/, "").toLowerCase(); }
+function crossings(ss) {
+  const out = {};
+  const t = now();
+  for (const a of ss) {
+    for (const b of ss) {
+      if (a === b) continue;
+      for (const ea of rowEdits(a)) {
+        for (const eb of rowEdits(b)) {
+          if (flybyNorm(ea.path) !== flybyNorm(eb.path)) continue;
+          if (Math.abs(ea.ts - eb.ts) > FLYBY_WINDOW || t - Math.max(ea.ts, eb.ts) > FLYBY_FRESH) continue;
+          const same = (a.agent || "") === (b.agent || "") && (a.agent_name || "") === (b.agent_name || "");
+          const who = (b.agent_name || AGENT_NAMES[b.agent] || b.agent || "agent");
+          const cur = out[a.id];
+          if (!cur || cur.ts < eb.ts) out[a.id] = { agent: same ? "another " + who : who, path: eb.path, ts: eb.ts };
+        }
+      }
+    }
+  }
+  return out;
+}
+const AGENT_NAMES = { claude: "Claude", codex: "Codex", gemini: "Gemini", cursor: "Cursor", copilot: "Copilot",
+  antigravity: "Antigravity", qwen: "Qwen", opencode: "OpenCode", devin: "Devin" };
+
+function sessionLine(s, crossed) {
   const name = s.project || "session";
   const branch = gitBranch(s.cwd);
   const age = elapsed(s.started_at);
@@ -1397,7 +1449,9 @@ function sessionLine(s) {
     : s.state === "question" ? blue(s.label || "waiting for your answer")
     : s.state === "error" ? red("failed") + (s.label ? dim(" — " + s.label) : "")
     : (s.label ? dim(s.label) : dim(s.state));
-  return `${DOTS[s.state] || dim("●")} ${bold(name)}${branch ? dim(" · " + branch) : ""}  ${label}${age ? dim("  " + age) : ""}  ${dim((s.agent_name || s.agent || "?").toUpperCase())}`;
+  const x = crossed && crossed[s.id];
+  const flyby = x ? "  " + yellow(`also edited by ${x.agent} · ${now() - x.ts < 60 ? "<1m" : Math.floor((now() - x.ts) / 60) + "m"}`) : "";
+  return `${DOTS[s.state] || dim("●")} ${bold(name)}${branch ? dim(" · " + branch) : ""}  ${label}${age ? dim("  " + age) : ""}${flyby}  ${dim((s.agent_name || s.agent || "?").toUpperCase())}`;
 }
 
 function printStatus(json) {
@@ -1405,7 +1459,8 @@ function printStatus(json) {
   recordHistory(ss);
   if (json) return console.log(JSON.stringify(ss, null, 2));
   if (!ss.length) return console.log(dim("No active sessions"));
-  for (const s of ss) console.log(sessionLine(s));
+  const crossed = crossings(ss);
+  for (const s of ss) console.log(sessionLine(s, crossed));
 }
 
 function printRequests(json) {

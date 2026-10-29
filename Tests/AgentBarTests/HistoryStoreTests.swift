@@ -29,6 +29,31 @@ import Testing
         Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
     }
 
+    /// What a session cost goes into its line and comes back out, rounded to a
+    /// hundredth of a cent; a line without it is unmeasured, not free.
+    @Test func theCostRoundTripsThroughTheHistoryLine() throws {
+        var r = try #require(HistoryStore.Record(jsonLine: #"{"agent":"claude","sessionId":"s","endedAt":9}"#))
+        #expect(r.costUsd == nil)
+        #expect(r.json["costUsd"] == nil)
+        r.costUsd = 1.234_567
+        let data = try JSONSerialization.data(withJSONObject: r.json)
+        let back = try #require(HistoryStore.Record(jsonLine: String(decoding: data, as: UTF8.self)))
+        #expect(back.costUsd == 1.2346)
+        // Nonsense on disk reads as unmeasured.
+        for bad in ["-1", "1e9", "\"3\""] {
+            let line = #"{"agent":"claude","sessionId":"s","costUsd":"# + bad + "}"
+            #expect(HistoryStore.Record(jsonLine: line)?.costUsd == nil, "\(bad)")
+        }
+    }
+
+    /// The live row's cost reaches the record written when it ends.
+    @Test func aSessionsCostIsRecordedWhenItEnds() throws {
+        var s = try session("costly", agent: "claude", state: "done")
+        s.costUsd = 4.2
+        let records = HistoryStore.records(from: [:], to: [s], now: 2_000)
+        #expect(records.first?.costUsd == 4.2)
+    }
+
     /// The CLI writes the same file and spells the field `agentName`, like the
     /// other history keys; the two sides drifting apart would lose the name of
     /// every third-party agent the moment the other frontend wrote a line.

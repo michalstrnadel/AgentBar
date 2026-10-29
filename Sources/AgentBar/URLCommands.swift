@@ -40,7 +40,8 @@ enum URLCommands {
         /// Settings, on a page when one is named.
         case settings(page: SettingsWindow.Page?)
         case welcome
-        /// The recap: `agentbar://day` or `agentbar://week`. Opens it, nothing more.
+        /// The recap: `agentbar://day`, `agentbar://week` or `agentbar://month`.
+        /// Opens it, nothing more.
         case recap(DayWrap.Range)
     }
 
@@ -134,9 +135,9 @@ enum URLCommands {
             default: return nil
             }
 
-        case "day", "week":
+        case "day", "week", "month":
             guard path.isEmpty else { return nil }
-            return .recap(host == "day" ? .today : .week)
+            return .recap(host == "day" ? .today : host == "week" ? .week : .month)
 
         // The window the menu calls Appearance, by either name.
         case "welcome", "appearance":

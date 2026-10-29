@@ -128,6 +128,8 @@ final class SessionStore {
         sessions = mergeMods(into: sessions, rowIDs: rowIDs)
         // Codex has no mod: the same context and subagents, out of its rollout.
         sessions = codexRollouts.merge(into: sessions)
+        // Two live sessions on one file (`Flyby`): a chip on each row, nothing more.
+        sessions = Flyby.mark(sessions, now: Date().timeIntervalSince1970)
 
         // Only notify when something visible changed, so the menu bar isn't rebuilt every
         // poll. Branch is part of the row, so a checkout must count as a visible change;
@@ -140,6 +142,7 @@ final class SessionStore {
         let snapshot = sessions.map {
             "\($0.id):\($0.agentName):\($0.state.rawValue):\($0.label):\($0.project):\($0.gitBranch ?? ""):\($0.recap):\($0.prompt):\($0.model)"
                 + ":\($0.contextPercent ?? -1):\($0.subagents):\($0.subagentTypes.joined(separator: ",")):\($0.todo?.text ?? ""):\($0.background?.text ?? ""):\($0.blocked?.text ?? ""):\($0.subagentDetails.map { $0.type + "|" + $0.what }):\($0.failedSubagents):\(CostText.short($0.costUsd) ?? ""):\(CostBudget.isOver($0.costUsd))"
+                + ":\($0.crossedBy.map { "\($0.agent)|\($0.path)|\(Int($0.ts))" } ?? "")"
         }
         guard snapshot != lastSnapshot else { return }
         lastSnapshot = snapshot

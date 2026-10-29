@@ -151,7 +151,7 @@ enum WrapExport {
     /// The card in both shapes, its share-safe twin, a strip of moments from the
     /// build, and the window, into `dir`. Offscreen: nothing opens.
     static func renderForVerification(to dir: URL, range: DayWrap.Range, demo: Bool, frames: Bool,
-                                      video: Bool = false) -> Bool {
+                                      video: Bool = false, receipt: Bool = false) -> Bool {
         let fm = FileManager.default
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         let wrap = demo ? WrapDemo.wrap(range)
@@ -165,6 +165,10 @@ enum WrapExport {
             let name = shape == .story ? "story" : "square"
             write(card(wrap, shape: shape), "card-\(name).png")
             write(card(wrap.shareSafe(), shape: shape), "card-\(name)-shared.png")
+        }
+        if receipt {
+            write(ReceiptRenderer.bitmap(wrap), "receipt.png")
+            write(ReceiptRenderer.bitmap(wrap.shareSafe()), "receipt-shared.png")
         }
         if frames {
             for t in [0.2, 0.5, 0.9, 1.3, 1.8, 2.4] {

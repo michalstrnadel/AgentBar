@@ -30,7 +30,25 @@ enum WorkSpans {
         var spans: [Span] = []
         /// When the person typed a prompt.
         var prompts: [TimeInterval] = []
+        /// How many times the session called each tool (`Bash`, `Edit`, …) — the
+        /// receipt's "214 tool calls: 88 Bash, 61 Edit". The session's own thread only.
+        var tools: [String: Int] = [:]
+        /// Every file it edited, and when: the absolute path an Edit, Write,
+        /// MultiEdit or NotebookEdit call named. What `Flyby` crosses.
+        var edits: [Edit] = []
     }
+
+    /// One file edit: when, and the absolute path as the tool call spelled it.
+    struct Edit: Equatable {
+        let ts: TimeInterval
+        let path: String
+    }
+
+    /// The tools whose input names a file they change.
+    static let editTools: Set<String> = ["Edit", "Write", "MultiEdit", "NotebookEdit"]
+    /// A session keeps at most this many edits for the recap: enough for a day of
+    /// crossings, and a bounded cost for a transcript that rewrote one file all day.
+    static let maxEdits = 2_000
 
     /// Inside a turn, a silence longer than this is waiting, not work.
     static let maxGap: TimeInterval = 5 * 60
@@ -85,6 +103,7 @@ enum WorkSpans {
             let isUser = Self.contains(line, Self.typeUser)
             guard isUser || Self.contains(line, Self.typeAssistant) else { return }
             if Self.contains(line, Self.sidechain) { return }
+            if !isUser { tally(line, at: at) }
             if isUser, !Self.contains(line, Self.toolResult), Self.isTypedPrompt(line) {
                 close()
                 out.prompts.append(at)
@@ -101,6 +120,61 @@ enum WorkSpans {
             open = s
         }
 
+        /// The tool calls in an assistant line, counted by name, and the files the
+        /// editing ones name. Bytes only, like the rest of the scan: the keys are
+        /// found by their unescaped spelling, which no JSON string value can contain,
+        /// and only a path is decoded — as the small JSON string it is.
+        private mutating func tally(_ line: UnsafeRawBufferPointer, at: TimeInterval) {
+            guard let base = line.baseAddress else { return }
+            var from = 0
+            while from < line.count,
+                  let hit = Self.toolUse.withUnsafeBytes({ n in
+                      memmem(base + from, line.count - from, n.baseAddress, n.count)
+                  }) {
+                let after = base.distance(to: UnsafeRawPointer(hit)) + Self.toolUse.count
+                from = after
+                // `name` follows `type` and `id` in the same object: a short way on.
+                let window = UnsafeRawBufferPointer(rebasing: line[after..<min(line.count, after + 160)])
+                guard let name = Self.stringValue(window, key: Self.nameKey), !name.isEmpty, name.count <= 64
+                else { continue }
+                out.tools[name, default: 0] += 1
+                guard editTools.contains(name), out.edits.count < maxEdits else { continue }
+                // The input's own keys, up to the next tool call in the line.
+                let next = Self.toolUse.withUnsafeBytes { n in
+                    memmem(base + after, line.count - after, n.baseAddress, n.count)
+                }.map { base.distance(to: UnsafeRawPointer($0)) } ?? line.count
+                let input = UnsafeRawBufferPointer(rebasing: line[after..<next])
+                if let path = Self.stringValue(input, key: Self.filePathKey)
+                    ?? Self.stringValue(input, key: Self.notebookPathKey),
+                   path.hasPrefix("/"), path.count <= 1_024 {
+                    out.edits.append(Edit(ts: at, path: path))
+                }
+            }
+        }
+
+        /// The string after `key` (which ends in its opening quote), decoded; nil
+        /// when the key is not there or its value does not close.
+        static func stringValue(_ hay: UnsafeRawBufferPointer, key: [UInt8]) -> String? {
+            guard let base = hay.baseAddress,
+                  let hit = key.withUnsafeBytes({ n in memmem(base, hay.count, n.baseAddress, n.count) })
+            else { return nil }
+            let start = base.distance(to: UnsafeRawPointer(hit)) + key.count
+            var end = start, escaped = false
+            while end < hay.count {
+                let c = hay[end]
+                if escaped { escaped = false } else if c == UInt8(ascii: "\\") { escaped = true }
+                else if c == UInt8(ascii: "\"") { break }
+                end += 1
+            }
+            guard end < hay.count else { return nil }
+            let raw = Data([UInt8(ascii: "\"")] + Array(hay[start..<end]) + [UInt8(ascii: "\"")])
+            return (try? JSONSerialization.jsonObject(with: raw, options: .fragmentsAllowed)) as? String
+        }
+
+        private static let toolUse = Array(#""type":"tool_use""#.utf8)
+        private static let nameKey = Array(#""name":""#.utf8)
+        private static let filePathKey = Array(#""file_path":""#.utf8)
+        private static let notebookPathKey = Array(#""notebook_path":""#.utf8)
         private static let typeUser = Array(#""type":"user""#.utf8)
         private static let typeAssistant = Array(#""type":"assistant""#.utf8)
         private static let sidechain = Array(#""isSidechain":true"#.utf8)

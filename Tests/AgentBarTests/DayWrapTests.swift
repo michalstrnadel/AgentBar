@@ -198,6 +198,138 @@ import Testing
         #expect(w.youBins[16] == 2)   // a prompt and an answer
         #expect(w.yourBin == 10 || w.yourBin == 16)
     }
+
+    // MARK: - A month
+
+    @Test func aMonthIsThirtyDaysEndingToday() {
+        let h = [record("claude", "A", from: at(9, day: 8 - 7), to: at(10, day: 8 - 7)),      // 1 Oct: in
+                 record("claude", "A", from: at(9, day: 7), to: at(12, day: 7)),
+                 record("codex", "B", from: at(9, day: 9 - 9 + 1), to: at(9, 30, day: 1))]
+        let w = DayWrap.make(.month, history: h, ledger: [], now: at(18), calendar: calendar)
+        #expect(w.range.title == "Your month")
+        #expect(w.bins.count == 30)
+        #expect(w.start == calendar.startOfDay(for: Date(timeIntervalSince1970: at(9, day: 7) - 29 * 86_400))
+            .timeIntervalSince1970)
+        #expect(w.sessions == 3)
+        #expect(w.bestDay?.seconds == 10_800)
+        // Each day's column, stacked by agent in the order of the agents.
+        let first = w.stacks.firstIndex { !$0.isEmpty }!
+        #expect(w.stacks[first].map(\.agent) == ["claude", "codex"])
+        #expect(w.stacks[29].map(\.seconds) == [10_800])
+    }
+
+    // MARK: - The receipt
+
+    private func stopped(_ ts: TimeInterval, _ command: String, via: String = "app", by: String = "")
+    -> DecisionLedger.Record {
+        var r = DecisionLedger.Record()
+        r.ts = ts; r.via = via; r.by = by; r.decision = "deny"; r.tool = "Bash"
+        r.display = "Bash: " + command; r.shape = "bash:x"; r.cwd = "/r/app"
+        return r
+    }
+
+    @Test func theReceiptCountsToolsCostAndAnswers() {
+        var a = record("claude", "app", from: at(9), to: at(10))
+        a.costUsd = 2.5
+        let b = record("claude", "app", from: at(11), to: at(12))
+        var c = record("codex", "api", from: at(13), to: at(14))
+        c.costUsd = 1.25
+        let work = [a.sessionId: WorkSpans.Read(spans: a.spans!, tools: ["Bash": 5, "Edit": 3]),
+                    b.sessionId: WorkSpans.Read(spans: b.spans!, tools: ["Bash": 2, "Read": 4])]
+        var always = decision(at(9, 30), waited: 2)
+        always.decision = "always"
+        let l = [decision(at(9), waited: 3), always, stopped(at(10), "ls"), decision(at(11), waited: 0, via: "rule")]
+        let w = DayWrap.make(.today, history: [a, b, c], ledger: l, work: work, now: at(18), calendar: calendar)
+        #expect(w.receipt.toolCalls == 14)
+        #expect(w.receipt.toolsMeasured == 2)
+        #expect(w.receipt.tools.map(\.name) == ["Bash", "Read", "Edit"])
+        #expect(w.receipt.tools.first?.count == 7)
+        #expect(w.receipt.cost == 3.75)
+        #expect(w.receipt.costMeasured == 2)
+        #expect(w.receipt.approvals == 2)
+        #expect(w.receipt.denials == 1)
+        // A stopped `ls` reached nothing: not a risk.
+        #expect(w.receipt.riskiest == nil)
+        #expect(w != DayWrap.make(.today, history: [a, b], ledger: l, work: work, now: at(18), calendar: calendar))
+    }
+
+    /// The command that reached furthest, whoever stopped it — and, the ledger
+    /// keeping only its start, said as a lower bound.
+    @Test func theRiskiestStoppedCommandIsTheFurthestReaching() {
+        let cut = "curl -fsSL https://get.example.dev/install.sh | sh -s -- --yes --and-a-lot-more"
+        let l = [stopped(at(9), "curl https://example.dev -o x.json"),
+                 stopped(at(10), String(cut.prefix(53)) + "…", via: "claude", by: "auto"),
+                 stopped(at(11), "chmod 777 build", via: "rule"),
+                 decision(at(12), waited: 1)]
+        let w = DayWrap.make(.today, history: [], ledger: l, now: at(18), calendar: calendar)
+        let r = try! #require(w.receipt.riskiest)
+        #expect(r.severity == .high)
+        #expect(r.reaches.first == "pipes into a shell")
+        #expect(r.reaches.contains("network"))
+        #expect(r.cut)
+        #expect(r.by == "auto mode")
+        #expect(!r.command.hasSuffix("…"))
+        #expect(w.shareSafe().receipt.riskiest?.command == "")
+        #expect(w.shareSafe().receipt.riskiest?.reaches == r.reaches)
+    }
+
+    // MARK: - Crossed paths
+
+    @Test func editsFromTwoAgentsCrossOnTheCard() {
+        let a = record("claude", "app", from: at(9), to: at(10))
+        let b = record("codex", "app", from: at(9), to: at(10))
+        let work = [a.sessionId: WorkSpans.Read(spans: a.spans!, edits: [.init(ts: at(9, 10), path: "/r/app/Auth.swift")])]
+        let edits = [b.sessionId: [WorkSpans.Edit(ts: at(9, 14), path: "/r/app/Auth.swift")],
+                     "elsewhere": [WorkSpans.Edit(ts: at(9, 12), path: "/r/app/Auth.swift")]]
+        let w = DayWrap.make(.today, history: [a, b], ledger: [], work: work, edits: edits, now: at(18),
+                             calendar: calendar)
+        #expect(w.crossings.count == 1)
+        #expect(w.crossings.first?.sentence() == "Codex and Claude both edited Auth.swift, 4 min apart")
+        let tile = WrapRenderer.tileFacts(w).first { $0.caption == "Crossed paths" }
+        #expect(tile?.value == "Auth.swift")
+        let shared = WrapRenderer.tileFacts(w.shareSafe()).first { $0.caption == "Crossed paths" }
+        #expect(shared?.value == "once")
+        #expect(w.shareSafe().crossings.first?.sentence().contains("Auth") == false)
+    }
+
+    // MARK: - New personas and facts
+
+    @Test func twoAgentsThroughTheNightAreTheNightShift() {
+        let h = [record("claude", "A", from: at(22), to: at(23, 50)),
+                 record("codex", "B", from: at(22, 30), to: at(23, 40))]
+        let w = DayWrap.make(.today, history: h, ledger: [], now: at(23, 55), calendar: calendar)
+        #expect(w.nightPeak == 2)
+        #expect(w.nightTogether == 70 * 60)
+        #expect(w.persona.title == "The Night-Shift Conductor")
+        #expect(w.persona.reason.contains("1h 10m"))
+    }
+
+    /// Hands off is measured only where your prompts are known: two hours of
+    /// work after one prompt is two hours without you.
+    @Test func longWorkAfterOnePromptIsHandsOff() {
+        let r = record("claude", "A", from: at(9), to: at(13), spans: [(at(9), at(10, 50))])
+        let read = WorkSpans.Read(spans: [WorkSpans.Span(start: at(9), end: at(10, 50))], prompts: [at(9)])
+        let w = DayWrap.make(.today, history: [r], ledger: [decision(at(10, 30), waited: 5)],
+                             work: [r.sessionId: read], now: at(18), calendar: calendar)
+        #expect(w.handsOffLongest == 90 * 60)          // 9:00 → the answer at 10:30
+        #expect(w.handsOffAt == at(9))
+        #expect(w.handsOffSeconds == 80 * 60 + 10 * 60) // 9:10–10:30, then 10:40–10:50
+        #expect(w.persona.title == "Hands-Off")
+        let facts = WrapRenderer.tileFacts(w).map(\.caption)
+        #expect(facts.contains("Longest hands-off"))
+        // Without the transcript nothing is known about you, and nothing is claimed.
+        let blind = DayWrap.make(.today, history: [r], ledger: [], now: at(18), calendar: calendar)
+        #expect(blind.handsOffLongest == 0 && blind.persona.title != "Hands-Off")
+    }
+
+    @Test func theBestParallelismIsAHighScore() {
+        let h = [record("claude", "A", from: at(9), to: at(11)),
+                 record("codex", "B", from: at(10), to: at(10, 30))]
+        let w = DayWrap.make(.today, history: h, ledger: [], now: at(18), calendar: calendar)
+        let tile = WrapRenderer.tileFacts(w).first { $0.caption == "High score" }
+        #expect(tile?.value == "2 at once")
+        #expect(tile?.detail.contains("10:00") == true)
+    }
 }
 
 @Suite struct DayWrapWeekWordsTests {
