@@ -414,6 +414,14 @@ check "background: wakeups counted"   'grep -q "\"wakeups\":1" "$STATE"'
 printf '{"session_id":"testsess","prompt":"go on"}' | "$NODE" "$UPDATE" prompt
 check "background: gone with the next prompt" '! grep -q "\"background\"\|\"wakeups\"" "$STATE"'
 
+# 15j. pasted text is not the task: the words typed around it are
+printf '%s' '{"session_id":"testsess","prompt":"do all of it <pasted_content id=\"x1\">\n1. a\n2. b\n</pasted_content id=\"x1\"> please"}' | "$NODE" "$UPDATE" prompt
+check "prompt: the paste is left out"      'grep -q "\"prompt\":\"do all of it please\"" "$STATE"'
+printf '%s' '{"session_id":"testsess","prompt":"<pasted_content id=\"x2\">\nlong log\n</pasted_content id=\"x2\">"}' | "$NODE" "$UPDATE" prompt
+check "prompt: only a paste is named so"   'grep -q "\"prompt\":\"(pasted text)\"" "$STATE"'
+printf '%s' '{"session_id":"testsess","prompt":"<task-notification>done</task-notification>"}' | "$NODE" "$UPDATE" prompt
+check "prompt: a harness turn still keeps the task" 'grep -q "\"prompt\":\"(pasted text)\"" "$STATE"'
+
 # 15i. a subagent working in its own worktree does not move the session's row there
 printf '%s' '{"session_id":"testsess","cwd":"/tmp/proj","tool_name":"Read"}' | "$NODE" "$UPDATE" pre
 printf '%s' '{"session_id":"testsess","cwd":"/tmp/proj/.claude/worktrees/agent-a1","agent_id":"a1","agent_type":"general-purpose","tool_name":"Read"}' | "$NODE" "$UPDATE" pre

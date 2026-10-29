@@ -234,9 +234,16 @@ function run() {
   // system turns (task notifications, local-command wrappers — they start with
   // "<"), and slash commands are commands, not tasks. Those must never rename
   // the row, so the previous task survives them.
+  // Text the person pasted rides inside <pasted_content> tags; the task is what
+  // they typed around it, and a prompt that is only a paste is named as one.
   const cand = event === "prompt" && typeof p.prompt === "string" ? p.prompt.trim() : "";
-  if (cand && !cand.startsWith("<") && !cand.startsWith("/"))
-    out.prompt = oneLine(cand);
+  const pasted = cand.startsWith("<pasted_content");
+  const own = cand
+    .replace(/<pasted_content\b[^>]*>[\s\S]*?<\/pasted_content\b[^>]*>/g, " ")
+    .replace(/<pasted_content\b[^>]*>[\s\S]*$/, " ")
+    .trim();
+  if (cand && (pasted || !cand.startsWith("<")) && !cand.startsWith("/"))
+    out.prompt = own ? oneLine(own) : "(pasted text)";
   else if (prev.prompt) out.prompt = prev.prompt;
   const model = typeof p.model === "string" ? p.model : (p.model && p.model.display_name) || "";
   if (model) out.model = String(model);
