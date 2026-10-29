@@ -310,10 +310,11 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
                                                    action: #selector(showChanges))
         changesButton.isHidden = true
 
-        // One made-up request, answered the way a real one is — before any agent is
-        // wired. It opens nothing: it waits where a real one would (`DemoApproval`).
+        // One request, answered the way every one is — through the installed hook
+        // once it is in (`ApprovalSelfTest`), a made-up one before (`DemoApproval`).
+        // It opens nothing: it waits where a real one would.
         tryButton = SettingsChrome.smallButton("Try an approval", target: self, action: #selector(tryApproval))
-        tryCaption = NSTextField(wrappingLabelWithString: "A made-up request to answer, before any agent asks. Nothing runs.")
+        tryCaption = NSTextField(wrappingLabelWithString: "A request to answer before any agent asks. Nothing runs.")
         tryCaption.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         tryCaption.textColor = .secondaryLabelColor
         tryCaption.preferredMaxLayoutWidth = Self.rowWidth - 140
@@ -436,7 +437,31 @@ final class WelcomeWindow: NSObject, NSWindowDelegate {
         Self.showOnLaunch = showBox.state == .on
     }
 
+    /// A real one when the hooks are in: the installed permission hook raises a
+    /// request exactly as an agent's would, the card is the real card, and your
+    /// answer goes back through the real path — to a command nobody runs. Until
+    /// the hooks are in, the demo stands in, and says it is one.
     @objc private func tryApproval() {
+        if HookInstaller.finished, HookInstaller.resolvedNode != nil,
+           FileManager.default.fileExists(atPath: HookInstaller.installedHooks
+               .appendingPathComponent("claude/permission.js").path) {
+            tryButton.isEnabled = false
+            tryCaption.stringValue = Presentation.current.showsIsland
+                ? "A real request is waiting at the notch — move the pointer up to it and answer."
+                : "A real request is waiting in the menu bar — click AgentBar's icon and answer."
+            ApprovalSelfTest.run(timeout: 120) { [weak self] outcome in
+                self?.tryButton?.isEnabled = true
+                switch outcome {
+                case .answered(let how):
+                    self?.tryCaption?.stringValue = (how == "allow" ? "✓ Allowed" : "✕ Denied")
+                        + " — through the same hook every agent uses. Nothing ran: the command "
+                        + "had no agent behind it."
+                default:
+                    self?.tryCaption?.stringValue = outcome.line
+                }
+            }
+            return
+        }
         DemoApproval.shared.start()
         guard DemoApproval.shared.isActive else { return }
         tryButton.isEnabled = false

@@ -43,6 +43,22 @@ All notable changes to AgentBar are documented here. This project follows
   subagent) for the last 7 days, 30 days or everything kept.
   `agentbar approvals --export --format jsonl` does the same from the terminal.
 
+- **The agent's plan, counted.** While Claude Code works through its task list,
+  its island row shows "3/7 · Running tests" and a thin bar along the bottom.
+- **What happened while you were away.** Back after two minutes or more, the pill
+  says "away · 1 waiting · 3 done" for a minute and a half, and the open island
+  leads with the whole of it — what finished, failed, waits on you and what your
+  rules answered. Nothing opens by itself.
+- **Quiet while you're looking at it.** No cue and no banner for a session whose
+  iTerm2 or Terminal tab is in front of you — only where macOS already lets
+  AgentBar ask those apps, so it never brings up a permission prompt. Settings ▸
+  General.
+- **A new request arrives with a hop.** The mascot carries it into the pill (off
+  with the mascot's personality, and under Reduce Motion).
+- **Try an approval is a real one** once the hooks are in: the installed hook
+  raises it, and your answer goes back the way every answer does, to a command
+  nobody runs.
+
 ### Changed
 
 - No "Always allow … this here" is offered for a tool that names no file (an MCP

@@ -112,7 +112,8 @@ enum ApprovalSelfTest {
             "session_id": sessionID,
             "prompt_id": "self-test",
             "tool_name": "Bash",
-            "tool_input": ["command": "echo \"AgentBar can ask you things\""],
+            "tool_input": ["command": "echo \"AgentBar can ask you things\"",
+                           "description": "Check that AgentBar can ask you before anything runs"],
             "cwd": FileManager.default.homeDirectoryForCurrentUser.path,
         ]
         return (try? JSONSerialization.data(withJSONObject: event)) ?? Data()
