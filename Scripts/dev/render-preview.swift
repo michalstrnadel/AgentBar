@@ -396,6 +396,30 @@ enum RenderPreview {
             let compact = IslandRowView(session: finished, mark: mark(for: "claude"), style: .compact, onClick: { _ in })
             renderSlab([sized(hero, rowW), sized(compact, rowW), sized(failHero, rowW)], name: "03k-over-the-shoulder")
 
+            // Scene 3m: what was it doing then — the pointer on the strip a quarter
+            // hour back, the transcript's steps around that moment over the row.
+            let at = Date().timeIntervalSince1970 - 900
+            TimelinePeek.preview["hero-live"] = [
+                .init(at: at - 140, item: .tool("Read", "Package.swift")),
+                .init(at: at - 40, item: .said("The island rebuilds rows on every tick, so hover has to survive that.")),
+                .init(at: at - 12, item: .tool("Grep", "setRows")),
+                .init(at: at + 25, item: .tool("Edit", "IslandRowView.swift")),
+                .init(at: at + 300, item: .tool("Bash", "swift test")),
+            ]
+            let peekHero = IslandRowView(session: live, mark: mark(for: "claude"), style: .hero, onClick: { _ in })
+            let peekContent = IslandContentView(frame: NSRect(x: 0, y: 0, width: 460, height: 100))
+            peekContent.appearance = NSAppearance(named: .darkAqua)
+            peekContent.topInset = 10
+            peekContent.setRows([sized(peekHero, rowW)])
+            func strip(in v: NSView) -> TimelineStripView? {
+                if let s = v as? TimelineStripView { return s }
+                for sub in v.subviews { if let s = strip(in: sub) { return s } }
+                return nil
+            }
+            if let s = strip(in: peekHero) { s.previewHover(at: s.bounds.width * 0.75) }
+            peekContent.layoutSubtreeIfNeeded()
+            render(peekContent, name: "03m-timeline-peek", size: NSSize(width: 460, height: peekContent.contentHeight))
+
             // Scene 3l: auto mode refused a call and the turn went on.
             let refused = makeSession("refused", [
                 "agent": "claude", "state": "thinking", "label": "Thinking…", "project": "deploy",

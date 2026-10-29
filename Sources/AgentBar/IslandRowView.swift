@@ -200,12 +200,17 @@ final class IslandRowView: NSView {
             let now = Date().timeIntervalSince1970
             let strip = SessionTimeline.shared.strip(for: session.id, now: now)
             if SessionTimeline.worthShowing(strip) {
-                timeline = TimelineStripView(segments: strip, now: now)
+                timeline = TimelineStripView(segments: strip, now: now, session: session)
                 column.append(timeline!)
             }
         }
         let text = NSStackView(views: column)
         timeline?.widthAnchor.constraint(equalTo: text.widthAnchor).isActive = true
+        // The strip view is taller than the strip; it grows into this gap on hover.
+        if timeline != nil, column.count >= 2 {
+            text.setCustomSpacing(text.spacing + TimelineStripView.rest - TimelineStripView.height,
+                                  after: column[column.count - 2])
+        }
         live?.widthAnchor.constraint(equalTo: text.widthAnchor).isActive = true
         text.orientation = .vertical
         text.alignment = .leading
@@ -223,6 +228,17 @@ final class IslandRowView: NSView {
             text.topAnchor.constraint(equalTo: topAnchor, constant: 9),
             text.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -9),
         ])
+        // What was it doing then: laid over the row just above the strip.
+        if let timeline {
+            let peek = timeline.peek
+            addSubview(peek)
+            NSLayoutConstraint.activate([
+                peek.leadingAnchor.constraint(equalTo: timeline.leadingAnchor),
+                peek.trailingAnchor.constraint(equalTo: timeline.trailingAnchor),
+                peek.bottomAnchor.constraint(equalTo: timeline.topAnchor, constant: -2),
+                peek.topAnchor.constraint(greaterThanOrEqualTo: topAnchor, constant: 4),
+            ])
+        }
     }
 
     /// Mark, dot, name, chips — one quiet line. Same mark as the hero, so every
