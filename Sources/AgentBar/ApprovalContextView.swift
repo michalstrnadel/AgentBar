@@ -45,6 +45,42 @@ final class ApprovalContextView: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    /// The arguments of a tool the hook carries no structured detail for — an MCP
+    /// call, a fetch — read out of its full input, one `key: value` a line. Before
+    /// this the card for an MCP call showed its name and nothing it would be told.
+    init(arguments pretty: String, leading: CGFloat = 22) {
+        self.lines = Self.take(Self.argumentLines(pretty), max: 6, kind: .plain)
+        self.leading = leading
+        super.init(frame: NSRect(x: 0, y: 0, width: 300,
+                                 height: CGFloat(max(1, lines.count)) * 15 + 8))
+        autoresizingMask = [.width]
+    }
+
+    /// Whether `pretty` holds anything worth a box: not empty, not `{}`.
+    static func hasArguments(_ pretty: String) -> Bool {
+        let t = pretty.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !t.isEmpty && t != "{}"
+    }
+
+    /// `key: value`, keys in order, each value compact and cut at a line. Input
+    /// the hook cut at 4 KB is no longer JSON; then it is shown as it came.
+    static func argumentLines(_ pretty: String) -> [String] {
+        guard let data = pretty.data(using: .utf8),
+              let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return splitNonEmpty(pretty).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty } }
+        return o.keys.sorted().map { key in
+            let v = o[key]!
+            var text: String
+            if let s = v as? String { text = s }
+            else if let d = try? JSONSerialization.data(withJSONObject: v, options: [.fragmentsAllowed, .sortedKeys]) {
+                text = String(decoding: d, as: UTF8.self)
+            } else { text = "\(v)" }
+            text = ApprovalRequest.oneLine(text)
+            if text.count > 90 { text = String(text.prefix(89)) + "…" }
+            return "\(key): \(text)"
+        }
+    }
+
     // MARK: - Content
 
     private static func lines(for context: ApprovalRequest.Context) -> [Line] {

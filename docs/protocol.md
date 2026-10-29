@@ -617,6 +617,12 @@ Normative, and the reason each one is here:
 - A rule is matched on `shape`, which by design carries **no arguments**. That is
   safe for a denial and not safe on its own for an approval, which is what the
   refusal list below exists for.
+- One wildcard exists: `tool:mcp__<server>__*` matches every tool of that MCP
+  server (a shape of `tool:mcp__<server>__<tool>`). It is **legal only for
+  `decision:"deny"`** — a server's tools are named by the server, and a rule that
+  approved tools nobody has seen would approve what it never read. Any other `*`
+  in a `tool:` shape refuses the file. (`*` in `edit:src/*.swift` is part of that
+  shape's spelling, not a wildcard.)
 - `cwd` empty means "any directory" and is **legal only for `decision:"deny"`**.
   Refusing more than the user meant costs a prompt; approving more than they meant
   is the failure this whole file has to not have. A reader MUST refuse a file

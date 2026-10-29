@@ -457,6 +457,16 @@ final class DecisionLedger {
         return nil
     }
 
+    /// `shouldOfferRule`, minus the approvals that could never answer: one with no
+    /// directory to name, or one for a tool that names nothing `RuleEngine.refusal`
+    /// can check (an MCP call, a fetch). The card, the menu and Your Week all ask
+    /// this, so none of them offers a rule that would sit there never firing.
+    static func ruleOffer(_ s: Summary, shape: String, cwd: String) -> String? {
+        guard let way = shouldOfferRule(s) else { return nil }
+        if way == "allow", cwd.isEmpty || shape.hasPrefix("tool:") { return nil }
+        return way
+    }
+
     /// What one rule has actually done. The rules file holds the intent and never
     /// a counter; this is where "fired 12× · last today" comes from, so the audit
     /// stays the single source of truth about what happened.

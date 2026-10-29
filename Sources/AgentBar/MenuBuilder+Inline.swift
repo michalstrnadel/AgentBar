@@ -38,6 +38,11 @@ extension MenuBuilder {
                 ctx.view = ApprovalContextView(context: context)
                 ctx.representedObject = tag
                 menu.addItem(ctx)
+            } else if !r.isPlanRequest, ApprovalContextView.hasArguments(r.toolInputPretty) {
+                let ctx = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+                ctx.view = ApprovalContextView(arguments: r.toolInputPretty)
+                ctx.representedObject = tag
+                menu.addItem(ctx)
             }
             // What it can reach. The menu cannot hold a button down — it closes on
             // the click — so here the chips are the whole of the warning.
@@ -61,7 +66,8 @@ extension MenuBuilder {
             // becomes an offer to write it down. Offered, not taken — the click
             // opens a sheet that shows what the rule would and would not answer,
             // and the rule exists only once the person presses Add.
-            let offer = plan(r) ? nil : DecisionLedger.shouldOfferRule(past)
+            let offer = plan(r) ? nil
+                : DecisionLedger.ruleOffer(past, shape: DecisionLedger.shape(of: r), cwd: s.cwd)
             if var hint = DecisionLedger.hint(past) {
                 // Enough repeats and never once refused: say that the button beside
                 // this line would end the asking. Saying, not pressing — a count is

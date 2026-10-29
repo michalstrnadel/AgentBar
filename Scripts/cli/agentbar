@@ -907,6 +907,14 @@ function readRules(file = rulesFile) {
     if (r.decision !== "allow" && r.decision !== "deny")
       return bad(`rule ${r.id}: decision is not allow or deny`);
     if (!r.shape) return bad(`rule ${r.id}: has an empty shape`);
+    // RulesStore.validate / RuleEngine.serverPrefix: one wildcard, a whole MCP
+    // server, and only to refuse it.
+    if (r.shape.startsWith("tool:") && r.shape.includes("*")) {
+      const server = /^tool:mcp__(.+)__\*$/.exec(r.shape);
+      if (!server || server[1].includes("*"))
+        return bad(`rule ${r.id}: has a \`*\` in its tool name; the only one allowed is a whole MCP server`);
+      if (r.decision === "allow") return bad(`rule ${r.id}: approves a whole MCP server`);
+    }
     const cwd = r.cwd || "";
     if (r.decision === "allow" && !cwd) return bad(`rule ${r.id}: approves without naming a directory`);
     if (cwd && !cwd.startsWith("/")) return bad(`rule ${r.id}: cwd is not an absolute path`);
