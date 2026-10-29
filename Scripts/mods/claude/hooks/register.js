@@ -26,6 +26,10 @@ export const VERSION = "1.60.0";
 
 const RING = 200;                 // newest verdicts kept
 const INPUT_KEYS = ["command", "file_path", "url", "description"];
+// The other spellings of "the file this call names" — a notebook edit, an MCP
+// tool's `path`. Kept as `file_path`, in the order DecisionLedger.shape reads
+// them, so a verdict here and a prompt for the same call get the same shape.
+const PATH_KEYS = ["file_path", "notebook_path", "path", "filePath"];
 const INPUT_BYTES = 2048;         // each kept input field, UTF-8
 const REASON_CHARS = 300;
 const WRITE_EVERY_MS = 1000;      // debounce: at most one write a second, trailing write guaranteed
@@ -126,6 +130,9 @@ export const pruneInput = (input) => {
     const v = input[k];
     if (typeof v === "string") out[k] = capBytes(v, INPUT_BYTES);
   }
+  const named = PATH_KEYS.map((k) => input[k]).find((v) => typeof v === "string" && v);
+  if (named) out.file_path = capBytes(named, INPUT_BYTES);
+  else delete out.file_path;
   return out;
 };
 

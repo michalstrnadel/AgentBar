@@ -139,6 +139,21 @@ describe('what a decision row says', () => {
     expect(sidecarOf(world).decisions).toEqual([])
   })
 
+  test('a path under another name is kept as file_path, as the shape reads it', async ($, on) => {
+    const world = worldOf(on)
+    on('tool.check', () => ({ decision: 'deny', reason: 'no' }))
+    await $.session.start(SESSION)
+    await $.tool.check(check('mcp__fs__write_file', { path: '/w/p/src/a.ts', content: 'never kept' }, 'toolu_p1'))
+    await $.tool.check(check('NotebookEdit', { notebook_path: '/w/p/n.ipynb' }, 'toolu_p2'))
+    await $.tool.check(check('mcp__fs__move', { file_path: '', path: '/w/p/b' }, 'toolu_p3'))
+    await $.tool.check(check('mcp__x__y', { path: 7 }, 'toolu_p4'))
+    await world.clock.advance(1000)
+    const rows = sidecarOf(world).decisions
+    expect(rows.map((r: { input: Record<string, string> }) => r.input.file_path))
+      .toEqual(['/w/p/src/a.ts', '/w/p/n.ipynb', '/w/p/b', undefined])
+    expect(Object.keys(rows[0].input)).toEqual(['file_path'])
+  })
+
   test('input keeps four fields, each capped at 2 KB of UTF-8; reason at 300 characters', async ($, on) => {
     const world = worldOf(on)
     on('tool.check', () => ({ decision: 'deny', reason: 'r'.repeat(500) }))

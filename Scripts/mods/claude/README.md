@@ -19,7 +19,8 @@ measures itself. Contract: [`docs/protocol.md`, "mods.d"](../../../docs/protocol
   - `decisions`: the newest 200 verdicts reached without a prompt (`allow` or
     `deny`), each naming who decided: a settings `rule`, the permission `mode`, or
     a `hook`. Read-only tools are left out, and only `command`, `file_path`, `url`
-    and `description` are kept from a call's input.
+    and `description` are kept from a call's input (a path named `notebook_path`,
+    `path` or `filePath` is kept as `file_path`).
 - Optionally (off unless `~/.agentbar/mods/config.json` says `{"band": true}`)
   draws one line above the prompt when *another* session waits on you, with a Jump
   button that opens `agentbar://focus?session=<id>`.
