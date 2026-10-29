@@ -566,7 +566,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                     SettingsChrome.row("Show what it's doing right now",
                                        "Under the first working session: the last few things "
                                        + "it reached for and the last thing it said, read from "
-                                       + "its own transcript on this Mac. Claude Code only.",
+                                       + "its own transcript on this Mac. Claude Code and Codex.",
                                        control: liveFeedBox),
                     // In the island's card because it is the island's alone — the
                     // menu bar mark never moves for its own amusement.

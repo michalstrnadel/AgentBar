@@ -5,6 +5,8 @@ import Foundation
 /// argument, and the last thing it said. For the island's first row, so a glance
 /// answers "what is it up to" without going to the terminal.
 ///
+/// Codex sessions get the same feed from their rollout file (`CodexFeed`).
+///
 /// Read-only and local: the transcript is the file Claude Code already writes, and
 /// nothing here leaves the Mac. Only what the transcript says; a session without
 /// one shows nothing.
@@ -206,9 +208,10 @@ enum LiveFeed {
     /// Fixed feeds by session id, for Scripts/dev/render-preview.swift.
     static var preview: [String: Feed] = [:]
 
-    /// The feed for a Claude Code session, re-read only when the transcript moved.
+    /// The feed for a Claude Code or Codex session, re-read only when its file moved.
     static func read(_ s: Session) -> Feed {
         if let fixed = preview[s.id] { return fixed }
+        if s.agentID == "codex" { return Feed(items: CodexFeed.read(s)) }
         guard s.agentID == "claude",
               let url = WeightReader.transcript(sessionId: s.id, cwd: s.cwd),
               let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
@@ -219,11 +222,11 @@ enum LiveFeed {
         return feed
     }
 
-    private static func tail(_ url: URL) -> [Substring] {
+    static func tail(_ url: URL, bytes: Int = tailBytes) -> [Substring] {
         guard let h = try? FileHandle(forReadingFrom: url) else { return [] }
         defer { try? h.close() }
         let size = (try? h.seekToEnd()) ?? 0
-        let start = size > UInt64(tailBytes) ? size - UInt64(tailBytes) : 0
+        let start = size > UInt64(bytes) ? size - UInt64(bytes) : 0
         try? h.seek(toOffset: start)
         guard let data = try? h.readToEnd() else { return [] }
         let text = String(decoding: data, as: UTF8.self)

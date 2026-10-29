@@ -1,6 +1,6 @@
 import Cocoa
 
-/// Over the shoulder, on the island: under the first row of a working Claude Code
+/// Over the shoulder, on the island: under the first row of a working Claude Code or Codex
 /// session, the last few things it reached for and the last thing it said — and,
 /// under the newest shell command that has finished, the last lines it printed.
 ///
