@@ -141,7 +141,7 @@ enum TerminalFocus {
     }
 
     /// "/dev/ttys003" for a live process, nil for daemons ("??") or a dead pid.
-    private static func tty(of pid: Int32) -> String? {
+    static func tty(of pid: Int32) -> String? {
         guard pid > 0,
               let out = run("/bin/ps", ["-o", "tty=", "-p", "\(pid)"])?
                   .trimmingCharacters(in: .whitespacesAndNewlines),

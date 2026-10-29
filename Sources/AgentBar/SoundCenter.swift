@@ -191,6 +191,8 @@ final class SoundCenter {
         var fired: Set<Cue> = []
         for (id, state) in now {
             let prev = last[id]
+            // The person is looking at this session's own tab: it already shows them.
+            if LookingAt.shared.isLooking(at: id) { continue }
             // prev == nil counts: a session appearing mid-permission is news.
             if state == .permission, prev != .permission { fired.insert(.permission) }
             if state == .question, prev != .question { fired.insert(.question) }

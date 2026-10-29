@@ -387,7 +387,10 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             for id in withdraw { deliveredIdentities[id] = nil }
         }
         for e in post {
-            self.post(e)
+            // In front of them already, in its own tab: counted as delivered, so it
+            // does not arrive late the moment they look away.
+            let session = requests.first { $0.fileName == e.id }?.sessionId ?? ""
+            if !LookingAt.shared.isLooking(at: session) { self.post(e) }
             deliveredRequests.insert(e.id)
             deliveredIdentities[e.id] = e.requestIdentity
         }
