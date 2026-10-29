@@ -59,7 +59,7 @@ struct ComebackTests {
         #expect(s.signals.fails == .init(streak: 3, at: 995))
         #expect(s.signals.testsRed == true)
         #expect(s.signals.comeback == 980)
-        #expect(s.signals.edits == [.init(path: "/p/a.swift", ts: 970)])
+        #expect(s.edits.map(\.path) == ["/p/a.swift"])
         let none = try session([:])
         #expect(none.signals == SessionSignals())
         let junk = try session(["fails": ["streak": "3"], "tests": ["last": "blue"], "comeback": "x"])

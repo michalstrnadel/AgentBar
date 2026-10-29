@@ -1,7 +1,7 @@
 import Foundation
 
 /// How a session's tools have been going, as the Claude Code hook writes it
-/// (`fails`, `tests`, `comeback`, `edits` in docs/protocol.md). Read off the row
+/// (`fails`, `tests`, `comeback` in docs/protocol.md; `edits` is `Session.edits`). Read off the row
 /// and nothing more: the mascot sweats on a streak and celebrates a comeback, and
 /// both decisions are taken elsewhere (`ClawdScene`, `Comeback`).
 struct SessionSignals: Equatable {
@@ -13,19 +13,12 @@ struct SessionSignals: Equatable {
     }
 
     /// A file the session changed, and when.
-    struct Edit: Equatable {
-        let path: String
-        let ts: TimeInterval
-    }
-
     var fails: FailStreak?
     /// The newest test run's verdict: true red, false green, nil none seen.
     var testsRed: Bool?
     /// When a test run last went green after a red one, or a pull request was
     /// opened; 0 when neither has happened.
     var comeback: TimeInterval = 0
-    /// The files changed lately, newest last, at most 20.
-    var edits: [Edit] = []
 
     init() {}
 
@@ -39,10 +32,6 @@ struct SessionSignals: Equatable {
         default: break
         }
         comeback = Session.plausibleTime(o["comeback"])
-        edits = (o["edits"] as? [[String: Any]] ?? []).suffix(20).compactMap { e in
-            guard let path = e["path"] as? String, path.hasPrefix("/") else { return nil }
-            return Edit(path: String(path.prefix(1024)), ts: Session.plausibleTime(e["ts"]))
-        }
     }
 
     /// How many failures in a row make him sweat, and for how long after the
