@@ -238,6 +238,31 @@ final class DecisionLedger {
     ///
     /// Watching rows are included and say so in `decision`: a week of what a rule
     /// *would* have done is exactly the evidence somebody would be asked for.
+    /// The ledger whole, for an auditor's tools rather than a spreadsheet: one JSON
+    /// object per line, every field the row has — session, project, Claude Code's
+    /// reason, the tool call's id, the subagent — oldest first, after one header
+    /// line that says what this is, who wrote it and what span it covers.
+    static func jsonl(_ rows: [Record], generator: String, since: TimeInterval?,
+                      now: Date = Date()) -> String {
+        let stamp = ISO8601DateFormatter()
+        stamp.formatOptions = [.withInternetDateTime]
+        let sorted = rows.sorted { $0.ts < $1.ts }
+        var header: [String: Any] = ["agentbarExport": 1, "generator": generator,
+                                     "generated": stamp.string(from: now), "rows": sorted.count]
+        header["since"] = since.map { stamp.string(from: Date(timeIntervalSince1970: $0)) } ?? NSNull()
+        func line(_ o: [String: Any]) -> String {
+            guard let d = try? JSONSerialization.data(withJSONObject: o, options: [.sortedKeys, .withoutEscapingSlashes])
+            else { return "{}" }
+            return String(decoding: d, as: UTF8.self)
+        }
+        return ([line(header)] + sorted.map { line($0.json) }).joined(separator: "\n") + "\n"
+    }
+
+    /// The rows of the last `days` days, or every row for nil.
+    static func since(_ days: Int?, now: Date = Date()) -> TimeInterval? {
+        days.map { now.timeIntervalSince1970 - TimeInterval($0) * 86_400 }
+    }
+
     static func csv(_ rows: [Record]) -> String {
         // `by` and `claude rule` sit before the wait, which stays last: they say
         // who inside Claude Code made one of its own decisions, and are empty on

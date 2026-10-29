@@ -26,8 +26,28 @@ All notable changes to AgentBar are documented here. This project follows
   note, A always-allows where offered, ↑ ↓ pick another, Esc gives the keyboard
   back.
 
+- **MCP calls show what they will be told.** A card for an MCP tool (or a fetch)
+  lists its arguments, `key: value`, where it used to show only the tool's name.
+- **Refuse a whole MCP server with one rule.** `tool:mcp__github__*` in Settings ▸
+  Rules (or `rules.json`) denies or watches every tool of that server. It can
+  only refuse: approving tools nobody has seen yet is not something a rule may do.
+- **Rules suggested from your own answers.** Settings ▸ Rules lists a prompt you
+  have answered the same way at least five times in one project during the last
+  30 days, that no rule covers yet. **Write it…** opens the rule in Watching;
+  × puts the suggestion away. Only your own clicks count.
+- **Which subagent asked.** A permission card says "from code-reviewer" when a
+  Claude Code subagent asked, the approval history keeps it, and a session row on
+  the island shows how many subagents are working for it, and of what kind.
+- **Export every field.** Settings ▸ Approvals ▸ Export the record writes CSV or
+  JSON Lines (every field: session, Claude Code's reason, the tool call id, the
+  subagent) for the last 7 days, 30 days or everything kept.
+  `agentbar approvals --export --format jsonl` does the same from the terminal.
+
 ### Changed
 
+- No "Always allow … this here" is offered for a tool that names no file (an MCP
+  call, a fetch): a rule like that could never answer. The rule sheet refuses to
+  save one and says why.
 - The global Allow chord no longer answers a far-reaching request; it opens the
   queue on it instead. **Allow all N** is offered only for requests that reach
   nothing.

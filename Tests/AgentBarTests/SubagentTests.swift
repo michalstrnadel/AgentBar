@@ -48,3 +48,25 @@ import Testing
         #expect(s?.subagentCount == 2)
     }
 }
+
+/// The audit export: every field, one object a line, after a header.
+@Suite struct LedgerExportTests {
+    @Test func jsonLinesKeepEveryFieldOldestFirst() throws {
+        var a = DecisionLedger.Record(); a.ts = 200; a.shape = "bash:ls"; a.decision = "allow"
+        a.sessionId = "s1"; a.agentType = "code-reviewer"; a.reason = "why"
+        var b = DecisionLedger.Record(); b.ts = 100; b.shape = "bash:rm"; b.decision = "deny"
+        let text = DecisionLedger.jsonl([a, b], generator: "AgentBar test", since: nil,
+                                        now: Date(timeIntervalSince1970: 300))
+        let lines = text.split(separator: "\n").map(String.init)
+        #expect(lines.count == 3)
+        let header = try #require(try JSONSerialization.jsonObject(with: Data(lines[0].utf8)) as? [String: Any])
+        #expect(header["agentbarExport"] as? Int == 1)
+        #expect(header["rows"] as? Int == 2)
+        #expect(header["since"] is NSNull)
+        #expect(DecisionLedger.Record(jsonLine: lines[1])?.shape == "bash:rm")
+        let last = DecisionLedger.Record(jsonLine: lines[2])
+        #expect(last?.agentType == "code-reviewer")
+        #expect(last?.sessionId == "s1")
+        #expect(last?.reason == "why")
+    }
+}
