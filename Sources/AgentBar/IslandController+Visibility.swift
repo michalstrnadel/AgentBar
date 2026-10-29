@@ -131,9 +131,10 @@ extension IslandController {
         }
         guard AwayWatch.enabled else { return }
         let now = Date().timeIntervalSince1970
-        let changed = awayWatch.tick(idle: InputIdle.seconds(), now: now) { [requests] since in
+        let changed = awayWatch.tick(idle: InputIdle.seconds(), now: now) { [requests, sessions] since in
             AwayRecap.make(since: since, until: now, history: HistoryStore.cached(),
-                           ledger: DecisionLedger.cached(), requests: requests)
+                           ledger: DecisionLedger.cached(), requests: requests,
+                           failures: AwayFailure.from(sessions, since: since, until: now))
         }
         if changed { rebuild(animated: true) }
     }
