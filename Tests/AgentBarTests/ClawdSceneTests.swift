@@ -20,7 +20,7 @@ import Testing
         let cases: [(String, ClawdScene)] = [
             ("Reading", .read), ("Searching", .search), ("Editing", .type), ("Writing", .type),
             ("Running command", .hammer), ("Searching web", .web), ("Browsing web", .web),
-            ("Delegating", .delegate),
+            ("Delegating", .delegate), ("Running tests", .test),
         ]
         for (label, scene) in cases {
             #expect(ClawdScene.scene(for: try session("tool", label: label), now: 1_000) == scene)
@@ -61,6 +61,8 @@ import Testing
     }
 
     @Test func everyPoseIsDrawable() {
+        // The 1.64 poses are drawn, not borrowed.
+        #expect([ClawdScene.test, .sweat, .sad].allSatisfy { $0.reel != nil })
         for scene in ClawdScene.allCases {
             guard let reel = scene.reel else { continue }
             #expect(!reel.rhythm.isEmpty)
@@ -101,6 +103,31 @@ import Testing
         #expect(loop.color.contains { $0 === still.color })
         #expect(loop.template.contains { $0 === still.template })
         #expect(still.template.isTemplate)
+    }
+
+    /// With a hand up his eyes move too (to look at the session that asked), so
+    /// they have to be findable on every raised-hand frame; and sad needs a still.
+    @Test @MainActor func theRaisedHandHasEyesAndSadHasAStill() throws {
+        let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
+        for scene in [ClawdScene.approve, .ask] {
+            let loop = try #require(sprite.scenes[scene])
+            for frame in loop.color {
+                #expect(MascotEyes.find(in: frame) != nil, "\(scene)")
+            }
+        }
+        let sad = try #require(sprite.scenes[.sad]?.still)
+        #expect(sad.template.isTemplate)
+    }
+
+    @Test func theBackpackFillsWithTheContext() throws {
+        let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
+        let resting = sprite.restingColor
+        #expect(IslandMascot.backpack(on: resting, level: .hidden) === resting)
+        let packed = [ContextGauge.Level.notice, .high, .critical].map {
+            IslandMascot.backpack(on: resting, level: $0).tiffRepresentation
+        }
+        #expect(Set(packed.compactMap { $0 }).count == 3)
+        #expect(IslandMascot.backpack(on: sprite.restingTemplate, level: .high).isTemplate)
     }
 
     @Test func aReelCutsOnlyAtTheEndOfItsLoop() {

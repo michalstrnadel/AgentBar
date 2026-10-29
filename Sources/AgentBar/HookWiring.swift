@@ -55,6 +55,11 @@ enum HookWiring {
         // Auto mode's classifier refused a call (Claude Code 2.1.89). Observed only:
         // update.js prints nothing, and `{retry: true}` would be an answer.
         .init(event: "PermissionDenied", script: "claude/update.js", arg: "denied", matcher: true, since: "2.1.89"),
+        // A tool call that failed — the same "post" verb Qwen and Copilot use, told
+        // apart by its event name: a failure streak, a red test run (`fails`, `tests`).
+        // The changelog never announces it; 2.1.119 is the oldest entry that names it
+        // (its `duration_ms`), so that is the version it is known to exist at.
+        .init(event: "PostToolUseFailure", script: "claude/update.js", arg: "post", matcher: true, since: "2.1.119"),
     ]
 
     /// Codex speaks Claude's hook dialect, so these are the `claude/` scripts, reached

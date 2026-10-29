@@ -83,6 +83,7 @@ import Testing
     @Test @MainActor func clawdsScenesShareOneCanvas() {
         let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
         #expect(Set(sprite.scenes.keys) == Set(ClawdScene.allCases))
+        #expect([ClawdScene.test, .sweat, .sad].allSatisfy { sprite.scenes[$0] != nil })
         let loops = sprite.scenes.values
         let widths = Set(loops.flatMap { $0.color.map(\.size.width) + $0.template.map(\.size.width) })
         #expect(widths.count == 1)

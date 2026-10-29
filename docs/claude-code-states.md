@@ -14,8 +14,9 @@ the authoritative map of what AgentBar consumes and why. Sources:
 |---|---|---|---|
 | `SessionStart` | (seed, hidden) | — | `lifecycle.js start`; row hidden until real activity (`started: false`) |
 | `UserPromptSubmit` | `thinking` | brand dot, "Thinking…" | |
-| `PreToolUse` | `tool` | brand dot, per-tool label ("Running command", "Editing", …) | |
-| `PostToolUse` | `thinking` | brand dot, "Thinking…" | also what clears `question` after the user answers |
+| `PreToolUse` | `tool` | brand dot, per-tool label ("Running command", "Editing", …; a shell command that runs tests is "Running tests") | |
+| `PostToolUse` | `thinking` | brand dot, "Thinking…" | also what clears `question` after the user answers. Drops a failure streak (`fails`), records a test run's verdict (`tests`), a red→green run or a `gh pr create` as `comeback`, and an edit's path in `edits` |
+| `PostToolUseFailure` (wired only for Claude Code 2.1.119 and later) | `thinking` | brand dot, "Thinking…" — the turn goes on | The same `update.js post`, told apart by `hook_event_name`: counts `fails` (Clawd sweats at 3 in a row) and marks a failed test run red. An interrupt counts neither way. The changelog never announces the event; 2.1.119, where its input gained `duration_ms`, is the oldest version known to fire it, so an older or unknown version is not wired. |
 | `PermissionRequest` (regular tool) | `permission` | **amber dot, "needs approval"** + inline ✓ Allow / ✓ Always / ✕ Deny / defer | `permission.js` blocks polling `answers.d/`; every failure path falls back to the terminal prompt |
 | `PermissionRequest` (`tool_name == "AskUserQuestion"`) | `question` | **blue dot, "❓ \<question\>"** + inline options — answerable from the menu and island | The terminal wizard renders alongside the hook's wait, so blocking costs the terminal nothing; a remote answer returns deny-with-message, which the model reads as the user's answer and the wizard is dismissed (verified on 2.1.234, both race directions). Options that don't decode fall back to mark-state-and-exit. |
 | `PermissionRequest` (`tool_name == "ExitPlanMode"`) | `permission` | **amber dot, "Plan ready for review"** + the plan as Markdown, **Keep planning** / **Approve plan** | The plan dialog renders alongside the hook's wait. `deny` returns a deny-with-message the model reads as "refine it" — a bare denial ends the turn instead. `allow` is **ignored** by Claude Code (approving a plan also picks the next permission mode, which a hook decision can't carry), so the hook swallows it and the frontend answers the dialog itself. Verified on 2.1.234. |
@@ -32,7 +33,7 @@ the authoritative map of what AgentBar consumes and why. Sources:
 | `Notification` (`permission_prompt`, `idle_prompt`, …) | Removed in 1.2.1: notifications can arrive *late* (after the upstream dialog-flash race, claude-code #12176) and overwrite newer state — sessions got stuck on "needs approval". `permission.js` is the sole owner of the permission signal. |
 | `SubagentStart` / `SubagentStop` | Subagent activity is already reflected through the parent session's tool events. |
 | `PostCompact` | The `SessionStart` with `source: "compact"` that follows every compaction already ends it (see above). |
-| `PostToolUseFailure`, `ConfigChange`, `FileChanged`, … | No user-facing signal AgentBar needs — a failed tool call is followed by more of the same turn. (Qwen Code, which reuses these scripts, *does* register `PostToolUseFailure` — mapped to the same "thinking" as a successful `PostToolUse`, so an errored tool keeps animating the turn — and its `StopFailure`, where the turn itself ended badly: the `error` state.) |
+| `ConfigChange`, `FileChanged`, … | No user-facing signal AgentBar needs. (Qwen Code, which reuses these scripts, registers its `StopFailure`, where the turn itself ended badly: the `error` state.) |
 
 ## Known upstream quirks the design accounts for
 

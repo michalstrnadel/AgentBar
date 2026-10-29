@@ -27,6 +27,8 @@ enum RenderClawdScenes {
         (.search, "Searching", "Grep · Glob"),
         (.type, "Editing", "Edit · Write"),
         (.hammer, "Running command", "Bash"),
+        (.test, "Running tests", "a test command"),
+        (.sweat, "Running command", "three failures in a row"),
         (.web, "Browsing web", "WebFetch · WebSearch"),
         (.delegate, "Delegating", "a subagent"),
         (.compact, "Compacting", "the context is summarised"),
@@ -34,6 +36,7 @@ enum RenderClawdScenes {
         (.approve, "Needs approval", "a permission request waits on you"),
         (.ask, "Has a question", "a question waits on you"),
         (.sleep, "Asleep", "nothing has happened for 10 minutes"),
+        (.sad, "Error", "a turn ended in an error"),
     ]
     static let fps = 12.5
 

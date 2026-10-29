@@ -62,6 +62,12 @@ final class IslandPillView: NSView {
         markView.celebrate()
     }
 
+    /// Tests back to green, or a pull request opened — see `Comeback`.
+    func confetti() {
+        guard !markView.isHidden else { return }
+        markView.confetti()
+    }
+
     func configure(mark: NSImage?, text: String, count: Int, height h: CGFloat,
                    width w: CGFloat, tint: NSColor? = nil) {
         update(mark: mark)

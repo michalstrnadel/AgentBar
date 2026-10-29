@@ -1702,6 +1702,9 @@ const HOOK_WIRING = (() => {
       ev("PreCompact", "claude/update.js", "compact"),
       // Auto mode's classifier refused a call; observed only, update.js prints nothing.
       ev("PermissionDenied", "claude/update.js", "denied", true, null, "2.1.89"),
+      // A failed call: the "post" verb, told apart by its event name (fails, tests).
+      // 2.1.119 is the oldest changelog entry that names it.
+      ev("PostToolUseFailure", "claude/update.js", "post", true, null, "2.1.119"),
     ],
     // Through codex/hook.js, which sets AGENTBAR_AGENT (Codex handlers have no `env`).
     // Codex clamps SessionEnd to 3s; PermissionRequest outlasts permission.js's 600s.

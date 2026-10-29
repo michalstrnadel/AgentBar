@@ -295,6 +295,17 @@ struct SharedFixtureTests {
         }
     }
 
+    /// What a test run is: the away recap says "tests failed" for exactly the
+    /// commands the hook labels "Running tests" (`Scripts/hooks/claude/testrun.js`).
+    @Test func testRunsAgreeWithTheFixture() throws {
+        let cases = Self.cases(try Self.load("test-run"))
+        #expect(cases.count >= 15)
+        for c in cases {
+            let command = c["command"] as? String ?? ""
+            #expect(AwayFailure.isTestRun(command) == (c["test"] as? Bool), "\(command)")
+        }
+    }
+
     /// `$LIVE`, `$DEAD`, `$NOW` and `$NOW-N`, exactly as the CLI half fills them.
     static func filled(_ row: String, now: Int, live: Int) -> String {
         var out = row.replacingOccurrences(of: "$LIVE", with: "\(live)")

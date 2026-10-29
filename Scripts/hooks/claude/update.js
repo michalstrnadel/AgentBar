@@ -39,6 +39,13 @@ const TOOL_LABELS = {
   google_web_search: "Searching web", save_memory: "Noting",
 };
 
+// A shell command that runs tests (shared with the app through a fixture). Its own
+// file; a copy of the hooks that lacks it must still write rows, so a miss is "no".
+let isTestRun = () => false;
+try { ({ isTestRun } = require("./testrun.js")); } catch {}
+const SHELL_TOOLS = new Set(["Bash", "run_shell_command"]);
+const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+
 const safeId = (s) => String(s || "").replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 64) || "unknown";
 
 // A prefix on the row's name, for an agent whose rows another writer already
@@ -178,10 +185,15 @@ function run() {
   const project = cwd ? path.basename(cwd) : prev.project || "";
   const ts = Math.floor(Date.now() / 1000);
   let state = "idle", label = "";
+  const input = p.tool_input && typeof p.tool_input === "object" ? p.tool_input : {};
+  const testRun = SHELL_TOOLS.has(p.tool_name) && isTestRun(input.command);
 
   switch (event) {
     case "prompt": state = "thinking"; label = "Thinking…"; break;
-    case "pre":    state = "tool"; label = TOOL_LABELS[p.tool_name] || "Using tool"; break;
+    case "pre":
+      state = "tool";
+      label = testRun ? "Running tests" : TOOL_LABELS[p.tool_name] || "Using tool";
+      break;
     case "post":   state = "thinking"; label = "Thinking…"; break;
     case "stop":    state = "done"; label = ""; break;
     // PreCompact: the session is busy summarising its own context. It is not a
@@ -367,6 +379,42 @@ function run() {
     });
   }
   if (refused.length) out.refused = refused.slice(-20);
+  // How the session's tools have been going, for the mascot (docs/protocol.md).
+  // A failed call arrives as "post" too — Claude Code's PostToolUseFailure, wired
+  // to the same verb as Qwen's and Copilot's — and only its event name tells it
+  // apart. An interrupt is the person stopping the call, not the call failing, so
+  // it counts neither way. All four fields outlive a prompt: a streak of failures
+  // or a red test run is still true of the session when the next task starts.
+  const failure = /^posttoolusefailure$/i.test(String(p.hook_event_name || ""));
+  const settled = event === "post" && p.is_interrupt !== true;
+  const prevFails = prev.fails && typeof prev.fails === "object" ? Number(prev.fails.streak) || 0 : 0;
+  if (settled && failure) out.fails = { streak: Math.min(prevFails + 1, 99), at: ts };
+  else if (!(settled && !failure) && prevFails > 0) out.fails = prev.fails;
+  // The newest test run's verdict, and the moment one went green after a red one:
+  // an earned celebration rather than another finished turn. A pull request opened
+  // is the other one.
+  const prevTests = prev.tests && typeof prev.tests === "object" && ["red", "green"].includes(prev.tests.last)
+    ? prev.tests : null;
+  if (settled && testRun) out.tests = { last: failure ? "red" : "green", ts };
+  else if (prevTests) out.tests = prevTests;
+  const greenAgain = settled && testRun && !failure && prevTests && prevTests.last === "red";
+  const prOpened = settled && !failure && SHELL_TOOLS.has(p.tool_name)
+    && /(^|[\s;&|(])gh\s+pr\s+create(\s|$)/.test(String(input.command || ""));
+  if (greenAgain || prOpened) out.comeback = ts;
+  else if (Number.isFinite(prev.comeback) && prev.comeback > 0) out.comeback = prev.comeback;
+  // The files the session changed lately, newest last, at most 20, one entry per
+  // path: what lets a frontend see two sessions editing the same file. Only after
+  // the call, and only one that went through.
+  const edits = Array.isArray(prev.edits)
+    ? prev.edits.filter((e) => e && typeof e.path === "string" && e.path && Number.isFinite(e.ts)) : [];
+  const edited = typeof input.file_path === "string" && input.file_path ? input.file_path
+    : typeof input.notebook_path === "string" ? input.notebook_path : "";
+  if (settled && !failure && EDIT_TOOLS.has(p.tool_name) && path.isAbsolute(edited)) {
+    const where = sliceSafe(edited, 1024);
+    out.edits = [...edits.filter((e) => e.path !== where), { path: where, ts }].slice(-20);
+  } else if (edits.length) {
+    out.edits = edits.slice(-20);
+  }
   // What the agent last said, for done rows. Only "stop" carries it — every other
   // event omits the field (out is built fresh, not {...prev}), so the next prompt
   // naturally clears the previous turn's recap and a working session never shows

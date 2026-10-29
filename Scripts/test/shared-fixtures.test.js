@@ -162,3 +162,10 @@ test("hook wiring: the same event table, and the same verdict on every config", 
     assert.deepEqual(v.misplaced, c.expect.misplaced, `${c.name}: misplaced`);
   }
 });
+
+test("test run: the hook calls the same commands a test run", () => {
+  const { isTestRun } = require(path.join(root, "Scripts/hooks/claude/testrun.js"));
+  const f = fixture("test-run");
+  assert.ok(f.cases.length >= 15);
+  for (const c of f.cases) assert.equal(isTestRun(c.command), c.test, JSON.stringify(c.command));
+});

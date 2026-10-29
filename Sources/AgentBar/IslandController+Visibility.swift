@@ -38,7 +38,13 @@ extension IslandController {
         // The eyes ride this same poll rather than a loop of their own, and only
         // look from a pill that is on screen and showing its mark.
         let looking = shown && mode == .collapsed && !hidden
-        if personality.look(pointer: mouse, from: looking ? pill.markCenterOnScreen : nil),
+        // A session waiting on the person is worth a look of its own: its app's
+        // window, when the window server says where that is (`SessionWindow`).
+        let target = looking
+            ? visibleSessions.first { $0.state.waitsOnHuman && $0.pid > 0 }
+                .flatMap { SessionWindow.Cache.shared.centre(of: $0) }
+            : nil
+        if personality.look(pointer: mouse, from: looking ? pill.markCenterOnScreen : nil, target: target),
            mode == .collapsed {
             pill.update(mark: personality.decorate(mark))
         }
