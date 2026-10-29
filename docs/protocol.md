@@ -142,6 +142,12 @@ Rules:
   next event.
 - `wakeups` (optional, Stop only): how many scheduled wakeups (`session_crons`) the
   session has, ≤ 99.
+- `blocked` (optional): `{tool, what, reason, n, ts}`, the newest call auto mode's
+  classifier refused this turn (Claude Code's `PermissionDenied`, 2.1.89 and later):
+  `tool` its name (≤ 40), `what` a command's first line, a file's name, a URL or a
+  pattern (≤ 80), `reason` the classifier's words (≤ 200), `n` how many this turn
+  (≤ 99). The state stays `thinking`: the model is told and carries on. Carried until
+  the next prompt. The hook prints nothing, so it never asks for a retry.
 - `subagentRuns` (optional): `[{id, type, ts}]`, the subagents working for this
   session, newest last, at most 8. A writer adds or refreshes one on each tool event
   that carries `agent_id` (`type` from `agent_type`, `"subagent"` when absent),
@@ -590,7 +596,9 @@ result through unchanged — and writes one file per session:
   reader must not present the ring as everything that ran unasked. Read-only tools (`Read`, `Glob`, `Grep`, `LS`, `TodoWrite`,
   `NotebookRead`, `WebSearch`, `ToolSearch`, `BashOutput`) are left out: they change
   nothing, and listing every file read would bury the calls that did. `input` keeps
-  only `command`, `file_path`, `url` and `description`, each capped at 2 KB. `by` is
+  only `command`, `file_path`, `url` and `description`, each capped at 2 KB; a path
+  the call names as `notebook_path`, `path` or `filePath` is kept as `file_path`, in
+  that order, so its shape is the one a prompt for the same call gets. `by` is
   as in `decisions.jsonl`: `rule` with `rule` naming the settings rule, `mode`,
   `hook`, or `auto`. A `deny` with `by: "hook"` is how a mod holding a command (and the person
   cancelling it there) shows up. Such a mod acts before Claude Code's own permission
