@@ -459,6 +459,59 @@ check "refused: the newest 20"                '[ "$(eval "$REFUSED" | grep -o "\
 check "refused: no hook writes the ledger"    '[ ! -e "$HOME/.agentbar/decisions.jsonl" ]'
 printf '{"session_id":"testsess","prompt":"go on"}' | "$NODE" "$UPDATE" prompt
 
+# 15k. tests, failures and the comeback: a test command is labelled as one; a failed
+# call (PostToolUseFailure, on the "post" verb) counts a streak a success resets;
+# a test run going green after a red one, or a pull request opened, is a comeback.
+FIELD='python3 -c "import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get(sys.argv[2])))" "$STATE"'
+printf '%s' '{"session_id":"testsess","tool_name":"Bash","tool_input":{"command":"swift test --filter X"}}' | "$NODE" "$UPDATE" pre
+check "tests: labelled Running tests"         'grep -q "\"label\":\"Running tests\"" "$STATE"'
+printf '%s' '{"session_id":"testsess","tool_name":"Bash","tool_input":{"command":"git status"}}' | "$NODE" "$UPDATE" pre
+check "tests: any other command is not"       'grep -q "\"label\":\"Running command\"" "$STATE"'
+for _ in 1 2 3; do
+  printf '%s' '{"session_id":"testsess","hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_input":{"command":"swift test"},"error":"Exit code 1","is_interrupt":false}' | "$NODE" "$UPDATE" post
+done
+check "fails: three failures, a streak of 3"  'eval "$FIELD fails" | grep -q "\"streak\": 3"'
+check "fails: the turn goes on"               'grep -q "\"state\":\"thinking\"" "$STATE"'
+check "tests: a failed run is red"            'eval "$FIELD tests" | grep -q "\"last\": \"red\""'
+check "comeback: not yet"                     '[ "$(eval "$FIELD comeback")" = null ]'
+printf '%s' '{"session_id":"testsess","hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_input":{"command":"sleep 99"},"error":"Interrupted","is_interrupt":true}' | "$NODE" "$UPDATE" post
+check "fails: an interrupt counts neither way" 'eval "$FIELD fails" | grep -q "\"streak\": 3"'
+printf '{"session_id":"testsess","prompt":"try again"}' | "$NODE" "$UPDATE" prompt
+check "fails: outlives the next prompt"       'eval "$FIELD fails" | grep -q "\"streak\": 3"'
+check "tests: outlive the next prompt"        'eval "$FIELD tests" | grep -q "\"last\": \"red\""'
+printf '%s' '{"session_id":"testsess","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"swift test"}}' | "$NODE" "$UPDATE" post
+check "fails: a success resets the streak"    '[ "$(eval "$FIELD fails")" = null ]'
+check "tests: green again"                    'eval "$FIELD tests" | grep -q "\"last\": \"green\""'
+check "comeback: red to green is one"         '[ "$(eval "$FIELD comeback")" -gt 0 ]'
+COMEBACK=$(eval "$FIELD comeback")
+sleep 1
+printf '%s' '{"session_id":"testsess","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"swift test"}}' | "$NODE" "$UPDATE" post
+check "comeback: green after green is not"    '[ "$(eval "$FIELD comeback")" = "$COMEBACK" ]'
+printf '%s' '{"session_id":"testsess","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"git push && gh pr create --fill"}}' | "$NODE" "$UPDATE" post
+check "comeback: a pull request opened is one" '[ "$(eval "$FIELD comeback")" -gt "$COMEBACK" ]'
+COMEBACK=$(eval "$FIELD comeback")
+sleep 1
+printf '%s' '{"session_id":"testsess","hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_input":{"command":"gh pr create --fill"},"error":"Exit code 1"}' | "$NODE" "$UPDATE" post
+check "comeback: a failed one is not"         '[ "$(eval "$FIELD comeback")" = "$COMEBACK" ]'
+printf '%s' '{"session_id":"testsess","hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"/tmp/proj/a"}}' | "$NODE" "$UPDATE" post
+# The edits ring: absolute paths of edits that went through, newest last, one per path.
+printf '%s' '{"session_id":"testsess","tool_name":"Edit","tool_input":{"file_path":"/tmp/proj/a.swift"}}' | "$NODE" "$UPDATE" post
+printf '%s' '{"session_id":"testsess","tool_name":"NotebookEdit","tool_input":{"notebook_path":"/tmp/proj/n.ipynb"}}' | "$NODE" "$UPDATE" post
+printf '%s' '{"session_id":"testsess","tool_name":"Write","tool_input":{"file_path":"rel/b.swift"}}' | "$NODE" "$UPDATE" post
+printf '%s' '{"session_id":"testsess","hook_event_name":"PostToolUseFailure","tool_name":"Edit","tool_input":{"file_path":"/tmp/proj/failed.swift"},"error":"x"}' | "$NODE" "$UPDATE" post
+printf '%s' '{"session_id":"testsess","tool_name":"Read","tool_input":{"file_path":"/tmp/proj/read.swift"}}' | "$NODE" "$UPDATE" post
+printf '%s' '{"session_id":"testsess","tool_name":"Edit","tool_input":{"file_path":"/tmp/proj/a.swift"}}' | "$NODE" "$UPDATE" pre
+EDITS='python3 -c "import json,sys; print(\" \".join(e[\"path\"] for e in json.load(open(sys.argv[1])).get(\"edits\",[])))" "$STATE"'
+check "edits: edits that went through, newest last" '[ "$(eval "$EDITS")" = "/tmp/proj/a.swift /tmp/proj/n.ipynb" ]'
+printf '%s' '{"session_id":"testsess","tool_name":"MultiEdit","tool_input":{"file_path":"/tmp/proj/a.swift"}}' | "$NODE" "$UPDATE" post
+check "edits: one entry per path, moved to the end" '[ "$(eval "$EDITS")" = "/tmp/proj/n.ipynb /tmp/proj/a.swift" ]'
+for i in $(seq 1 25); do
+  printf '{"session_id":"testsess","tool_name":"Write","tool_input":{"file_path":"/tmp/proj/f%s"}}' "$i" | "$NODE" "$UPDATE" post
+done
+check "edits: the newest 20"                  '[ "$(eval "$EDITS" | wc -w | tr -d " ")" = 20 ] && eval "$EDITS" | grep -q "/tmp/proj/f25$"'
+printf '{"session_id":"testsess","prompt":"next"}' | "$NODE" "$UPDATE" prompt
+check "edits: outlive the next prompt"        'eval "$EDITS" | grep -q "/tmp/proj/f25"'
+
 # 15d. missing/unreadable transcript: stop still lands, just without a recap
 printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"/nonexistent/x.jsonl"}' | "$NODE" "$UPDATE" stop
 check "recap: missing transcript ok"  'grep -q "\"state\":\"done\"" "$STATE" && ! grep -q "\"recap\"" "$STATE"'

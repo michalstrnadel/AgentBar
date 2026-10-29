@@ -167,6 +167,24 @@ Rules:
   that carries `agent_id` (`type` from `agent_type`, `"subagent"` when absent),
   drops entries older than 120 s, and clears the list on a new prompt and on the
   turn's end.
+- `fails` (optional): `{streak, at}`, tool calls that failed in a row (Claude Code's
+  `PostToolUseFailure`, 2.1.119 and later; Qwen's and Copilot's too) and when the
+  newest did, `streak` ≤ 99. A call that goes through drops it; an interrupt
+  (`is_interrupt`) counts neither way. **Kept across prompts.** AgentBar's mascot
+  sweats at a streak of 3 for five minutes after the newest failure.
+- `tests` (optional): `{last, ts}`, the newest test run's verdict — `"red"` or
+  `"green"` — for a shell command with `test`, `tests` or `pytest` as a word (the
+  rule in `Tests/Fixtures/test-run/cases.json`; such a command's `pre` label is
+  `Running tests`). Kept across prompts.
+- `comeback` (optional): Unix seconds of the newest comeback — a test run that went
+  green after a red one, or a successful `gh pr create`. Kept across prompts; only
+  the value moving forward means anything. A frontend MUST NOT celebrate one it
+  sees on a row's first read (that is history), and SHOULD throttle what it does
+  (AgentBar: confetti in the island, at most once per session per 15 minutes).
+- `edits` (optional): `[{path, ts}]`, the files the session changed lately — an
+  `Edit`, `Write`, `MultiEdit` or `NotebookEdit` that went through, absolute paths
+  only (≤ 1024 chars), one entry per path (a new edit moves it to the end), newest
+  last, at most 20. Kept across prompts.
 - `started` absent counts as `true`: only an explicit `false` hides a row, so a
   writer that never heard of the field still shows up.
 - `agent_name` names an agent the frontend has no entry for. Frontends strip

@@ -306,14 +306,17 @@ final class IslandController: NSObject {
         if let c = composing, requestIdentity[c] == nil || approvalCards[c] == nil {
             endComposing()
         }
-        let celebrate = personality.observe(sessions)
+        let cue = personality.observe(sessions)
         // Before the rebuild: a game that has to step aside should not be drawn once more.
         checkBreakYield()
         rebuild(animated: true)
         checkQueue()
         // Inside the pill or not at all: an open panel, a flash or a pill on its
         // way out lets the finish pass unmarked.
-        if celebrate, mode == .collapsed, flash == nil, !hidden, panel.isVisible, !hiding {
+        let inPill = mode == .collapsed && flash == nil && !hidden && panel.isVisible && !hiding
+        if cue == .confetti, inPill {
+            pill.confetti()
+        } else if cue == .sparkle, inPill {
             pill.celebrate()
         } else if arrived, IslandMascot.plays, mode == .collapsed, flash == nil, !hidden,
                   panel.isVisible, !hiding {

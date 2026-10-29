@@ -117,6 +117,18 @@ enum MascotPersonality {
             lastPointer = nil
         }
 
+        /// Where the eyes go to look at something that is not the pointer — the
+        /// window of a session waiting on the person. No reach and no boredom: it
+        /// is wherever it is, on this display or another, and it stays interesting
+        /// for as long as it waits. The same hysteresis as the pointer, from
+        /// `current`, so a window straddling a diagonal does not flip the eyes.
+        static func toward(dx: Double, dy: Double, current: Pupil) -> Pupil {
+            let distance = (dx * dx + dy * dy).squareRoot()
+            guard distance > onTop else { return current }
+            return Pupil(dx: step(dx / distance, current: current.dx),
+                         dy: step(dy / distance, current: current.dy))
+        }
+
         static func step(_ component: Double, current: Int) -> Int {
             let sign = component < 0 ? -1 : 1
             let magnitude = abs(component)
@@ -211,6 +223,17 @@ enum MascotPersonality {
             workingSince = workingSince.filter { live.contains($0.key) }
             lastFor = lastFor.filter { live.contains($0.key) }
             return fire
+        }
+
+        /// A celebration that earned itself some other way (a `Comeback`) asks the
+        /// same throttle: once per session per `perSession`, and never within
+        /// `anySession` of another. True when it may play now, and counted if so.
+        mutating func allow(_ id: String, now: TimeInterval) -> Bool {
+            guard now - (lastFor[id] ?? -.infinity) >= Self.perSession,
+                  now - lastAny >= Self.anySession else { return false }
+            lastFor[id] = now
+            lastAny = now
+            return true
         }
     }
 

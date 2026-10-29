@@ -35,39 +35,75 @@ final class IslandMascot {
     /// next breath is due.
     private var sleepStep: Int?
 
+    /// What a session's work has earned in the pill on this tick.
+    enum Cue: Equatable {
+        case none
+        /// A long task finished (`MascotPersonality.Celebrations`).
+        case sparkle
+        /// Tests went green after a red run, or a pull request was opened
+        /// (`Comeback`), under the same throttle.
+        case confetti
+    }
+
+    private var comebacks = Comeback()
+    /// Someone waits on the person; the eyes may look even while another
+    /// session works, because the pill then shows the raised hand.
+    private var waiting = false
+    /// How full Clawd's backpack is: the context of the Claude session the pill
+    /// shows (`ContextGauge`). Hidden draws no pack at all.
+    private var pack = ContextGauge.Level.hidden
+    private var packs: [String: NSImage] = [:]
+
     static var plays: Bool {
         MascotPersonality.plays(enabled: MascotPersonality.Prefs.enabled,
                                 reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
 
-    /// Store tick. True when the pill should sparkle — the caller still decides
-    /// whether the pill is there to do it.
-    func observe(_ sessions: [Session]) -> Bool {
+    /// Store tick. Says whether the pill should sparkle or throw confetti — the
+    /// caller still decides whether the pill is there to do it.
+    func observe(_ sessions: [Session]) -> Cue {
         working = sessions.contains { $0.state.isWorking }
+        waiting = sessions.contains { $0.state.waitsOnHuman }
         let live = Set(sessions.map(\.id))
         pokes = pokes.filter { live.contains($0.key) }
+        // The first Claude session in the store's order is the one the mark shows.
+        pack = sessions.first { $0.agentID == "claude" }.map {
+            ContextGauge.level($0.contextPercent, forecast: ContextTrend.shared.forecast(for: $0))
+        } ?? .hidden
         // Observed whether or not it plays, so switching it on mid-turn measures
         // the turn from when it actually started.
+        let now = CACurrentMediaTime()
         let fire = celebrations.observe(
-            sessions.map { .init(id: $0.id, state: $0.state, decayed: $0.decayed) },
-            now: CACurrentMediaTime())
-        return fire && Self.plays
+            sessions.map { .init(id: $0.id, state: $0.state, decayed: $0.decayed) }, now: now)
+        let earned = comebacks.observe(sessions.map { .init(id: $0.id, at: $0.signals.comeback) },
+                                       now: Date().timeIntervalSince1970)
+        guard Self.plays else { return .none }
+        // A comeback outranks a finish on the same tick: it is the rarer one.
+        if earned.contains(where: { celebrations.allow($0, now: now) }) { return .confetti }
+        return fire ? .sparkle : .none
     }
 
     /// Pointer poll. `mark` is the pill's mark on screen, or nil when the pill is
-    /// not showing it (hidden, open, flashing) — then the eyes rest. True when what
-    /// the mark should look like changed and the pill has to be handed it again.
-    func look(pointer: NSPoint, from mark: NSPoint?) -> Bool {
+    /// not showing it (hidden, open, flashing) — then the eyes rest. `target` is
+    /// the window of a session waiting on the person (`SessionWindow`): with the
+    /// pointer not worth a look, the eyes go there instead. True when what the
+    /// mark should look like changed and the pill has to be handed it again.
+    func look(pointer: NSPoint, from mark: NSPoint?, target: NSPoint? = nil) -> Bool {
         // Asleep, he breathes on the same poll — no timer of his own.
         if let step = sleepStep, mark != nil, Self.plays, let crab = Crab.shared,
            crab.sleepStep(at: CACurrentMediaTime()) != step {
             return true
         }
         let before = (pupil, closed)
-        if let mark, Self.plays, !working, Crab.shared != nil {
+        if let mark, Self.plays, !working || waiting, Crab.shared != nil {
             let now = CACurrentMediaTime()
+            let held = pupil
             pupil = gaze.follow(dx: Double(pointer.x - mark.x), dy: Double(pointer.y - mark.y),
                                 pointer: (Double(pointer.x), Double(pointer.y)), now: now)
+            if pupil == .ahead, let target {
+                pupil = MascotPersonality.Gaze.toward(dx: Double(target.x - mark.x),
+                                                      dy: Double(target.y - mark.y), current: held)
+            }
             closed = blink.closed(at: now)
         } else {
             rest()
@@ -86,12 +122,32 @@ final class IslandMascot {
     /// The frame the island should draw in place of `image`. Only Clawd's bare
     /// resting mark is ever changed; everything else — the walk, a badge dot, a
     /// hop's offset copy, the multi-agent row — passes through untouched.
+    ///
+    /// Two exceptions, both Clawd's own frames: with a hand up (`.approve`,
+    /// `.ask`) his eyes move too, so he can look at the session that asked; and
+    /// any frame of his carries the backpack while the context is filling.
     func decorate(_ image: NSImage?) -> NSImage? {
+        let out = face(image)
+        guard let image, let out, pack != .hidden, let crab = Crab.shared, crab.isClawd(image)
+        else { return out }
+        let key = "\(ObjectIdentifier(out).hashValue)|\(pack)"
+        if let hit = packs[key] { return hit }
+        if packs.count > 256 { packs = [:] }
+        let drawn = Self.backpack(on: out, level: pack)
+        packs[key] = drawn
+        return drawn
+    }
+
+    private func face(_ image: NSImage?) -> NSImage? {
         sleepStep = nil
         if let image, Self.plays, let crab = Crab.shared,
            let sleeping = crab.sleeping(image, at: CACurrentMediaTime()) {
             sleepStep = sleeping.step
             return sleeping.frame
+        }
+        if let image, Self.plays, let crab = Crab.shared, crab.raisesHand(image) {
+            guard pupil != .ahead || closed else { return image }
+            return crab.handVariant(image, pupil: pupil, closed: closed) ?? image
         }
         guard let image, Self.plays, !working, let crab = Crab.shared,
               image === crab.color || image === crab.template
@@ -105,6 +161,48 @@ final class IslandMascot {
         }
         guard pupil != .ahead || closed else { return image }
         return crab.variant(template: template, pupil: pupil, closed: closed)
+    }
+
+    // MARK: - Backpack
+
+    /// Clawd's pack: three art pixels wide, on his back (the left — he faces
+    /// right), a flap over three rows that fill from the bottom as the context
+    /// does — one at notice, two when high, all three when critical — in the
+    /// colours the context chip uses. Flat, like the rest of him. In System
+    /// colour it is ink, and the rows not yet filled are cut out of him.
+    static func backpack(on image: NSImage, level: ContextGauge.Level) -> NSImage {
+        let filled: Int
+        switch level {
+        case .hidden: return image
+        case .notice: filled = 1
+        case .high: filled = 2
+        case .critical: filled = 3
+        }
+        let p = image.size.height / CGFloat(ClawdSceneArt.rows)
+        let template = image.isTemplate
+        let flap = NSColor(srgbRed: 0x8e / 255.0, green: 0x62 / 255.0, blue: 0x34 / 255.0, alpha: 1)
+        let cloth = NSColor(srgbRed: 0xc8 / 255.0, green: 0x95 / 255.0, blue: 0x5c / 255.0, alpha: 1)
+        let out = NSImage(size: image.size, flipped: false) { _ in
+            image.draw(in: NSRect(origin: .zero, size: image.size))
+            // Art row r (from the top) sits at y = (rows - 1 - r) · p.
+            func row(_ r: Int) -> NSRect {
+                NSRect(x: 0, y: CGFloat(ClawdSceneArt.rows - 1 - r) * p, width: 3 * p, height: p)
+            }
+            (template ? NSColor.black : flap).setFill()
+            row(4).fill(using: .copy)
+            for i in 0..<3 {
+                let r = row(7 - i)
+                if i < filled {
+                    (template ? NSColor.black : ContextGauge.islandTint(level).withAlphaComponent(1)).setFill()
+                } else {
+                    (template ? NSColor.clear : cloth).setFill()
+                }
+                r.fill(using: .copy)
+            }
+            return true
+        }
+        out.isTemplate = template
+        return out
     }
 
     // MARK: - Hello
@@ -177,6 +275,12 @@ final class IslandMascot {
         private var waves: [Bool: [NSImage]] = [:]
         private let sleep: IconRenderer.Sprite.Loop?
         private let fps: Double
+        /// Every frame Clawd is ever drawn in, for the backpack to know him by.
+        private let frames: Set<ObjectIdentifier>
+        /// The raised-hand frames, each mapped to its colour twin — where the
+        /// eyes are searched for, as on the resting mark.
+        private let hands: [ObjectIdentifier: NSImage]
+        private var handEyes: [ObjectIdentifier: MascotEyes.Eyes?] = [:]
 
         private init?() {
             let sprite = IconRenderer.shared.sprite(for: Agent.byID("claude"))
@@ -189,6 +293,39 @@ final class IslandMascot {
             // Searched on the colour frame and used for both: the template one is
             // the same ink at the same size.
             claw = MascotEyes.findClaw(in: color)
+            var all: Set<ObjectIdentifier> = [ObjectIdentifier(color), ObjectIdentifier(template)]
+            for loop in sprite.scenes.values {
+                for frame in loop.color + loop.template { all.insert(ObjectIdentifier(frame)) }
+            }
+            frames = all
+            var twins: [ObjectIdentifier: NSImage] = [:]
+            for scene in [ClawdScene.approve, .ask] {
+                guard let loop = sprite.scenes[scene] else { continue }
+                for (c, t) in zip(loop.color, loop.template) {
+                    twins[ObjectIdentifier(c)] = c
+                    twins[ObjectIdentifier(t)] = c
+                }
+            }
+            hands = twins
+        }
+
+        func isClawd(_ image: NSImage) -> Bool { frames.contains(ObjectIdentifier(image)) }
+
+        func raisesHand(_ image: NSImage) -> Bool { hands[ObjectIdentifier(image)] != nil }
+
+        /// A raised-hand frame with its eyes moved; nil when its eyes cannot be
+        /// found, and then it is left as drawn.
+        func handVariant(_ image: NSImage, pupil: MascotPersonality.Pupil, closed: Bool) -> NSImage? {
+            let id = ObjectIdentifier(image)
+            guard let twin = hands[id] else { return nil }
+            let twinID = ObjectIdentifier(twin)
+            if handEyes[twinID] == nil { handEyes[twinID] = .some(MascotEyes.find(in: twin)) }
+            guard let found = handEyes[twinID] ?? nil else { return nil }
+            let key = "hand|\(id.hashValue)|\(pupil.dx)|\(pupil.dy)|\(closed)"
+            if let hit = cache[key] { return hit }
+            let out = MascotEyes.redraw(image, eyes: found, pupil: pupil, closed: closed)
+            cache[key] = out
+            return out
         }
 
         /// The hello, drawn once per colour mode. Nil when no claw was found —
@@ -492,6 +629,69 @@ final class IslandMascotView: NSView {
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             for star in stars { star.removeFromSuperlayer() }
+        }
+    }
+
+    // MARK: - Confetti
+
+    /// The comeback (`Comeback`): Clawd hops, and two dozen flat 2-point squares
+    /// in his own colours burst up from the mark and fall past it, gone in 0.9 s.
+    /// Plain layers, no emitter and nothing glowing — the sparkle's way, a little
+    /// bigger, because this one was earned.
+    static let confettiLength: CFTimeInterval = 0.9
+    static let confettiPieces = 24
+
+    func confetti() {
+        guard let host = layer else { return }
+        let mark = imageLayer.frame
+        guard mark.width > 0 else { return }
+        let hop = CAKeyframeAnimation(keyPath: "transform.translation.y")
+        hop.values = [0, 5, 0, 2, 0]
+        hop.keyTimes = [0, 0.3, 0.6, 0.8, 1]
+        hop.duration = 0.5
+        imageLayer.add(hop, forKey: "comeback")
+
+        let palette: [UInt32] = [0xd77757, 0xf5c542, 0x8ab4f8, 0x3fa34d, 0xf2f2f2]
+        let now = host.convertTime(CACurrentMediaTime(), from: nil)
+        var pieces: [CALayer] = []
+        for i in 0..<Self.confettiPieces {
+            // Spread evenly across a fan rather than at random: the same burst
+            // every time, and no two pieces on top of each other.
+            let t = Double(i) / Double(Self.confettiPieces - 1)
+            let dx = CGFloat((t - 0.5) * 2) * (mark.width * 0.9 + 6)
+            let rise = CGFloat(4 + (i * 7) % 6)
+            let fall = CGFloat(6 + (i * 5) % 8)
+            let rgb = palette[i % palette.count]
+            let piece = CALayer()
+            piece.bounds = CGRect(x: 0, y: 0, width: 2, height: 2)
+            piece.backgroundColor = NSColor(srgbRed: CGFloat(rgb >> 16 & 0xff) / 255,
+                                            green: CGFloat(rgb >> 8 & 0xff) / 255,
+                                            blue: CGFloat(rgb & 0xff) / 255, alpha: 1).cgColor
+            let start = CGPoint(x: mark.midX, y: mark.maxY - 2)
+            piece.position = start
+            piece.opacity = 0
+            host.addSublayer(piece)
+            let path = CAKeyframeAnimation(keyPath: "position")
+            path.values = [start,
+                           CGPoint(x: start.x + dx * 0.55, y: start.y + rise),
+                           CGPoint(x: start.x + dx, y: mark.minY - fall + mark.height * 0.4)]
+                .map { NSValue(point: $0) }
+            path.keyTimes = [0, 0.35, 1]
+            path.timingFunctions = [CAMediaTimingFunction(name: .easeOut),
+                                    CAMediaTimingFunction(name: .easeIn)]
+            let opacity = CAKeyframeAnimation(keyPath: "opacity")
+            opacity.values = [1, 1, 0]
+            opacity.keyTimes = [0, 0.7, 1]
+            let group = CAAnimationGroup()
+            group.animations = [path, opacity]
+            group.duration = Self.confettiLength
+            group.beginTime = now + Double(i % 4) * 0.03
+            group.fillMode = .backwards
+            piece.add(group, forKey: "confetti")
+            pieces.append(piece)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.confettiLength + 0.2) {
+            for piece in pieces { piece.removeFromSuperlayer() }
         }
     }
 

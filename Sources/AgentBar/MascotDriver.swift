@@ -30,6 +30,16 @@ final class MascotDriver {
     private var draw: (NSImage) -> NSImage = { $0 }
     private var currentWord = ""
     private var previousTopState: Session.State?
+    /// How fast the sessions are going: the working loop's frame rate follows it,
+    /// and a session stalled while working stops walking (`Tempo`).
+    private var tempo = Tempo()
+    /// The frame rate the animation timer was started at, so a change of tempo
+    /// re-times the loop in place rather than starting it over.
+    private var timerFps = 0.0
+    /// Until when a turn that just ended in an error shows Clawd sad, and the
+    /// one-shot timer that puts him back at rest then.
+    private var sadUntil: TimeInterval = 0
+    private var sadTimer: Timer?
 
     private static let thinkingWords = [
         "Thinking", "Brewing", "Pondering", "Tinkering", "Cooking",
@@ -46,6 +56,8 @@ final class MascotDriver {
     func update(sessions: [Session], systemColor: Bool) {
         self.sessions = sessions
         self.systemColor = systemColor
+        tempo.observe(sessions.map { .init(id: $0.id, state: $0.state, label: $0.label) },
+                      now: Date().timeIntervalSince1970)
         if sessions.contains(where: { $0.state.isWorking || $0.state.waitsOnHuman }) {
             lastBusy = Date().timeIntervalSince1970
         }
@@ -90,10 +102,10 @@ final class MascotDriver {
 
         switch state {
         case .some(let s) where s.isWorking:
-            stopHop(); stopSleep()
+            stopHop(); stopSleep(); stopSad()
             // Redrawn even when the reel carries on: coming back from several
             // agents to one, the image on screen is still the composed one.
-            play(reel(for: agent, sprite: sprite), fps: sprite.fps, redraw: true)
+            play(reel(for: agent, sprite: sprite), fps: sprite.fps * pace(of: topSession), redraw: true)
             // Rotating verbs are Clawd's voice; other agents' dot clusters carry
             // the "working" signal on their own. A fixed word (compacting) is not
             // a mood but a fact, so it holds still and shows for any agent. The id
@@ -103,7 +115,7 @@ final class MascotDriver {
                 stopWords(); word = fixed
             } else if agent.id == "claude" { startWords() } else { stopWords() }
         case .permission, .question:
-            stopHop(); stopWords(); stopSleep()
+            stopHop(); stopWords(); stopSleep(); stopSad()
             // Clawd raises a hand with the "!" or "?" in the badge's colour,
             // in place of the badge; everyone else wears the dot.
             let scene: ClawdScene = state == .permission ? .approve : .ask
@@ -118,9 +130,25 @@ final class MascotDriver {
         case .error:
             // Marked, not celebrated: the same dot the waiting states use, in
             // the failure colour, and never the finish hop.
+            // A turn that was working a moment ago shows Clawd sad for
+            // `ClawdScene.sadFor` first — a still picture, held, then rest.
             stopHop(); stopAnimation(); stopWords(); stopSleep()
-            image = IconRenderer.withPermissionDot(resting, color: .systemRed)
+            let now = Date().timeIntervalSince1970
+            if previousTopState?.isWorking == true, sprite.scenes[.sad]?.still != nil {
+                stopSad()
+                sadUntil = now + ClawdScene.sadFor
+                sadTimer = Timer.scheduledTimer(withTimeInterval: ClawdScene.sadFor, repeats: false) { [weak self] _ in
+                    self?.sadTimer = nil
+                    self?.render()
+                }
+            }
+            var mark = resting
+            if now < sadUntil, let still = sprite.scenes[.sad]?.still {
+                mark = systemColor ? still.template : still.color
+            }
+            image = IconRenderer.withPermissionDot(mark, color: .systemRed)
         default:
+            stopSad()
             stopAnimation()
             stopWords()
             // A task just finished → a brief celebratory hop, then settle to calm.
@@ -143,7 +171,7 @@ final class MascotDriver {
     /// otherwise the most urgent working one. Everyone else shows the plain resting
     /// mark; a waiting session still carries its amber/blue dot.
     private func renderMulti(_ row: [(agent: Agent, state: Session.State)]) {
-        stopHop(); stopWords(); stopSleep()
+        stopHop(); stopWords(); stopSleep(); stopSad()
         defer { previousTopState = topSession?.state }
         let workingIDs = row.filter { $0.state.isWorking }.map(\.agent.id)
         let animatorID = workingIDs.contains("claude") ? "claude" : workingIDs.first
@@ -174,7 +202,8 @@ final class MascotDriver {
         let sprite = IconRenderer.shared.sprite(for: animator.agent)
         // Redrawn now, not at the next tick: a store tick may have put a dot on
         // someone else's mark.
-        if !play(reel(for: animator.agent, sprite: sprite), fps: sprite.fps, draw: build, redraw: true) {
+        let pace = pace(of: sessions.first { $0.agentID == animator.agent.id })
+        if !play(reel(for: animator.agent, sprite: sprite), fps: sprite.fps * pace, draw: build, redraw: true) {
             image = build(nil)
         }
     }
@@ -191,7 +220,10 @@ final class MascotDriver {
         }
         let pick: () -> [NSImage] = { [weak self] in
             let session = self?.sessions.first { $0.agentID == agent.id }
-            let scene = session.map { ClawdScene.scene(for: $0, now: Date().timeIntervalSince1970) } ?? .walk
+            let now = Date().timeIntervalSince1970
+            let scene = session.map {
+                ClawdScene.scene(for: $0, now: now, stalled: self?.tempo.stalled($0.id, now: now) ?? false)
+            } ?? .walk
             guard let loop = sprite.scenes[scene] ?? sprite.scenes[.walk] else { return [] }
             return sys ? loop.template : loop.color
         }
@@ -209,23 +241,44 @@ final class MascotDriver {
         self.draw = draw
         if animationTimer != nil, reel?.key == candidate.key {
             if redraw, let frame = reel?.current { image = draw(frame) }
+            // The same loop at a new tempo: re-timed where it is, and only for a
+            // change worth seeing — every store tick nudges the rate a little.
+            if abs(fps / max(timerFps, 0.001) - 1) >= 0.1 { startTimer(fps: fps) }
             return true
         }
         stopAnimation()
         guard let first = candidate.current else { return false }
         reel = candidate
         image = draw(first)
+        startTimer(fps: fps)
+        return true
+    }
+
+    private func startTimer(fps: Double) {
+        animationTimer?.invalidate()
+        timerFps = fps
         animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / fps, repeats: true) { [weak self] _ in
             guard let self, let frame = self.reel?.advance() else { return }
             self.image = self.draw(frame)
         }
-        return true
     }
 
     private func stopAnimation() {
         animationTimer?.invalidate()
         animationTimer = nil
         reel = nil
+    }
+
+    /// The tempo a working session's loop plays at; 1 for anything else.
+    private func pace(of session: Session?) -> Double {
+        guard let session, session.state.isWorking else { return 1 }
+        return tempo.multiplier(for: session.id, now: Date().timeIntervalSince1970)
+    }
+
+    private func stopSad() {
+        sadTimer?.invalidate()
+        sadTimer = nil
+        sadUntil = 0
     }
 
     /// A word that says what the session is actually doing, in place of the

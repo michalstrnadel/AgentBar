@@ -1,0 +1,33 @@
+{
+  "about": [
+    "Whether a shell command runs tests: `test`, `tests` or `pytest` as a word, words being",
+    "runs of letters, case ignored. Read by Tests/AgentBarTests/SharedFixtureTests.swift",
+    "(AwayFailure.isTestRun: the away recap's \"tests failed\") and by",
+    "Scripts/test/shared-fixtures.test.js (Scripts/hooks/claude/testrun.js: update.js's",
+    "\"Running tests\" label and the `tests` / `comeback` fields, docs/protocol.md)."
+  ],
+  "cases": [
+    {"command": "swift test", "test": true},
+    {"command": "npm test", "test": true},
+    {"command": "npm run test:unit", "test": true},
+    {"command": "go test ./...", "test": true},
+    {"command": "cargo test --workspace", "test": true},
+    {"command": "python -m pytest -q", "test": true},
+    {"command": "PYTEST_ADDOPTS=-x pytest", "test": true},
+    {"command": "./Scripts/test/cli-test.sh", "test": true},
+    {"command": "bash Scripts/test/permission-hook-test.sh", "test": true},
+    {"command": "make tests", "test": true},
+    {"command": "xcodebuild TEST -scheme App", "test": true},
+    {"command": "ls tests2", "test": true},
+    {"command": "node --test Scripts/test/shared-fixtures.test.js", "test": true},
+    {"command": "swift build && swift test --filter TempoTests", "test": true},
+    {"command": "cat latest.txt", "test": false},
+    {"command": "git log --oneline", "test": false},
+    {"command": "npm run testing", "test": false},
+    {"command": "ls testsuite", "test": false},
+    {"command": "contest.sh", "test": false},
+    {"command": "jest", "test": false},
+    {"command": "pytester", "test": false},
+    {"command": "", "test": false}
+  ]
+}
