@@ -3,6 +3,26 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.61.0 - 2026-10-29
+
+### Added
+
+- **When auto mode refuses something, the row says so.** Claude Code's auto mode
+  can refuse a call on its own and the agent carries on, so nothing on screen
+  showed it. Now the row reads "auto mode refused Bash · curl … | sh" in amber
+  (a "refused" chip on a small row), with the classifier's reason in the tooltip,
+  until your next prompt. AgentBar only reports it: it never asks Claude Code to
+  retry. Wired for Claude Code 2.1.89 and later; for an older or unknown version
+  the event is left out of settings.json, because an older build may refuse a
+  settings file with an event it does not know.
+
+### Fixed
+
+- **Rules on MCP tools that name a file `path`.** With the Claude Code mod, a call
+  Claude Code decided by itself on such a tool (or on a notebook) was filed under
+  the tool alone, while a prompt for the same call was filed under its folder, so
+  the two never matched. Both are filed under the folder now.
+
 ## 1.60.0 - 2026-10-29
 
 ### Added
