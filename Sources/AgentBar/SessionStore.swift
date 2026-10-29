@@ -16,6 +16,12 @@ final class SessionStore {
     private let mods: ModSidecars
     private let liveQuota: ClaudeLiveQuota
     private let ingest: ClaudeDecisionIngest
+    /// What auto mode refused (`refused` on a Claude Code row), to the ledger the
+    /// same way: once per tool call, as Claude Code's decision and never yours.
+    private let refusals: ClaudeDecisionIngest
+    /// Session id → the refusal ids its row carried on the last pass, so a ring
+    /// is handed over only when it changed.
+    private var lastRefused: [String: [String]] = [:]
 
     private var dirSource: DispatchSourceFileSystemObject?
     private var timer: Timer?
@@ -29,11 +35,13 @@ final class SessionStore {
     private var loggedUnreadable: Set<String> = []
 
     init(stateDir: URL = SessionStore.stateDir, mods: ModSidecars = ModSidecars(),
-         liveQuota: ClaudeLiveQuota = .shared, ingest: ClaudeDecisionIngest = .shared) {
+         liveQuota: ClaudeLiveQuota = .shared, ingest: ClaudeDecisionIngest = .shared,
+         refusals: ClaudeDecisionIngest = .refusals) {
         self.stateDir = stateDir
         self.mods = mods
         self.liveQuota = liveQuota
         self.ingest = ingest
+        self.refusals = refusals
     }
 
     func start() {
@@ -113,6 +121,7 @@ final class SessionStore {
         }
         sessions.sort { ($0.priority, $0.ts) > ($1.priority, $1.ts) }
         loggedUnreadable.formIntersection(present)   // a file that came back may log again
+        ingestRefusals(sessions, rowIDs: rowIDs)
         sessions = mergeMods(into: sessions, rowIDs: rowIDs)
 
         // Only notify when something visible changed, so the menu bar isn't rebuilt every
@@ -144,6 +153,32 @@ final class SessionStore {
             ingest.ingest(pass.changed, projects: projects, onDisk: Set(pass.reports.keys))
         }
         return Self.merge(pass.reports, into: sessions)
+    }
+
+    /// The rows whose `refused` ring changed since the last pass, to the ledger as
+    /// Claude Code's own `deny`s. Dressed as a sidecar's report so they go through
+    /// the one path that already writes Claude Code's decisions — its shape, its
+    /// display line, its once-per-id memory.
+    private func ingestRefusals(_ sessions: [Session], rowIDs: Set<String>) {
+        var now: [String: [String]] = [:]
+        var changed: [ModReport] = []
+        var projects: [String: String] = [:]
+        for s in sessions where !s.refused.isEmpty {
+            let ids = s.refused.map(\.id)
+            now[s.id] = ids
+            guard lastRefused[s.id] != ids else { continue }
+            changed.append(Self.refusalReport(s))
+            projects[s.id] = s.project
+        }
+        lastRefused = now
+        if !changed.isEmpty { refusals.ingest(changed, projects: projects, onDisk: rowIDs) }
+    }
+
+    static func refusalReport(_ s: Session) -> ModReport {
+        var r = ModReport(sessionId: s.id, ts: s.ts)
+        r.cwd = s.cwd
+        r.decisions = s.refused
+        return r
     }
 
     static func merge(_ reports: [String: ModReport], into sessions: [Session]) -> [Session] {

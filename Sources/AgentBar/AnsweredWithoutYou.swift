@@ -47,12 +47,14 @@ enum AnsweredWithoutYou {
     static let nothingText = "Nothing in the last 7 days that Claude Code settled before "
         + "a prompt was due."
     /// Said under every non-empty card. What auto mode runs on an `ask` is counted
-    /// (`by: "auto"`), but only where AgentBar's hooks can say nobody was prompted,
-    /// and what it refuses never is: a refusal comes back looking like a command that
-    /// failed. A card that read as "everything that ran unasked" would be the
-    /// confident wrong number this page exists to replace.
-    static let blindSpotText = "Not counted: what auto mode or don't-ask mode refuses, "
-        + "or runs in a session without AgentBar's hooks."
+    /// (`by: "auto"`), but only where AgentBar's hooks can say nobody was prompted;
+    /// what it refuses is counted from the hooks' `PermissionDenied` (`refused`),
+    /// with or without the mod. Don't-ask mode's refusals still are not: to the mod
+    /// they look like a command that failed, and no hook reports them. A card that
+    /// read as "everything that ran unasked" would be the confident wrong number this
+    /// page exists to replace.
+    static let blindSpotText = "Not counted: what don't-ask mode refuses, "
+        + "or anything in a session without AgentBar's hooks."
 
     /// The card's contents. `modInstalled` and `ledgerOn` only choose between the
     /// empty states: rows in the ledger are counted whatever they say now.

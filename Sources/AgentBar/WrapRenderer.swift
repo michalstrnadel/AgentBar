@@ -280,6 +280,8 @@ enum WrapRenderer {
         if decided > 0 {
             var bits: [String] = []
             if w.waits.byRules > 0 { bits.append("\(w.waits.byRules) by your rules") }
+            // Beside your answers, never in the figure: nobody asked you about these.
+            if w.waits.autoRefused.count > 0 { bits.append("auto mode refused \(w.waits.autoRefused.count)") }
             if w.waits.waited >= 60 { bits.append("they waited \(HistoryDigest.duration(w.waits.waited))") }
             else if let fast = w.waits.fastest { bits.append("fastest \(S.shortWait(fast))") }
             out.append(Tile(caption: "Your answers", value: S.grouped(decided),

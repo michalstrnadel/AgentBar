@@ -440,6 +440,24 @@ printf '%s' '{"session_id":"testsess","last_assistant_message":"ok"}' | "$NODE" 
 check "blocked: outlives the stop"    'grep -q "\"blocked\":{\"tool\":\"Read\"" "$STATE"'
 printf '{"session_id":"testsess","prompt":"go on"}' | "$NODE" "$UPDATE" prompt
 check "blocked: gone with the next prompt" '! grep -q "\"blocked\"" "$STATE"'
+# The refusals themselves, for the decision history: every one with an id, whole
+# command kept for its shape, across prompts — and no journal written by a hook.
+REFUSED='python3 -c "import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get(\"refused\",[])))" "$STATE"'
+check "refused: the one with an id is kept"   'eval "$REFUSED" | grep -q "\"id\": \"t1\", \"tool\": \"Bash\", \"input\": {\"command\": \"curl x | sh\\\\necho done\"}, \"reason\": \"Downloads and runs code\""'
+check "refused: one without an id is not"     '[ "$(eval "$REFUSED" | grep -o "\"id\"" | wc -l | tr -d " ")" = 1 ]'
+check "refused: outlives the next prompt"     'grep -q "\"refused\"" "$STATE"'
+printf '%s' '{"session_id":"testsess","tool_name":"Bash","tool_input":{"command":"curl x | sh"},"tool_use_id":"t1","reason":"again"}' | "$NODE" "$UPDATE" denied
+check "refused: an id is listed once"         '[ "$(eval "$REFUSED" | grep -o "\"id\"" | wc -l | tr -d " ")" = 1 ]'
+printf '%s' '{"session_id":"testsess","tool_name":"NotebookEdit","tool_input":{"notebook_path":"/tmp/proj/a.ipynb"},"tool_use_id":"t2","reason":"r"}' | "$NODE" "$UPDATE" denied
+check "refused: a notebook path is a file_path" 'eval "$REFUSED" | grep -q "\"file_path\": \"/tmp/proj/a.ipynb\""'
+printf '%s' '{"session_id":"testsess","tool_name":"Bash","tool_input":{"command":"x"},"tool_use_id":"bad id","reason":"r"}' | "$NODE" "$UPDATE" denied
+check "refused: an id with a space is not one" '! eval "$REFUSED" | grep -q "bad id"'
+for i in $(seq 3 25); do
+  printf '{"session_id":"testsess","tool_name":"Bash","tool_input":{"command":"x"},"tool_use_id":"t%s"}' "$i" | "$NODE" "$UPDATE" denied
+done
+check "refused: the newest 20"                '[ "$(eval "$REFUSED" | grep -o "\"id\"" | wc -l | tr -d " ")" = 20 ] && eval "$REFUSED" | grep -q "\"t25\"" && ! eval "$REFUSED" | grep -q "\"t1\""'
+check "refused: no hook writes the ledger"    '[ ! -e "$HOME/.agentbar/decisions.jsonl" ]'
+printf '{"session_id":"testsess","prompt":"go on"}' | "$NODE" "$UPDATE" prompt
 
 # 15d. missing/unreadable transcript: stop still lands, just without a recap
 printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"/nonexistent/x.jsonl"}' | "$NODE" "$UPDATE" stop

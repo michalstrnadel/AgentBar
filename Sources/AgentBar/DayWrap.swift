@@ -41,6 +41,8 @@ struct DayWrap: Equatable {
         var waited: TimeInterval = 0
         /// Decisions a rule you wrote made for you.
         var byRules = 0
+        /// What Claude Code's auto mode refused. Neither yours nor your rules'.
+        var autoRefused = DecisionLedger.AutoRefusals()
         var fastest: TimeInterval?
         var median: TimeInterval?
     }
@@ -278,6 +280,7 @@ struct DayWrap: Equatable {
         w.waits.answered = mine.count
         w.waits.waited = mine.reduce(0) { $0 + $1.waited }
         w.waits.byRules = DecisionLedger.byRules(in: inRange, since: start, until: end)
+        w.waits.autoRefused = DecisionLedger.autoRefusals(in: inRange, since: start, until: end)
         w.moments = inRange.compactMap { r in
             if r.isPersonal { return Moment(ts: r.ts, waited: r.waited, byRule: false) }
             if r.via == "rule", r.decision != "watch" { return Moment(ts: r.ts, waited: 0, byRule: true) }

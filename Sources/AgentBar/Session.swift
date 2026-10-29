@@ -53,6 +53,9 @@ struct Session {
     var background: BackgroundWork?
     /// What auto mode refused this turn; nil when nothing.
     var blocked: AutoModeBlock?
+    /// Every refusal the row still carries, across turns, for the decision history
+    /// (`refused`; Claude Code only). Nothing on screen reads it.
+    var refused: [ModReport.Decision] = []
     /// How many subagents are working, by whichever source saw more.
     var subagentCount: Int { max(subagents, subagentTypes.count) }
     /// What the mod knows about each of them: kind, task, model, since when.
@@ -121,6 +124,7 @@ struct Session {
         todo = TaskProgress(o["todo"])
         background = BackgroundWork(o["background"], wakeups: o["wakeups"])
         blocked = AutoModeBlock(o["blocked"])
+        if agentID == "claude" { refused = AutoModeBlock.refusals(o["refused"], fallbackTs: ts) }
         subagentTypes = (o["subagentRuns"] as? [[String: Any]] ?? []).suffix(8).compactMap {
             ($0["type"] as? String).map { String(Self.displayName($0).prefix(30)) }
         }.filter { !$0.isEmpty }

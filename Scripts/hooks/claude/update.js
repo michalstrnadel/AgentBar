@@ -336,6 +336,37 @@ function run() {
   } else if (event !== "prompt" && prev.blocked && typeof prev.blocked === "object") {
     out.blocked = prev.blocked;
   }
+  // Every refusal, not only the newest, for the decision history: a frontend turns
+  // each one into a decisions.jsonl row keyed by its tool_use_id (the hook writes no
+  // journal — docs/protocol.md). Kept across prompts, newest last, at most 20, so a
+  // frontend that was not looking during the turn still finds it. A refusal with no
+  // id cannot be counted once, so it is not offered to be counted at all.
+  const refused = Array.isArray(prev.refused)
+    ? prev.refused.filter((r) => r && typeof r === "object" && typeof r.id === "string" && r.id)
+    : [];
+  const useId = typeof p.tool_use_id === "string" && /^[^\s\u0000-\u001f\u007f]{1,128}$/.test(p.tool_use_id)
+    ? p.tool_use_id : "";
+  if (event === "denied" && useId && !refused.some((r) => r.id === useId)) {
+    const i = p.tool_input && typeof p.tool_input === "object" ? p.tool_input : {};
+    const input = {};
+    // The same fields, under the same names and caps, the mod keeps for a call
+    // (mods.d `input`): the frontend shapes both through one function.
+    for (const k of ["command", "file_path", "url"]) {
+      if (typeof i[k] === "string") input[k] = sliceSafe(i[k], 2048);
+    }
+    if (!input.file_path) {
+      const alt = ["notebook_path", "path", "filePath"].find((k) => typeof i[k] === "string" && i[k]);
+      if (alt) input.file_path = sliceSafe(i[alt], 2048);
+    }
+    refused.push({
+      id: useId,
+      tool: sliceSafe(String(p.tool_name || "").replace(/\s+/g, " ").trim(), 128),
+      input,
+      reason: sliceSafe(String(p.reason || "").replace(/\s+/g, " ").trim(), 300),
+      ts,
+    });
+  }
+  if (refused.length) out.refused = refused.slice(-20);
   // What the agent last said, for done rows. Only "stop" carries it — every other
   // event omits the field (out is built fresh, not {...prev}), so the next prompt
   // naturally clears the previous turn's recap and a working session never shows

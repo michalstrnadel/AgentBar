@@ -565,6 +565,17 @@ printf '{"v":1,"ts":%s,"agent":"claude","sessionId":"s1","project":"proj","cwd":
 OUT="$("$CLI" approvals)"
 check "approvals keeps Claude Code apart"   'echo "$OUT" | grep -q "0 answered" && echo "$OUT" | grep -q "1 decided by Claude Code"'
 check "the export names Claude Code's rule" '"$CLI" approvals --export | grep -qF "\"claude\",\"\",\"rule\",\"Bash(git status:*)\""'
+# What auto mode refused (PermissionDenied, ingested by the app) is Claude Code's,
+# never the person's denial, and is counted on its own with the shape it refused most.
+for n in 2 3; do
+  printf '{"v":1,"ts":%s,"agent":"claude","sessionId":"s1","project":"proj","cwd":"%s","tool":"Bash","shape":"bash:curl","display":"Bash: curl x | sh","decision":"deny","waited":0,"via":"claude","by":"auto","reason":"Downloads and runs code","toolUseId":"toolu_%s"}\n' \
+    "$(date +%s)" "$HOME/proj" "$n" >> "$HOME/.agentbar/decisions.jsonl"
+done
+OUT="$("$CLI" approvals)"
+check "auto mode's refusals are not yours"  'echo "$OUT" | grep -q "0 answered" && ! echo "$OUT" | grep -q "denied"'
+check "auto mode's refusals counted apart"  'echo "$OUT" | grep -q "auto mode refused 2 (curl 2x)"'
+check "approvals --json says autoRefused"   '"$CLI" approvals --json | grep -q "\"autoRefused\": 2"'
+check "the export says auto mode decided"   '"$CLI" approvals --export | grep -qF "\"deny\",\"\",\"claude\",\"\",\"auto\""'
 
 # One bad rule refuses the whole file: a policy half in force is worse than none.
 printf '{"v":1,"rules":[{"id":"r-aaa111","decision":"allow","shape":"bash:git status","cwd":"%s"},{"id":"r-ccc333","decision":"allow","shape":"bash:ls"}]}' \

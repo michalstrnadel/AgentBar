@@ -95,7 +95,9 @@ final class DecisionLedger {
         var rule = ""
         /// For a `claude` row: who in Claude Code decided — `rule` (a settings rule,
         /// named in `claudeRule`), `mode` (the permission mode or the tool's own
-        /// check) or `hook` (a hook or another mod). Empty for every other `via`.
+        /// check), `hook` (a hook or another mod) or `auto` (auto mode's classifier:
+        /// an `allow` the mod saw, a `deny` the hook's `PermissionDenied` reported).
+        /// Empty for every other `via`.
         var by = ""
         var claudeRule = ""
         /// Claude Code's own sentence about it, capped at 300 characters.
@@ -114,6 +116,10 @@ final class DecisionLedger {
         /// Spelled as what it excludes rather than as `app`/`cli`, so a row written
         /// before `via` meant anything still counts as the person's, as it always did.
         var isPersonal: Bool { via != "rule" && via != "claude" }
+
+        /// A call Claude Code's auto mode refused (the hook's `PermissionDenied`).
+        /// Never the person's: `via` is `claude`, so `isPersonal` already says no.
+        var isAutoRefusal: Bool { via == "claude" && by == "auto" && decision == "deny" }
 
         var json: [String: Any] {
             var o: [String: Any] = [
@@ -680,6 +686,37 @@ final class DecisionLedger {
         records.filter {
             $0.ts >= since && $0.ts <= until && $0.via == "rule" && $0.decision != "watch"
         }.count
+    }
+
+    /// What auto mode refused over a span (`via: "claude"`, `by: "auto"`, `deny`):
+    /// how many, and the shape it refused most with its count. Counted beside your
+    /// answers and your rules' and never inside either — nobody was asked.
+    struct AutoRefusals: Equatable {
+        var count = 0
+        var top = ""
+        var topCount = 0
+
+        /// "auto mode refused 14 (curl 12×)", or "" when it refused nothing.
+        var phrase: String {
+            guard count > 0 else { return "" }
+            let most = topCount > 1 && !top.isEmpty ? " (\(RulesView.readable(top)) \(topCount)×)" : ""
+            return "auto mode refused \(count)" + most
+        }
+    }
+
+    static func autoRefusals(in records: [Record], since: TimeInterval,
+                             until: TimeInterval) -> AutoRefusals {
+        var out = AutoRefusals()
+        var shapes: [String: Int] = [:]
+        for r in records where r.ts >= since && r.ts <= until && r.isAutoRefusal {
+            out.count += 1
+            if !r.shape.isEmpty { shapes[r.shape, default: 0] += 1 }
+        }
+        if let best = shapes.max(by: { ($0.value, $1.key) < ($1.value, $0.key) }) {
+            out.top = best.key
+            out.topCount = best.value
+        }
+        return out
     }
 
     /// How long agents sat blocked on the human over a span. The other half of the

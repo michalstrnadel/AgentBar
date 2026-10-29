@@ -1,8 +1,10 @@
 import Foundation
 
 /// Turns what Claude Code decided without asking — the `decisions` ring of each
-/// `mods.d` sidecar — into `decisions.jsonl` rows (`via: "claude"`), one per tool
-/// call, ever (`docs/protocol.md`).
+/// `mods.d` sidecar, and the `refused` ring the hook keeps on a `state.d` row for
+/// what auto mode refused — into `decisions.jsonl` rows (`via: "claude"`), one per
+/// tool call, ever (`docs/protocol.md`). One instance per source (`shared`,
+/// `refusals`), each with its own memory file.
 ///
 /// **One row per id, ever** is the whole difficulty, and it is answered twice. A
 /// small file of its own, `mods.d/.ingested.json`, remembers per session which ids
@@ -28,10 +30,23 @@ final class ClaudeDecisionIngest {
 
     static let defaultStore = AgentBarHome.url("mods.d/.ingested.json")
 
+    /// The second source of Claude Code's own decisions: what auto mode **refused**,
+    /// which the mod cannot tell from a command that failed, and the hook's
+    /// `PermissionDenied` can (`refused` on a `state.d` row, handed over by
+    /// `SessionStore`). Same rows, same switch, same once-per-id rule — the ledger's
+    /// `toolUseId`s are shared, so a call reported by both could still be written
+    /// once. Its own memory file, beside the state folder rather than in `mods.d`:
+    /// refusals arrive with or without the mod, and creating `mods.d` would read as
+    /// the mod having been there.
+    static let refusals = ClaudeDecisionIngest(storeURL: AgentBarHome.url(".refused-ingested.json"))
+
     private let ledgerURL: URL
     private let storeURL: URL
     private let isEnabled: () -> Bool
     private let queue = DispatchQueue(label: "agentbar.claude-ingest", qos: .utility)
+    /// Both instances (`shared`, `refusals`) read the ledger's ids and append under
+    /// it: one at a time, so a call both report cannot be written twice.
+    private static let ledgerTurn = NSLock()
     /// Session id → the ids of its ring already taken. Loaded on first use.
     private var taken: [String: Set<String>]?
 
@@ -50,6 +65,8 @@ final class ClaudeDecisionIngest {
         queue.async { [self] in
             var taken = self.taken ?? Self.load(storeURL)
             let before = taken
+            Self.ledgerTurn.lock()
+            defer { Self.ledgerTurn.unlock() }
             let ledgerIDs = Set(DecisionLedger.cached(url: ledgerURL).lazy
                 .filter { $0.via == "claude" && !$0.toolUseId.isEmpty }.map(\.toolUseId))
             var rows: [DecisionLedger.Record] = []

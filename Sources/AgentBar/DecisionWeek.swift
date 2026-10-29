@@ -72,8 +72,10 @@ enum DecisionWeek {
         var untimed = 0
         /// Answers your rules gave themselves this week.
         var byRules = 0
+        /// What Claude Code's auto mode refused this week. Never among `asked`.
+        var autoRefused = DecisionLedger.AutoRefusals()
 
-        var isEmpty: Bool { asked == 0 && byRules == 0 }
+        var isEmpty: Bool { asked == 0 && byRules == 0 && autoRefused.count == 0 }
     }
 
     static func make(ledger: [DecisionLedger.Record], rules: [RulesStore.Rule],
@@ -87,6 +89,7 @@ enum DecisionWeek {
         }
         let inWeek = ledger.filter { $0.ts >= start && $0.ts <= end }
         week.byRules = DecisionLedger.byRules(in: inWeek, since: start, until: end)
+        week.autoRefused = DecisionLedger.autoRefusals(in: inWeek, since: start, until: end)
         let mine = inWeek.filter {
             $0.isPersonal && counted.contains($0.decision) && $0.shape != question
         }
@@ -213,6 +216,7 @@ enum DecisionWeek {
             parts.append("asked \(w.asked)×, " + waitPhrase(w.waited, untimed: w.untimed, of: w.asked))
         }
         if w.byRules > 0 { parts.append("your rules answered \(w.byRules) more") }
+        if w.autoRefused.count > 0 { parts.append(w.autoRefused.phrase) }
         return parts.joined(separator: " · ")
     }
 

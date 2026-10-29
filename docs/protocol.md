@@ -148,6 +148,20 @@ Rules:
   pattern (≤ 80), `reason` the classifier's words (≤ 200), `n` how many this turn
   (≤ 99). The state stays `thinking`: the model is told and carries on. Carried until
   the next prompt. The hook prints nothing, so it never asks for a retry.
+- `refused` (optional, Claude Code only): `[{id, tool, input, reason, ts}]`, every
+  call auto mode refused that carried a `tool_use_id`, newest last, at most 20, **kept
+  across prompts** (unlike `blocked`) so a frontend that was not watching during the
+  turn still finds it. `id` is the `tool_use_id` (≤ 128, no whitespace or control
+  characters; a refusal without one is not listed — it could not be counted once),
+  `tool` its name (≤ 128), `input` only `command`, `file_path` and `url`, each ≤ 2 KB,
+  with `notebook_path`/`path`/`filePath` kept as `file_path` (the mod's `input`, so
+  one shape function serves both), `reason` the classifier's words (≤ 300). An id
+  already listed is not added again. It exists for `decisions.jsonl`: a frontend
+  writes each entry there once, as Claude Code's own `deny` with `by: "auto"` (below),
+  and MAY remember the ids it took (AgentBar: `.refused-ingested.json` at the state
+  root, not in `mods.d`, whose existence reads as the mod having been there).
+  Concurrent `PermissionDenied` hooks race on the row like every other event, so a
+  refusal can be lost; the ledger is not promised to hold every one.
 - `subagentRuns` (optional): `[{id, type, ts}]`, the subagents working for this
   session, newest last, at most 8. A writer adds or refreshes one on each tool event
   that carries `agent_id` (`type` from `agent_type`, `"subagent"` when absent),
@@ -517,10 +531,15 @@ decisions about the same command are two decisions, and counting them is the poi
   and the AgentBar mod saw it (see `mods.d` below); such a row also carries `by`
   (`rule` — a Claude Code settings rule, named in `claudeRule`; `mode` — the permission
   mode or the tool's own check; `auto` — auto mode's classifier, on a call Claude Code
-  would otherwise have asked about; `hook` — a hook or another mod: Claude Code says a
+  would otherwise have asked about: an `allow` the mod saw it let through, or a `deny`
+  the hook's `PermissionDenied` reported (`refused` on the `state.d` row, `reason` the
+  classifier's words) — one decider, both verdicts, so "auto mode refused `curl` 12×"
+  and "ran 38" are read off the same rows; `hook` — a hook or another mod: Claude Code says a
   `PreToolUse` hook decided but not why, and names no mod, so `reason` is often empty), `reason` (Claude Code's sentence, capped at 300 characters) and
   `toolUseId`, which is unique: a frontend writes one row per id, ever. Its `waited`
-  is `0`. A frontend that offers a switch to stop writing rows (AgentBar: *Remember
+  is `0`. The `toolUseId`s are one namespace whichever source reported the call
+  (`mods.d` or `refused`), and only a frontend writes these rows — no hook does; the
+  macOS app is the one that writes them today, the CLI only reads them. A frontend that offers a switch to stop writing rows (AgentBar: *Remember
   what I decided*) applies it to `claude` rows too, and marks their ids as taken
   while it is off, so switching back on does not backfill. Readers cap `claude` rows
   apart from the person's (AgentBar keeps up to 5 000 of each), so a busy day of
@@ -592,7 +611,8 @@ result through unchanged — and writes one file per session:
   So `by: "auto"` is written only while that row exists — in a session without
   AgentBar's hooks nothing is guessed — and only for a call that ran: a refusal
   comes back as an error result, the same shape as a command that ran and failed,
-  so what auto mode refused (and what don't-ask mode refuses) is not among them. A
+  so what auto mode refused (and what don't-ask mode refuses) is not among them —
+  auto mode's refusals reach the ledger from the hook instead (`refused`). A
   reader must not present the ring as everything that ran unasked. Read-only tools (`Read`, `Glob`, `Grep`, `LS`, `TodoWrite`,
   `NotebookRead`, `WebSearch`, `ToolSearch`, `BashOutput`) are left out: they change
   nothing, and listing every file read would bury the calls that did. `input` keeps

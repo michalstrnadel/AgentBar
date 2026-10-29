@@ -792,6 +792,17 @@ function printApprovals(argv, json) {
   const byRules = all.filter((r) => r.via === "rule" && r.decision !== "watch").length;
   // Claude Code's own decisions, made before any prompt existed (`mods.d`).
   const byClaude = all.filter((r) => r.via === "claude").length;
+  // Of those, what auto mode refused (the hook's PermissionDenied), and the shape it
+  // refused most — DecisionLedger.autoRefusals.
+  const refusedShapes = new Map();
+  let autoRefused = 0;
+  for (const r of all) {
+    if (r.via !== "claude" || r.by !== "auto" || r.decision !== "deny") continue;
+    autoRefused++;
+    if (r.shape) refusedShapes.set(r.shape, (refusedShapes.get(r.shape) || 0) + 1);
+  }
+  const [topRefused, topRefusedN] = [...refusedShapes]
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0] || ["", 0];
 
   // Counted per repo: the same command is routine in one checkout and the
   // opposite in another.
@@ -811,7 +822,7 @@ function printApprovals(argv, json) {
   const list = [...byShape.values()].sort((a, b) => (b.allowed + b.denied) - (a.allowed + a.denied));
 
   if (json) {
-    console.log(JSON.stringify({ answered: rows.length, byRules, byClaude, waited, repeats: list }, null, 2));
+    console.log(JSON.stringify({ answered: rows.length, byRules, byClaude, autoRefused, waited, repeats: list }, null, 2));
     return;
   }
   if (!rows.length && !byRules && !byClaude) {
@@ -828,6 +839,10 @@ function printApprovals(argv, json) {
   const account = [`${rows.length} answered`];
   if (byRules) account.push(`${byRules} by your rules`);
   if (byClaude) account.push(`${byClaude} decided by Claude Code without asking`);
+  if (autoRefused) {
+    const readable = topRefused.startsWith("bash:") ? topRefused.slice(5) : topRefused.replace(":", " ");
+    account.push(`auto mode refused ${autoRefused}` + (topRefusedN > 1 ? ` (${readable} ${topRefusedN}x)` : ""));
+  }
   account.push(`they waited ${durationShort(waited)} on you`);
   console.log("\n" + account.join(` ${dim("·")} `));
 }
