@@ -170,7 +170,11 @@ function run() {
   let prev = {};
   try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
 
-  const cwd = p.cwd || prev.cwd || "";
+  // A subagent's tool events carry the subagent's own cwd — a worktree under
+  // .claude/worktrees/agent-…, when it was given one — and the row is the
+  // session's, not the subagent's: its directory stays the session's own.
+  const fromSubagent = typeof p.agent_id === "string" && p.agent_id !== "";
+  const cwd = (fromSubagent && prev.cwd) || p.cwd || prev.cwd || "";
   const project = cwd ? path.basename(cwd) : prev.project || "";
   const ts = Math.floor(Date.now() / 1000);
   let state = "idle", label = "";

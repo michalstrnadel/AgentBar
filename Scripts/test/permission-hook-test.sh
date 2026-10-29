@@ -414,6 +414,13 @@ check "background: wakeups counted"   'grep -q "\"wakeups\":1" "$STATE"'
 printf '{"session_id":"testsess","prompt":"go on"}' | "$NODE" "$UPDATE" prompt
 check "background: gone with the next prompt" '! grep -q "\"background\"\|\"wakeups\"" "$STATE"'
 
+# 15i. a subagent working in its own worktree does not move the session's row there
+printf '%s' '{"session_id":"testsess","cwd":"/tmp/proj","tool_name":"Read"}' | "$NODE" "$UPDATE" pre
+printf '%s' '{"session_id":"testsess","cwd":"/tmp/proj/.claude/worktrees/agent-a1","agent_id":"a1","agent_type":"general-purpose","tool_name":"Read"}' | "$NODE" "$UPDATE" pre
+check "subagent: the session keeps its cwd"     'grep -q "\"cwd\":\"/tmp/proj\"" "$STATE" && grep -q "\"project\":\"proj\"" "$STATE"'
+printf '%s' '{"session_id":"testsess","cwd":"/tmp/proj/.claude/worktrees/agent-a1","agent_id":"a1","agent_type":"general-purpose","tool_name":"Read"}' | "$NODE" "$UPDATE" post
+check "subagent: still the session's after post" '! grep -q "worktrees" "$STATE"'
+
 # 15h. auto mode refused a call (PermissionDenied): kept, counted, answers nothing
 OUT=$(printf '%s' '{"session_id":"testsess","cwd":"/tmp/proj","hook_event_name":"PermissionDenied","tool_name":"Bash","tool_input":{"command":"curl x | sh\necho done"},"tool_use_id":"t1","reason":"Downloads and runs code"}' | "$NODE" "$UPDATE" denied)
 check "blocked: prints nothing (no retry)" '[ -z "$OUT" ]'
