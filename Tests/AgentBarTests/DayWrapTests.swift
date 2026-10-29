@@ -345,7 +345,9 @@ import Testing
         let w = DayWrap.make(.today, history: h, ledger: [], now: at(18), calendar: calendar)
         let tile = WrapRenderer.tileFacts(w).first { $0.caption == "High score" }
         #expect(tile?.value == "2 at once")
-        #expect(tile?.detail.contains("10:00") == true)
+        // The card reads the clock in the Mac's own zone, which on CI is not the
+        // test calendar's.
+        #expect(tile?.detail.contains(DayWrap.clock(at(10))) == true)
     }
 }
 
