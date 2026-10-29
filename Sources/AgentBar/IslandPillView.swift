@@ -113,22 +113,32 @@ final class BadgeView: NSView {
         }
     }
 
-    private var text: NSAttributedString {
-        NSAttributedString(string: "\(count)", attributes: [
-            .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold),
-            .foregroundColor: NSColor.white.withAlphaComponent(0.65),
-        ])
+    // Made once, not on every draw: 1.60.0 aborted once inside CoreText while
+    // measuring a freshly built attribute dictionary here (a nil value in it, on
+    // the main thread, nothing else drawing text). Not reproduced; this keeps the
+    // font and the measurement out of the draw path so it has less to go wrong.
+    private static let attributes: [NSAttributedString.Key: Any] = [
+        .font: NSFont.monospacedSystemFont(ofSize: 10, weight: .semibold),
+        .foregroundColor: NSColor.white.withAlphaComponent(0.65),
+    ]
+    private var measured: (count: Int, text: NSAttributedString, size: NSSize)?
+
+    private var text: (NSAttributedString, NSSize) {
+        if let m = measured, m.count == count { return (m.text, m.size) }
+        let t = NSAttributedString(string: "\(count)", attributes: Self.attributes)
+        let size = t.size()
+        measured = (count, t, size)
+        return (t, size)
     }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: max(18, text.size().width + 10), height: 16)
+        NSSize(width: max(18, text.1.width + 10), height: 16)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor.white.withAlphaComponent(0.12).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill()
-        let t = text
-        t.draw(at: NSPoint(x: (bounds.width - t.size().width) / 2,
-                           y: (bounds.height - t.size().height) / 2))
+        let (t, size) = text
+        t.draw(at: NSPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2))
     }
 }
