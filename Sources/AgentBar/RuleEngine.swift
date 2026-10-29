@@ -152,12 +152,30 @@ final class RuleEngine {
     static func matches(_ rule: RulesStore.Rule, shape: String, agent: String, cwd: String) -> Bool {
         // A watching rule matches — being matched is the whole of what it does. An
         // `off` rule does not, which is what makes "off" different from "watch".
-        guard rule.mode != .off, rule.shape == shape else { return false }
+        guard rule.mode != .off, rule.shape == shape || serverWide(rule.shape, covers: shape)
+        else { return false }
         if !rule.agent.isEmpty, rule.agent != agent { return false }
         if rule.cwd.isEmpty { return true }          // denials only; enforced at load
         // A directory inside the one that was named is still inside it — that is
         // what "in this repository" means to the person who picked it.
         return cwd == rule.cwd || cwd.hasPrefix(rule.cwd + "/")
+    }
+
+    /// `tool:mcp__github__*` — every tool of one MCP server. The one wildcard a
+    /// rule may hold, and only a denial may hold it (`RulesStore.validate`): a
+    /// server's tools are named by the server, and a rule that said yes to tools
+    /// nobody has seen yet would say yes to what it never read.
+    static func serverWide(_ ruleShape: String, covers shape: String) -> Bool {
+        guard let prefix = serverPrefix(ruleShape) else { return false }
+        return shape.hasPrefix(prefix) && shape.count > prefix.count
+    }
+
+    /// `tool:mcp__github__` for `tool:mcp__github__*`; nil for any other shape.
+    static func serverPrefix(_ ruleShape: String) -> String? {
+        guard ruleShape.hasPrefix("tool:mcp__"), ruleShape.hasSuffix("__*") else { return nil }
+        let server = ruleShape.dropFirst("tool:mcp__".count).dropLast(3)
+        guard !server.isEmpty, !server.contains("*") else { return nil }
+        return String(ruleShape.dropLast())
     }
 
     // MARK: - What an approval will never do

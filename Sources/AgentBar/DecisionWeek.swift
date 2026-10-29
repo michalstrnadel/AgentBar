@@ -187,9 +187,7 @@ enum DecisionWeek {
     /// one for a tool that names nothing `RuleEngine.refusal` can check.
     private static func offer(_ item: Item, rows: [DecisionLedger.Record]) -> String? {
         let s = DecisionLedger.summary(shape: item.shape, cwd: item.cwd, in: rows)
-        guard let way = DecisionLedger.shouldOfferRule(s) else { return nil }
-        if way == "allow", item.cwd.isEmpty || item.shape.hasPrefix("tool:") { return nil }
-        return way
+        return DecisionLedger.ruleOffer(s, shape: item.shape, cwd: item.cwd)
     }
 
     /// What "Write a rule…" opens the sheet with. Mode stays the sheet's default,

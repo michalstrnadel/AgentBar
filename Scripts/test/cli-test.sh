@@ -754,6 +754,10 @@ check "export names the rule"          'echo "$CSV" | sed -n 3p | grep -q "\"r-1
 # handed one as a formula to evaluate.
 check "export defuses a formula"       'echo "$CSV" | sed -n 3p | grep -q "\"'"'"'=cmd"'
 check "export writes a date, not a number" 'echo "$CSV" | sed -n 2p | grep -q "2026-"'
+JL="$("$CLI" approvals --export --format jsonl)"
+check "jsonl export: header first"     'echo "$JL" | head -1 | grep -q "\"agentbarExport\":1" && echo "$JL" | head -1 | grep -q "\"rows\":2"'
+check "jsonl export: every field kept" 'echo "$JL" | sed -n 3p | grep -q "\"rule\":\"r-1\"" && echo "$JL" | sed -n 3p | grep -q "\"display\":\"=cmd|/bin/sh\""'
+check "jsonl export: oldest first"     'echo "$JL" | sed -n 2p | grep -q "\"agent\":\"claude\""'
 
 fresh_home
 CSV="$("$CLI" approvals --export)"

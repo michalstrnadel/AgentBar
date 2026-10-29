@@ -124,6 +124,11 @@ Rules:
   writer doesn't know what was said. `activity` follows the same reset rule: it is
   the ring of the *current* task's tool steps (≤ 5 short labels, oldest → newest,
   consecutive duplicates collapsed), and a new prompt starts it clean.
+- `subagentRuns` (optional): `[{id, type, ts}]`, the subagents working for this
+  session, newest last, at most 8. A writer adds or refreshes one on each tool event
+  that carries `agent_id` (`type` from `agent_type`, `"subagent"` when absent),
+  drops entries older than 120 s, and clears the list on a new prompt and on the
+  turn's end.
 - `started` absent counts as `true`: only an explicit `false` hides a row, so a
   writer that never heard of the field still shows up.
 - `agent_name` names an agent the frontend has no entry for. Frontends strip
@@ -184,6 +189,11 @@ something the hook already had. A writer that does not know it MUST omit the fie
 rather than send an empty string: empty is indistinguishable from `/` in a prefix
 test, and a rule scoped to one repository would then match every one. A reader that
 does not find it falls back to the session join.
+
+`agentId` and `agentType` name the subagent that asked, when one did (Claude
+Code's `agent_id` / `agent_type`, sent only from inside a subagent). A writer MUST
+omit both for the session's own thread; a type with no id is a session started
+with `--agent`, not a subagent.
 
 `filePath` is the file an edit or write names (`tool_input.file_path`,
 `notebook_path`, `path` or `filePath`, the first one present), as its own field
@@ -483,6 +493,8 @@ decisions about the same command are two decisions, and counting them is the poi
   while it is off, so switching back on does not backfill. Readers cap `claude` rows
   apart from the person's (AgentBar keeps up to 5 000 of each), so a busy day of
   Claude Code's own decisions cannot push the person's record out.
+- `agentType` (optional) is the subagent that asked (`code-reviewer`), when the
+  request came from inside one; absent for the session's own thread.
 - `rule` is the id of that rule, and is empty for every other `via`. It is what
   makes a rule auditable: "what has this rule ever done" is answered by filtering
   the ledger on it, which is why the rules file itself holds no counters.
@@ -617,6 +629,12 @@ Normative, and the reason each one is here:
 - A rule is matched on `shape`, which by design carries **no arguments**. That is
   safe for a denial and not safe on its own for an approval, which is what the
   refusal list below exists for.
+- One wildcard exists: `tool:mcp__<server>__*` matches every tool of that MCP
+  server (a shape of `tool:mcp__<server>__<tool>`). It is **legal only for
+  `decision:"deny"`** — a server's tools are named by the server, and a rule that
+  approved tools nobody has seen would approve what it never read. Any other `*`
+  in a `tool:` shape refuses the file. (`*` in `edit:src/*.swift` is part of that
+  shape's spelling, not a wildcard.)
 - `cwd` empty means "any directory" and is **legal only for `decision:"deny"`**.
   Refusing more than the user meant costs a prompt; approving more than they meant
   is the failure this whole file has to not have. A reader MUST refuse a file

@@ -23,7 +23,9 @@
     "relative-cwd":   {"swift": "is not an absolute path",         "cli": "is not an absolute path"},
     "unplain-cwd":    {"swift": "is not written plainly",          "cli": "is not written plainly"},
     "allow-tell":     {"swift": "approves and carries `tell`",     "cli": "approves and carries tell"},
-    "mode":           {"swift": "it must be \"on\", \"watch\" or \"off\"", "cli": "mode is not on, watch or off"}
+    "mode":           {"swift": "it must be \"on\", \"watch\" or \"off\"", "cli": "mode is not on, watch or off"},
+    "wildcard":       {"swift": "the only one allowed is a whole MCP server", "cli": "the only one allowed is a whole MCP server"},
+    "server-allow":   {"swift": "approves a whole MCP server", "cli": "approves a whole MCP server"}
   },
   "cases": [
     {"name": "no file is no rules, not an error", "file": null, "expect": {"state": "none"}},
@@ -125,6 +127,18 @@
      "expect": {"state": "invalid", "class": "not-text"}},
     {"name": "one bad rule after good ones voids them all",
      "file": "{\"v\":1,\"rules\":[{\"id\":\"r-1\",\"decision\":\"deny\",\"shape\":\"bash:curl\"},{\"id\":\"r-2\",\"decision\":\"allow\",\"shape\":\"bash:ls\"}]}",
-     "expect": {"state": "invalid", "class": "unscoped-allow"}}
+     "expect": {"state": "invalid", "class": "unscoped-allow"}},
+    {"name": "a denial of a whole MCP server is in force",
+     "file": "{\"v\":1,\"rules\":[{\"id\":\"r-gh\",\"decision\":\"deny\",\"shape\":\"tool:mcp__github__*\"}]}",
+     "expect": {"state": "rules", "ids": ["r-gh"]}},
+    {"name": "an approval of a whole MCP server is refused",
+     "file": "{\"v\":1,\"rules\":[{\"id\":\"r-gh\",\"decision\":\"allow\",\"shape\":\"tool:mcp__github__*\",\"cwd\":\"/work/proj\"}]}",
+     "expect": {"state": "invalid", "class": "server-allow"}},
+    {"name": "a star in any other tool name is refused",
+     "file": "{\"v\":1,\"rules\":[{\"id\":\"r-x\",\"decision\":\"deny\",\"shape\":\"tool:Web*\"}]}",
+     "expect": {"state": "invalid", "class": "wildcard"}},
+    {"name": "a star for the server name is refused",
+     "file": "{\"v\":1,\"rules\":[{\"id\":\"r-x\",\"decision\":\"deny\",\"shape\":\"tool:mcp__*__*\"}]}",
+     "expect": {"state": "invalid", "class": "wildcard"}}
   ]
 }

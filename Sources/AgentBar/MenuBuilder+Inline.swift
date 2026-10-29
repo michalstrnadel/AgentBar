@@ -16,7 +16,8 @@ extension MenuBuilder {
             what.isEnabled = false
             what.toolTip = r.toolInputPretty
             what.representedObject = tag
-            what.attributedTitle = NSAttributedString(string: "      \(r.display)", attributes: [
+            let from = r.subagent.map { "  · from \($0)" } ?? ""
+            what.attributedTitle = NSAttributedString(string: "      \(r.display)\(from)", attributes: [
                 .font: NSFont.menuFont(ofSize: 11),
                 .foregroundColor: NSColor.secondaryLabelColor,
             ])
@@ -36,6 +37,11 @@ extension MenuBuilder {
             if let context = r.context {
                 let ctx = NSMenuItem(title: "", action: nil, keyEquivalent: "")
                 ctx.view = ApprovalContextView(context: context)
+                ctx.representedObject = tag
+                menu.addItem(ctx)
+            } else if !r.isPlanRequest, ApprovalContextView.hasArguments(r.toolInputPretty) {
+                let ctx = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+                ctx.view = ApprovalContextView(arguments: r.toolInputPretty)
                 ctx.representedObject = tag
                 menu.addItem(ctx)
             }
@@ -61,7 +67,8 @@ extension MenuBuilder {
             // becomes an offer to write it down. Offered, not taken — the click
             // opens a sheet that shows what the rule would and would not answer,
             // and the rule exists only once the person presses Add.
-            let offer = plan(r) ? nil : DecisionLedger.shouldOfferRule(past)
+            let offer = plan(r) ? nil
+                : DecisionLedger.ruleOffer(past, shape: DecisionLedger.shape(of: r), cwd: s.cwd)
             if var hint = DecisionLedger.hint(past) {
                 // Enough repeats and never once refused: say that the button beside
                 // this line would end the asking. Saying, not pressing — a count is

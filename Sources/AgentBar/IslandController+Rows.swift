@@ -82,9 +82,10 @@ extension IslandController {
                 // nothing on purpose.
                 if behavior == "rule" {
                     SettingsWindow.shared.addRule(from: RuleSheet.Prefill(
-                        decision: DecisionLedger.shouldOfferRule(
+                        decision: DecisionLedger.ruleOffer(
                             DecisionLedger.summary(shape: DecisionLedger.shape(of: r),
-                                                   cwd: s.cwd, in: DecisionLedger.cached())) ?? "allow",
+                                                   cwd: s.cwd, in: DecisionLedger.cached()),
+                            shape: DecisionLedger.shape(of: r), cwd: s.cwd) ?? "allow",
                         shape: DecisionLedger.shape(of: r),
                         cwd: r.cwd.isEmpty ? s.cwd : r.cwd,
                         display: r.display))

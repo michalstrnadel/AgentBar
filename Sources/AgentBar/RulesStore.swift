@@ -207,6 +207,16 @@ enum RulesStore {
         // The asymmetry is the whole safety posture: refusing more is always safe,
         // approving more is not. A denial may cover every repository on the
         // machine; an approval names one.
+        // One wildcard among tool names, for one purpose: refusing every tool of an
+        // MCP server. (A `*` in `edit:src/*.swift` is the shape's own spelling.)
+        if r.shape.hasPrefix("tool:"), r.shape.contains("*") {
+            if RuleEngine.serverPrefix(r.shape) == nil {
+                return "\(where_) has a `*` in its tool name; the only one allowed is a whole MCP server, `tool:mcp__<server>__*`."
+            }
+            if r.isAllow {
+                return "\(where_) approves a whole MCP server. Only a denial may cover tools nobody has seen yet."
+            }
+        }
         if r.isAllow && r.cwd.isEmpty {
             return "\(where_) approves without naming a directory. An approving rule must name one; only a denial may apply everywhere."
         }

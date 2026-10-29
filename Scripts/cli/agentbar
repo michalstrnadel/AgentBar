@@ -526,6 +526,9 @@ function recordDecision(r, decision) {
     waited: r.ts > 0 ? Math.max(0, now() - r.ts) : 0,
     via: "cli",
   };
+  // DecisionLedger.row: which subagent asked, only when one did.
+  if (r.agentId && r.agentType) rec.agentType = String(r.agentType);
+  else if (r.agentId) rec.agentType = "subagent";
   // Under the journal lock, so the app's prune cannot replace the file around it.
   withJournalLock(decisionsFile, () => {
     try { fs.appendFileSync(decisionsFile, JSON.stringify(rec) + "\n"); } catch {}
@@ -753,8 +756,26 @@ function printApprovalsCsv(argv) {
   process.stdout.write(out.join("\n") + "\n");
 }
 
+// DecisionLedger.jsonl: every field of every row, one JSON object a line, after a
+// header that says what this is. --days absent means everything kept.
+function printApprovalsJsonl(argv) {
+  const i = argv.indexOf("--days");
+  const asked = i >= 0 ? parseInt(argv[i + 1], 10) : NaN;
+  const since = Number.isFinite(asked) && asked > 0 ? now() - asked * 86400 : null;
+  const rows = readDecisions().filter((r) => since === null || r.ts >= since).sort((a, b) => a.ts - b.ts);
+  const iso = (t) => new Date(t * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+  const sortKeys = (o) => Object.fromEntries(Object.keys(o).sort().map((k) => [k, o[k]]));
+  const out = [JSON.stringify(sortKeys({ agentbarExport: 1, generator: "agentbar CLI",
+    generated: iso(now()), rows: rows.length, since: since === null ? null : iso(since) }))];
+  for (const r of rows) out.push(JSON.stringify(sortKeys(r)));
+  process.stdout.write(out.join("\n") + "\n");
+}
+
 function printApprovals(argv, json) {
-  if (argv.includes("--export")) return printApprovalsCsv(argv);
+  if (argv.includes("--export")) {
+    const f = argv.indexOf("--format");
+    return f >= 0 && argv[f + 1] === "jsonl" ? printApprovalsJsonl(argv) : printApprovalsCsv(argv);
+  }
   const i = argv.indexOf("--days");
   const asked = i >= 0 ? parseInt(argv[i + 1], 10) : 1;
   const days = Number.isFinite(asked) && asked > 0 ? asked : 1;
@@ -907,6 +928,14 @@ function readRules(file = rulesFile) {
     if (r.decision !== "allow" && r.decision !== "deny")
       return bad(`rule ${r.id}: decision is not allow or deny`);
     if (!r.shape) return bad(`rule ${r.id}: has an empty shape`);
+    // RulesStore.validate / RuleEngine.serverPrefix: one wildcard, a whole MCP
+    // server, and only to refuse it.
+    if (r.shape.startsWith("tool:") && r.shape.includes("*")) {
+      const server = /^tool:mcp__(.+)__\*$/.exec(r.shape);
+      if (!server || server[1].includes("*"))
+        return bad(`rule ${r.id}: has a \`*\` in its tool name; the only one allowed is a whole MCP server`);
+      if (r.decision === "allow") return bad(`rule ${r.id}: approves a whole MCP server`);
+    }
     const cwd = r.cwd || "";
     if (r.decision === "allow" && !cwd) return bad(`rule ${r.id}: approves without naming a directory`);
     if (cwd && !cwd.startsWith("/")) return bad(`rule ${r.id}: cwd is not an absolute path`);
@@ -3347,6 +3376,7 @@ if (require.main !== module) {
   agentbar usage [--json]         what's left of each provider's quota
   agentbar approvals [--days N]   prompts you keep answering + how long they waited [--json]
                                   --export writes the decisions themselves as CSV
+                                  (--format jsonl: every field, one JSON object a line)
   agentbar rules                  the rules you wrote and what each one has done [--json]
   agentbar forget                 empty the decision ledger
   agentbar doctor [--json]        why an agent isn't showing up: hooks, node path, permissions

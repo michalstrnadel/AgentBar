@@ -344,6 +344,15 @@ check "recap: state done"             'grep -q "\"state\":\"done\"" "$STATE"'
 printf '{"session_id":"testsess","prompt":"next task"}' | "$NODE" "$UPDATE" prompt
 check "recap: cleared on new prompt"  '! grep -q "\"recap\"" "$STATE"'
 
+# 15d. a tool event from inside a subagent puts it on the session's list; the
+# main thread's own events keep it; the turn's end clears it
+printf '{"session_id":"testsess","tool_name":"Read","agent_id":"a-1","agent_type":"code-reviewer"}' | "$NODE" "$UPDATE" pre
+check "subagents: listed by type"     'grep -q "\"type\":\"code-reviewer\"" "$STATE"'
+printf '{"session_id":"testsess","tool_name":"Read"}' | "$NODE" "$UPDATE" pre
+check "subagents: kept across main-thread tools" 'grep -q "\"id\":\"a-1\"" "$STATE"'
+printf '{"session_id":"testsess","cwd":"/tmp/proj"}' | "$NODE" "$UPDATE" stop
+check "subagents: cleared at the turn end" '! grep -q "subagentRuns" "$STATE"'
+
 # 15d. missing/unreadable transcript: stop still lands, just without a recap
 printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"/nonexistent/x.jsonl"}' | "$NODE" "$UPDATE" stop
 check "recap: missing transcript ok"  'grep -q "\"state\":\"done\"" "$STATE" && ! grep -q "\"recap\"" "$STATE"'

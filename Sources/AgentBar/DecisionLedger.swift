@@ -103,6 +103,9 @@ final class DecisionLedger {
         /// The tool call's id. Unique: one row per id, ever — what keeps a sidecar
         /// read twice from becoming two decisions.
         var toolUseId = ""
+        /// The subagent that asked (`code-reviewer`), when one did. Empty for the
+        /// session's own thread and for every row written before 1.58.0.
+        var agentType = ""
 
         /// Whether a person made this decision. `rule` and `claude` rows are the
         /// two kinds nobody was asked about, and every count that is a claim about
@@ -124,6 +127,7 @@ final class DecisionLedger {
             if !claudeRule.isEmpty { o["claudeRule"] = claudeRule }
             if !reason.isEmpty { o["reason"] = reason }
             if !toolUseId.isEmpty { o["toolUseId"] = toolUseId }
+            if !agentType.isEmpty { o["agentType"] = agentType }
             return o
         }
 
@@ -162,6 +166,7 @@ final class DecisionLedger {
             claudeRule = o["claudeRule"] as? String ?? ""
             reason = o["reason"] as? String ?? ""
             toolUseId = o["toolUseId"] as? String ?? ""
+            agentType = o["agentType"] as? String ?? ""
         }
     }
 
@@ -189,7 +194,7 @@ final class DecisionLedger {
         return writer.sync { Self.append([r], to: url) }
     }
 
-    private func row(_ decision: String, request: ApprovalRequest, session: Session?,
+    func row(_ decision: String, request: ApprovalRequest, session: Session?,
                      via: String, rule: String, would: String,
                      now: TimeInterval) -> Record? {
         // The switch is about the human's own clicks. A rule's firing is written
@@ -216,6 +221,7 @@ final class DecisionLedger {
         r.via = via
         r.rule = rule
         r.would = would
+        r.agentType = request.subagent ?? ""
         return r
     }
 
@@ -232,6 +238,31 @@ final class DecisionLedger {
     ///
     /// Watching rows are included and say so in `decision`: a week of what a rule
     /// *would* have done is exactly the evidence somebody would be asked for.
+    /// The ledger whole, for an auditor's tools rather than a spreadsheet: one JSON
+    /// object per line, every field the row has — session, project, Claude Code's
+    /// reason, the tool call's id, the subagent — oldest first, after one header
+    /// line that says what this is, who wrote it and what span it covers.
+    static func jsonl(_ rows: [Record], generator: String, since: TimeInterval?,
+                      now: Date = Date()) -> String {
+        let stamp = ISO8601DateFormatter()
+        stamp.formatOptions = [.withInternetDateTime]
+        let sorted = rows.sorted { $0.ts < $1.ts }
+        var header: [String: Any] = ["agentbarExport": 1, "generator": generator,
+                                     "generated": stamp.string(from: now), "rows": sorted.count]
+        header["since"] = since.map { stamp.string(from: Date(timeIntervalSince1970: $0)) } ?? NSNull()
+        func line(_ o: [String: Any]) -> String {
+            guard let d = try? JSONSerialization.data(withJSONObject: o, options: [.sortedKeys, .withoutEscapingSlashes])
+            else { return "{}" }
+            return String(decoding: d, as: UTF8.self)
+        }
+        return ([line(header)] + sorted.map { line($0.json) }).joined(separator: "\n") + "\n"
+    }
+
+    /// The rows of the last `days` days, or every row for nil.
+    static func since(_ days: Int?, now: Date = Date()) -> TimeInterval? {
+        days.map { now.timeIntervalSince1970 - TimeInterval($0) * 86_400 }
+    }
+
     static func csv(_ rows: [Record]) -> String {
         // `by` and `claude rule` sit before the wait, which stays last: they say
         // who inside Claude Code made one of its own decisions, and are empty on
@@ -455,6 +486,16 @@ final class DecisionLedger {
         if s.denied == 0, s.allowed >= promoteAfter { return "allow" }
         if s.allowed == 0, s.denied >= promoteAfter { return "deny" }
         return nil
+    }
+
+    /// `shouldOfferRule`, minus the approvals that could never answer: one with no
+    /// directory to name, or one for a tool that names nothing `RuleEngine.refusal`
+    /// can check (an MCP call, a fetch). The card, the menu and Your Week all ask
+    /// this, so none of them offers a rule that would sit there never firing.
+    static func ruleOffer(_ s: Summary, shape: String, cwd: String) -> String? {
+        guard let way = shouldOfferRule(s) else { return nil }
+        if way == "allow", cwd.isEmpty || shape.hasPrefix("tool:") { return nil }
+        return way
     }
 
     /// What one rule has actually done. The rules file holds the intent and never

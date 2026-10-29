@@ -65,7 +65,7 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
         let plan = request.isPlanRequest ? (request.planText ?? "(plan text missing)") : nil
         isPlan = plan != nil
         offersAlways = request.ruleSuggestion != nil && plan == nil
-        var rows: [NSView] = [Self.header(plan: plan != nil)]
+        var rows: [NSView] = [Self.header(plan: plan != nil, subagent: request.subagent)]
         if plan == nil, !request.intent.isEmpty { rows.append(Self.intentLine(request.intent, width: width)) }
         if plan == nil, let tool = Self.toolLine(request) { rows.append(tool) }
         if let plan {
@@ -73,22 +73,10 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
             // prompt. Long plans scroll inside the box rather than growing it.
             rows.append(Self.planBox(plan, width: width))
         } else if let context = request.context {
-            let box = NSView()
-            box.wantsLayer = true
-            box.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
-            box.layer?.cornerRadius = 6
-            let ctx = ApprovalContextView(context: context, leading: 10)
-            ctx.translatesAutoresizingMaskIntoConstraints = false
-            box.addSubview(ctx)
-            NSLayoutConstraint.activate([
-                ctx.leadingAnchor.constraint(equalTo: box.leadingAnchor),
-                ctx.trailingAnchor.constraint(equalTo: box.trailingAnchor),
-                ctx.topAnchor.constraint(equalTo: box.topAnchor, constant: 3),
-                ctx.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -3),
-                ctx.heightAnchor.constraint(equalToConstant: ctx.frame.height),
-            ])
-            rows.append(box)
+            rows.append(Self.contextBox(ApprovalContextView(context: context, leading: 10)))
             if let summary = Self.diffSummary(context) { rows.append(summary) }
+        } else if ApprovalContextView.hasArguments(request.toolInputPretty) {
+            rows.append(Self.contextBox(ApprovalContextView(arguments: request.toolInputPretty, leading: 10)))
         }
         if let chipRow = BlastChipsView.islandRow(chips) { rows.append(chipRow) }
 
@@ -105,7 +93,8 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
         // The same answer every time, often enough to be a habit. The offer is a
         // link, not a default: it opens a sheet that says what the rule would and
         // would not answer, and nothing is written until Add is pressed.
-        let offer = plan == nil ? DecisionLedger.shouldOfferRule(past) : nil
+        let offer = plan == nil
+            ? DecisionLedger.ruleOffer(past, shape: DecisionLedger.shape(of: request), cwd: cwd) : nil
 
         let shortcuts = UserDefaults.standard.bool(forKey: "globalApprovalShortcut")
         let deny = Self.button(plan != nil ? "Keep planning" : "Deny",
@@ -301,6 +290,24 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
     /// card exactly where it was, still pending, still yours to answer.
     @objc private func ruleClicked() { onChoose("rule") }
 
+    /// The quiet rounded box the detail sits in.
+    private static func contextBox(_ ctx: ApprovalContextView) -> NSView {
+        let box = NSView()
+        box.wantsLayer = true
+        box.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
+        box.layer?.cornerRadius = 6
+        ctx.translatesAutoresizingMaskIntoConstraints = false
+        box.addSubview(ctx)
+        NSLayoutConstraint.activate([
+            ctx.leadingAnchor.constraint(equalTo: box.leadingAnchor),
+            ctx.trailingAnchor.constraint(equalTo: box.trailingAnchor),
+            ctx.topAnchor.constraint(equalTo: box.topAnchor, constant: 3),
+            ctx.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -3),
+            ctx.heightAnchor.constraint(equalToConstant: ctx.frame.height),
+        ])
+        return box
+    }
+
     /// What the agent says it is doing, in its own words, above what it will run.
     /// Quoted and attributed, so it reads as the agent's claim and not AgentBar's.
     private static func intentLine(_ intent: String, width: CGFloat) -> NSView {
@@ -317,7 +324,7 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
 
     /// "● Permission Request" / "● Plan Review" — names what this card is, the way
     /// the reference does.
-    private static func header(plan: Bool) -> NSView {
+    private static func header(plan: Bool, subagent: String? = nil) -> NSView {
         let out = NSMutableAttributedString(string: "● ", attributes: [
             .font: NSFont.systemFont(ofSize: 9),
             .foregroundColor: IconRenderer.amberDot,
@@ -327,6 +334,14 @@ final class IslandApprovalView: NSView, NSTextFieldDelegate {
             .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
             .foregroundColor: NSColor.white.withAlphaComponent(0.55),
         ]))
+        // Which subagent of this session asked: a reviewer asking to run `rm` is a
+        // different question from the session itself asking.
+        if let subagent {
+            out.append(NSAttributedString(string: "  ·  from \(subagent)", attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                .foregroundColor: NSColor.white.withAlphaComponent(0.75),
+            ]))
+        }
         return NSTextField(labelWithAttributedString: out)
     }
 

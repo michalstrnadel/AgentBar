@@ -244,6 +244,22 @@ function run() {
   } else if (event !== "prompt" && ring.length) {
     out.activity = ring;
   }
+  // Subagents working for this session, newest last: Claude Code puts agent_id
+  // and agent_type on every tool event fired from inside one. There is no
+  // SubagentStart here on purpose (an event an older Claude Code does not know
+  // is a settings file it may refuse), so a subagent counts as running while its
+  // tools keep arriving, and the main turn's prompt or stop clears the list.
+  const runs = Array.isArray(prev.subagentRuns)
+    ? prev.subagentRuns.filter((r) => r && typeof r.id === "string" && ts - (Number(r.ts) || 0) < 120)
+    : [];
+  if ((event === "pre" || event === "post") && typeof p.agent_id === "string" && p.agent_id) {
+    const type = typeof p.agent_type === "string" && p.agent_type ? oneLine(p.agent_type).slice(0, 60) : "subagent";
+    const next = runs.filter((r) => r.id !== p.agent_id.slice(0, 100));
+    next.push({ id: p.agent_id.slice(0, 100), type, ts });
+    out.subagentRuns = next.slice(-8);
+  } else if (event !== "prompt" && event !== "stop" && runs.length) {
+    out.subagentRuns = runs;
+  }
   // What the agent last said, for done rows. Only "stop" carries it — every other
   // event omits the field (out is built fresh, not {...prev}), so the next prompt
   // naturally clears the previous turn's recap and a working session never shows

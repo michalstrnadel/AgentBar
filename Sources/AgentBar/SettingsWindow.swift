@@ -169,6 +169,8 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var exportButton: NSButton!
     private var rulesPageButton: NSButton!
     private var rulesView: RulesView!
+    private var suggestionsView: RuleSuggestionsView!
+    private var suggestionsCard: NSView?
     private let keepAwake = KeepAwakeSettingsPage()
     private let awakeTriggers = KeepAwakeTriggersPage()
     private let phone = PhonePage()
@@ -471,6 +473,13 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
             self?.decisionWeek?.reload()
             self?.refit()
         }
+        suggestionsView = RuleSuggestionsView()
+        suggestionsView.onWrite = { [weak self] prefill in self?.addRule(prefill) }
+        suggestionsView.onResize = { [weak self] in
+            guard let self else { return }
+            self.suggestionsCard?.isHidden = self.suggestionsView.isEmpty
+            self.refit()
+        }
         rulesView.onNew = { [weak self] in self?.addRule() }
         rulesView.onEdit = { [weak self] rule in self?.addRule(RuleSheet.Prefill(rule)) }
         decisionWeek = DecisionWeekView()
@@ -700,6 +709,12 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                        control: rulesBox),
                 ]),
                 SettingsChrome.card([SettingsChrome.customRow(rulesView)]),
+                { () -> NSView in
+                    let card = SettingsChrome.card([SettingsChrome.customRow(suggestionsView)])
+                    card.isHidden = suggestionsView.isEmpty
+                    suggestionsCard = card
+                    return card
+                }(),
                 SettingsChrome.header("A rule answers a prompt the way you would have — and "
                                       + "only what you wrote. An approving rule names one "
                                       + "directory, and the command is read again before it "
@@ -837,6 +852,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         rememberBox.state = DecisionLedger.enabled ? .on : .off
         rulesBox.state = RulesStore.enabled ? .on : .off
         rulesView.reload()
+        suggestionsView.reload()
         decisionWeek.reload()
         keepAwake.reload()
         awakeTriggers.reload()
@@ -1007,18 +1023,42 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     /// the user's own record, and where it goes is their decision like everything
     /// else about it.
     @objc private func exportDecisions() {
-        let rows = DecisionLedger.read()
+        let all = DecisionLedger.read()
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "agentbar-approvals.csv"
-        panel.allowedContentTypes = [.commaSeparatedText]
-        panel.message = rows.isEmpty
-            ? "Nothing has been decided yet — this writes the column headings only."
-            : "\(rows.count) decision\(rows.count == 1 ? "" : "s") from ~/.agentbar/decisions.jsonl."
+        panel.allowedContentTypes = [.commaSeparatedText, .json]
+        panel.allowsOtherFileTypes = true
+        panel.message = all.isEmpty
+            ? "Nothing has been decided yet — this writes the headings only."
+            : "\(all.count) decision\(all.count == 1 ? "" : "s") in ~/.agentbar/decisions.jsonl."
+        // What and how much: a spreadsheet, or every field as JSON Lines for an
+        // auditor's tools; the last week, month, or everything kept.
+        let format = NSPopUpButton()
+        format.addItems(withTitles: ["Spreadsheet (CSV)", "Every field (JSON Lines)"])
+        let range = NSPopUpButton()
+        range.addItems(withTitles: ["Last 7 days", "Last 30 days", "Everything kept"])
+        range.selectItem(at: 2)
+        let accessory = NSStackView(views: [NSTextField(labelWithString: "Format:"), format,
+                                            NSTextField(labelWithString: "Range:"), range])
+        accessory.orientation = .horizontal
+        accessory.spacing = 8
+        accessory.edgeInsets = NSEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        panel.accessoryView = accessory
+        let renamer = FormatRenamer(panel: panel)
+        format.target = renamer
+        format.action = #selector(FormatRenamer.changed(_:))
         guard let window else { return }
         panel.beginSheetModal(for: window) { [weak self] response in
+            _ = renamer
             guard response == .OK, let url = panel.url else { return }
+            let days: Int? = [7, 30, nil][range.indexOfSelectedItem]
+            let since = DecisionLedger.since(days)
+            let rows = since.map { s in all.filter { $0.ts >= s } } ?? all
+            let text = format.indexOfSelectedItem == 1
+                ? DecisionLedger.jsonl(rows, generator: "AgentBar \(AppMenuModel.appVersion)", since: since)
+                : DecisionLedger.csv(rows)
             do {
-                try DecisionLedger.csv(rows).write(to: url, atomically: true, encoding: .utf8)
+                try text.write(to: url, atomically: true, encoding: .utf8)
             } catch {
                 guard let window = self?.window else { return }
                 NSAlert(error: error).beginSheetModal(for: window)
@@ -1200,6 +1240,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                 alert.beginSheetModal(for: window)
             }
             rulesView.reload()
+            suggestionsView.reload()
         }
     }
 
@@ -1653,5 +1694,18 @@ final class ShortcutRecorder: NSButton {
         let map: [Int: Int] = [kVK_F1: 1, kVK_F2: 2, kVK_F3: 3, kVK_F4: 4, kVK_F5: 5, kVK_F6: 6,
                                kVK_F7: 7, kVK_F8: 8, kVK_F9: 9, kVK_F10: 10, kVK_F11: 11, kVK_F12: 12]
         return map[Int(code)]
+    }
+}
+
+/// Keeps the export's file name in step with its format: `.csv` or `.jsonl`.
+private final class FormatRenamer: NSObject {
+    private weak var panel: NSSavePanel?
+    init(panel: NSSavePanel) { self.panel = panel }
+
+    @objc func changed(_ sender: NSPopUpButton) {
+        guard let panel else { return }
+        let ext = sender.indexOfSelectedItem == 1 ? "jsonl" : "csv"
+        let base = (panel.nameFieldStringValue as NSString).deletingPathExtension
+        panel.nameFieldStringValue = "\(base).\(ext)"
     }
 }

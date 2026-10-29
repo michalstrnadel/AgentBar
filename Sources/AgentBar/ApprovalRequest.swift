@@ -27,6 +27,10 @@ struct ApprovalRequest {
     /// never made up here, because a sentence AgentBar wrote would read as the
     /// agent's and could be wrong about the command under it.
     let intent: String
+    /// Which subagent asked, when one did (`agent_type`, e.g. "code-reviewer", and
+    /// its id). Empty for the session's own thread.
+    let agentType: String
+    let subagentId: String
     let pid: Int32                  // the waiting hook's parent (the claude process)
     let hookPid: Int32              // the waiting hook itself; primary liveness handle
     let ts: TimeInterval
@@ -53,6 +57,13 @@ struct ApprovalRequest {
             let options: [(label: String, description: String)]
             let multiSelect: Bool
         }
+    }
+
+    /// "code-reviewer" when a subagent asked; nil for the session's own thread.
+    /// A session started with `--agent` sends a type with no id, and that is the
+    /// session itself, not a subagent of it.
+    var subagent: String? {
+        subagentId.isEmpty ? nil : (agentType.isEmpty ? "subagent" : agentType)
     }
 
     /// Whose request this is, for card titles and banners.
@@ -96,6 +107,8 @@ struct ApprovalRequest {
         ruleSuggestion  = o["ruleSuggestion"] as? [String: Any]
         context         = Self.decodeContext(o["context"] as? [String: Any])
         intent          = Self.oneLine((o["context"] as? [String: Any])?["description"] as? String ?? "")
+        agentType       = Self.oneLine(o["agentType"] as? String ?? "")
+        subagentId      = o["agentId"] as? String ?? ""
         // Same guard as Session.pid: a malformed pid degrades to 0 (no liveness
         // handle, expiry prune applies), never traps on an Int32 overflow.
         pid             = max(0, Int32(exactly: o["pid"] as? Int ?? 0) ?? 0)

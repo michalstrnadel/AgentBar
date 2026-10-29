@@ -481,6 +481,13 @@ final class RuleSheet: NSObject {
             return .failure(Refused(text: why.replacingOccurrences(
                 of: "Rule 1 (\(rule.id)) in ~/.agentbar/rules.json", with: "This rule")))
         }
+        // The file may hold one (it never answers: `RuleEngine.refusal`), but the
+        // sheet does not write a rule that would sit there never firing.
+        if rule.isAllow, rule.shape.hasPrefix("tool:") {
+            return .failure(Refused(text: "An approving rule can't answer a tool that names no "
+                + "file — an MCP call, a fetch: AgentBar can't check what it would be told. "
+                + "A denial can, and so can one that only watches."))
+        }
         var out = rule
         out.created = now
         return .success(out)
