@@ -32,6 +32,8 @@ extension IslandController {
             }
             row.translatesAutoresizingMaskIntoConstraints = false
             row.widthAnchor.constraint(equalToConstant: rowW).isActive = true
+            // Its identity across rebuilds, so a row that moves can be seen moving.
+            row.identifier = IslandContentView.rowID(s.id)
             out.append(row)
             out.append(contentsOf: approvalViews(for: s))
             if let q = questionView(for: s) { out.append(q) }

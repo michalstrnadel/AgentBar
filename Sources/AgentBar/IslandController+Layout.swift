@@ -88,7 +88,8 @@ extension IslandController {
                 if content.rows != [game] { content.setRows([game], resetScroll: true) }
             } else {
                 content.setFooter(footer())
-                content.setRows(rows(), resetScroll: modeChanged)
+                content.setRows(rows(), resetScroll: modeChanged,
+                                animateMoves: animated && !modeChanged && !reduceMotion)
             }
             // The panel is sized to its content; when that outgrows the screen it
             // clamps here and the content view scrolls the overflow into reach.

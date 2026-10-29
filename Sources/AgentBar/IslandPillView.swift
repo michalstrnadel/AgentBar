@@ -65,6 +65,16 @@ final class IslandPillView: NSView {
     func configure(mark: NSImage?, text: String, count: Int, height h: CGFloat,
                    width w: CGFloat, tint: NSColor? = nil) {
         update(mark: mark)
+        // A new line crossfades in rather than snapping: the pill sits in the corner
+        // of the eye all day, and a word that blinks over reads as a flicker. The
+        // width does not move — it never does (see the class comment).
+        if label.stringValue != text, !label.stringValue.isEmpty, !text.isEmpty, Self.moves {
+            label.wantsLayer = true
+            let fade = CATransition()
+            fade.type = .fade
+            fade.duration = 0.18
+            label.layer?.add(fade, forKey: "swap")
+        }
         label.stringValue = text
         label.isHidden = text.isEmpty
         // A confirmation flash — "✓ Allowed" — speaks in its own colour and drops
@@ -78,6 +88,10 @@ final class IslandPillView: NSView {
     }
 }
 
+extension IslandPillView {
+    static var moves: Bool { !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+}
+
 /// "3" in a rounded slug — how many sessions the pill is standing in for.
 final class BadgeView: NSView {
     var count: Int = 0 {
@@ -85,6 +99,17 @@ final class BadgeView: NSView {
             isHidden = count < 2
             invalidateIntrinsicContentSize()
             needsDisplay = true
+            // The number rolls the way a counter does: up from below when it grows,
+            // down from above when it shrinks.
+            if count != oldValue, oldValue >= 2, count >= 2, IslandPillView.moves {
+                wantsLayer = true
+                let roll = CATransition()
+                roll.type = .push
+                roll.subtype = count > oldValue ? .fromBottom : .fromTop
+                roll.duration = 0.22
+                roll.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                layer?.add(roll, forKey: "roll")
+            }
         }
     }
 

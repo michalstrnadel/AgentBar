@@ -194,13 +194,44 @@ final class IslandContentView: NSView {
     /// What `setRows` last put in, in order.
     var rows: [NSView] { stack.arrangedSubviews }
 
-    func setRows(_ views: [NSView], resetScroll: Bool = false) {
+    /// `animateMoves`: a session row that changed place — a session that started
+    /// waiting moves to the top — slides there from where it was instead of
+    /// jumping. Rows are rebuilt every time, so they are matched by `identifier`.
+    func setRows(_ views: [NSView], resetScroll: Bool = false, animateMoves: Bool = false) {
         let offset = scroll.contentView.bounds.origin
+        var was: [NSUserInterfaceItemIdentifier: CGFloat] = [:]
+        if animateMoves {
+            for v in stack.arrangedSubviews { if let id = v.identifier { was[id] = v.frame.minY } }
+        }
         for v in stack.arrangedSubviews { stack.removeArrangedSubview(v); v.removeFromSuperview() }
         for v in views { stack.addArrangedSubview(v) }
         stack.layoutSubtreeIfNeeded()
         scroll.contentView.scroll(to: resetScroll ? .zero : offset)
         scroll.reflectScrolledClipView(scroll.contentView)
+        guard !was.isEmpty else { return }
+        for v in views {
+            guard let id = v.identifier, let y = was[id] else { continue }
+            let dy = y - v.frame.minY
+            guard abs(dy) > 2 else { continue }
+            Self.slide(v, by: dy)
+        }
+    }
+
+    static func rowID(_ session: String) -> NSUserInterfaceItemIdentifier {
+        NSUserInterfaceItemIdentifier("session." + session)
+    }
+
+    /// From `dy` away (in the superview's coordinates) back to where it is.
+    /// A flipped superview's layer is geometry-flipped too, so the sign holds.
+    private static func slide(_ v: NSView, by dy: CGFloat) {
+        v.wantsLayer = true
+        guard let layer = v.layer else { return }
+        let a = CABasicAnimation(keyPath: "transform")
+        a.fromValue = CATransform3DMakeTranslation(0, dy, 0)
+        a.toValue = CATransform3DIdentity
+        a.duration = 0.32
+        a.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 1.0, 0.36, 1.0)
+        layer.add(a, forKey: "move")
     }
 
     /// Fade freshly set rows in, so a shape change arrives with its content
