@@ -76,6 +76,11 @@ final class IslandController: NSObject {
     var queueKeys: IslandQueueKeys?
     var queueSelection: String?
     var queueKeyWatch: NSObjectProtocol?
+    /// What happened while the person was away (`AwayRecap`), and whether the open
+    /// island has shown it — once it has and closes, the pill stops repeating it.
+    let awayWatch = AwayWatch()
+    var awayRecapShownOpen = false
+    var awayTicks = 0
     /// A fresh arrival at the notch asked for the pill while it was hidden. Set with
     /// the hover, cleared only by the grace timer on the way out — the same timer
     /// that closes an open panel — so a pointer crossing a gap doesn't make the pill
@@ -236,6 +241,7 @@ final class IslandController: NSObject {
     /// part of it, and "needs approval" was already wider than that.
     var pillText: String {
         if let flash { return flash.text }
+        if let recap = awayWatch.current { return recap.pill }
         switch visibleSessions.first?.state {
         case .permission: return "approve?"
         case .question:   return "answer?"

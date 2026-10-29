@@ -7,6 +7,16 @@ extension IslandController {
         var out: [NSView] = []
         let visible = visibleSessions
         let rowW = Self.expandedWidth - IslandContentView.hPad * 2
+        if let recap = awayWatch.current {
+            let l = NSTextField(wrappingLabelWithString: recap.sentence(until: Date().timeIntervalSince1970))
+            l.font = .systemFont(ofSize: 11.5)
+            l.textColor = NSColor.white.withAlphaComponent(0.8)
+            l.preferredMaxLayoutWidth = rowW
+            l.translatesAutoresizingMaskIntoConstraints = false
+            l.widthAnchor.constraint(equalToConstant: rowW).isActive = true
+            out.append(l)
+            awayRecapShownOpen = true
+        }
         for (i, s) in visible.prefix(Self.maxRows).enumerated() {
             // The list leads with whatever needs the user, so the first row is the
             // hero — boxed, with the mark; the rest stay one quiet line each.
