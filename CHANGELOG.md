@@ -22,6 +22,11 @@ All notable changes to AgentBar are documented here. This project follows
 
 - The model chip no longer appears just because another row reports no model.
 - A row redraws when one subagent replaces another of the same kind.
+- A session that keeps working in one state keeps its hour strip up to now; a long
+  steady one used to show no strip at all.
+- The pill's session count draws its number from a measurement made once per
+  number. 1.60.0 crashed once while drawing it; not reproduced, so this is a guard,
+  not a proven fix.
 
 ## 1.62.0 - 2026-10-29
 
