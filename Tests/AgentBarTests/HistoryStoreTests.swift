@@ -46,6 +46,19 @@ import Testing
         }
     }
 
+    /// A session's comebacks go into its line; none, or nonsense, is no key.
+    @Test func comebacksRoundTripThroughTheHistoryLine() throws {
+        var r = try #require(HistoryStore.Record(jsonLine: #"{"agent":"claude","sessionId":"s","endedAt":9}"#))
+        #expect(r.comebacks == nil && r.json["comebacks"] == nil)
+        r.comebacks = 4
+        let data = try JSONSerialization.data(withJSONObject: r.json)
+        #expect(HistoryStore.Record(jsonLine: String(decoding: data, as: UTF8.self))?.comebacks == 4)
+        for bad in ["0", "-2", "5000", "\"3\""] {
+            let line = #"{"agent":"claude","sessionId":"s","comebacks":"# + bad + "}"
+            #expect(HistoryStore.Record(jsonLine: line)?.comebacks == nil, "\(bad)")
+        }
+    }
+
     /// The live row's cost reaches the record written when it ends.
     @Test func aSessionsCostIsRecordedWhenItEnds() throws {
         var s = try session("costly", agent: "claude", state: "done")

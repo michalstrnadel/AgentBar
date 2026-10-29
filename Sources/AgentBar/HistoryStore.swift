@@ -73,6 +73,9 @@ final class HistoryStore {
         /// prices (the Claude Code mod's `cost_usd`, `Session.costUsd`). Nil means
         /// nobody measured it — never free — and the key is omitted then.
         var costUsd: Double? = nil
+        /// Test runs that went green after a red one, and pull requests opened
+        /// (`comebacks` on the row). Nil when there were none.
+        var comebacks: Int? = nil
 
         /// Who the record belongs to, resolved the way a live row is.
         var resolvedAgent: Agent { Agent.byID(agent, name: agentName) }
@@ -90,6 +93,7 @@ final class HistoryStore {
             if !agentName.isEmpty { o["agentName"] = agentName }
             if let spans, !spans.isEmpty { o["spans"] = WorkSpans.json(spans) }
             if let costUsd { o["costUsd"] = (costUsd * 10_000).rounded() / 10_000 }
+            if let comebacks { o["comebacks"] = comebacks }
             return o
         }
 
@@ -107,6 +111,7 @@ final class HistoryStore {
             state = s.state.rawValue
             decayed = s.decayed
             costUsd = s.costUsd
+            comebacks = s.signals.comebacks > 0 ? s.signals.comebacks : nil
         }
     }
 
@@ -366,5 +371,6 @@ extension HistoryStore.Record {
         // The same bounds the mod's report is read with: a number that is not a
         // plausible bill reads as unmeasured.
         if let c = (o["costUsd"] as? NSNumber)?.doubleValue, c.isFinite, c >= 0, c < 1e6 { costUsd = c }
+        if let n = (o["comebacks"] as? NSNumber)?.intValue, n > 0, n < 1_000 { comebacks = n }
     }
 }

@@ -322,6 +322,23 @@ import Testing
         #expect(blind.handsOffLongest == 0 && blind.persona.title != "Hands-Off")
     }
 
+    /// Three comebacks make the Comeback Kid; each session counts once, by its
+    /// newest line, since its count only grows.
+    @Test func threeComebacksAreTheComebackKid() {
+        var a = record("claude", "A", from: at(9), to: at(10))
+        a.comebacks = 1
+        var a2 = a
+        a2.comebacks = 2
+        var b = record("codex", "B", from: at(11), to: at(12))
+        b.comebacks = 1
+        let w = DayWrap.make(.today, history: [a, a2, b], ledger: [], now: at(18), calendar: calendar)
+        #expect(w.comebacks == 3)
+        #expect(w.persona.title == "The Comeback Kid")
+        #expect(w.persona.reason.contains("3 times"))
+        let two = DayWrap.make(.today, history: [a2], ledger: [], now: at(18), calendar: calendar)
+        #expect(two.persona.title != "The Comeback Kid")
+    }
+
     @Test func theBestParallelismIsAHighScore() {
         let h = [record("claude", "A", from: at(9), to: at(11)),
                  record("codex", "B", from: at(10), to: at(10, 30))]

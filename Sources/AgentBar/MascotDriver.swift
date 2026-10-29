@@ -40,6 +40,9 @@ final class MascotDriver {
     /// one-shot timer that puts him back at rest then.
     private var sadUntil: TimeInterval = 0
     private var sadTimer: Timer?
+    /// Each session's failed-subagent count when last seen, so a new failure is
+    /// noticed once.
+    private var failedSeen: [String: Int] = [:]
 
     private static let thinkingWords = [
         "Thinking", "Brewing", "Pondering", "Tinkering", "Cooking",
@@ -102,7 +105,19 @@ final class MascotDriver {
 
         switch state {
         case .some(let s) where s.isWorking:
-            stopHop(); stopSleep(); stopSad()
+            stopHop(); stopSleep()
+            // A subagent that just failed: Clawd is sad for `ClawdScene.sadFor`,
+            // then back to work.
+            if let top = topSession, Self.subagentFailed(top, seen: &failedSeen),
+               sprite.scenes[.sad]?.still != nil {
+                beginSad()
+            }
+            if Date().timeIntervalSince1970 < sadUntil, let still = sprite.scenes[.sad]?.still {
+                stopAnimation(); stopWords()
+                image = systemColor ? still.template : still.color
+                return
+            }
+            stopSad()
             // Redrawn even when the reel carries on: coming back from several
             // agents to one, the image on screen is still the composed one.
             play(reel(for: agent, sprite: sprite), fps: sprite.fps * pace(of: topSession), redraw: true)
@@ -135,12 +150,7 @@ final class MascotDriver {
             stopHop(); stopAnimation(); stopWords(); stopSleep()
             let now = Date().timeIntervalSince1970
             if previousTopState?.isWorking == true, sprite.scenes[.sad]?.still != nil {
-                stopSad()
-                sadUntil = now + ClawdScene.sadFor
-                sadTimer = Timer.scheduledTimer(withTimeInterval: ClawdScene.sadFor, repeats: false) { [weak self] _ in
-                    self?.sadTimer = nil
-                    self?.render()
-                }
+                beginSad()
             }
             var mark = resting
             if now < sadUntil, let still = sprite.scenes[.sad]?.still {
@@ -273,6 +283,24 @@ final class MascotDriver {
     private func pace(of session: Session?) -> Double {
         guard let session, session.state.isWorking else { return 1 }
         return tempo.multiplier(for: session.id, now: Date().timeIntervalSince1970)
+    }
+
+    private func beginSad() {
+        stopSad()
+        sadUntil = Date().timeIntervalSince1970 + ClawdScene.sadFor
+        sadTimer = Timer.scheduledTimer(withTimeInterval: ClawdScene.sadFor, repeats: false) { [weak self] _ in
+            self?.sadTimer = nil
+            self?.render()
+        }
+    }
+
+    /// True once when a session's failed-subagent count has grown since it was
+    /// last seen. A row's first sighting is history, not news.
+    static func subagentFailed(_ s: Session, seen: inout [String: Int]) -> Bool {
+        let before = seen[s.id]
+        seen[s.id] = s.failedSubagents
+        guard let before else { return false }
+        return s.failedSubagents > before
     }
 
     private func stopSad() {

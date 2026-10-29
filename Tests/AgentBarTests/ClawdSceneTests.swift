@@ -16,6 +16,19 @@ import Testing
         return try #require(Session(fileURL: url))
     }
 
+    /// A subagent failing makes Clawd sad once, on the count growing — never on
+    /// a row's first sighting, which is history.
+    @Test func aFailedSubagentIsNoticedOnce() throws {
+        var s = try session("tool", label: "Delegating")
+        var seen: [String: Int] = [:]
+        s.failedSubagents = 1
+        #expect(!MascotDriver.subagentFailed(s, seen: &seen))
+        #expect(!MascotDriver.subagentFailed(s, seen: &seen))
+        s.failedSubagents = 2
+        #expect(MascotDriver.subagentFailed(s, seen: &seen))
+        #expect(!MascotDriver.subagentFailed(s, seen: &seen))
+    }
+
     @Test func aToolShowsWhatItDoes() throws {
         let cases: [(String, ClawdScene)] = [
             ("Reading", .read), ("Searching", .search), ("Editing", .type), ("Writing", .type),

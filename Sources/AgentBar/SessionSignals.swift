@@ -19,6 +19,8 @@ struct SessionSignals: Equatable {
     /// When a test run last went green after a red one, or a pull request was
     /// opened; 0 when neither has happened.
     var comeback: TimeInterval = 0
+    /// How many comebacks the session has had in all.
+    var comebacks = 0
 
     init() {}
 
@@ -32,6 +34,7 @@ struct SessionSignals: Equatable {
         default: break
         }
         comeback = Session.plausibleTime(o["comeback"])
+        if let n = (o["comebacks"] as? NSNumber)?.intValue, n > 0 { comebacks = min(n, 999) }
     }
 
     /// How many failures in a row make him sweat, and for how long after the

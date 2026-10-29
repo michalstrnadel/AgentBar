@@ -402,6 +402,10 @@ function run() {
     && /(^|[\s;&|(])gh\s+pr\s+create(\s|$)/.test(String(input.command || ""));
   if (greenAgain || prOpened) out.comeback = ts;
   else if (Number.isFinite(prev.comeback) && prev.comeback > 0) out.comeback = prev.comeback;
+  // How many the session has had: what Your Day's Comeback Kid counts.
+  const prevComebacks = Number.isInteger(prev.comebacks) && prev.comebacks > 0 ? prev.comebacks : 0;
+  if (greenAgain || prOpened) out.comebacks = Math.min(prevComebacks + 1, 999);
+  else if (prevComebacks > 0) out.comebacks = prevComebacks;
   // The files the session changed lately, newest last, at most 20, one entry per
   // path: what lets a frontend see two sessions editing the same file. Only after
   // the call, and only one that went through.

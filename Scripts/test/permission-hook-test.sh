@@ -474,6 +474,7 @@ check "fails: three failures, a streak of 3"  'eval "$FIELD fails" | grep -q "\"
 check "fails: the turn goes on"               'grep -q "\"state\":\"thinking\"" "$STATE"'
 check "tests: a failed run is red"            'eval "$FIELD tests" | grep -q "\"last\": \"red\""'
 check "comeback: not yet"                     '[ "$(eval "$FIELD comeback")" = null ]'
+check "comebacks: none yet"                   '[ "$(eval "$FIELD comebacks")" = null ]'
 printf '%s' '{"session_id":"testsess","hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_input":{"command":"sleep 99"},"error":"Interrupted","is_interrupt":true}' | "$NODE" "$UPDATE" post
 check "fails: an interrupt counts neither way" 'eval "$FIELD fails" | grep -q "\"streak\": 3"'
 printf '{"session_id":"testsess","prompt":"try again"}' | "$NODE" "$UPDATE" prompt
@@ -493,6 +494,7 @@ COMEBACK=$(eval "$FIELD comeback")
 sleep 1
 printf '%s' '{"session_id":"testsess","hook_event_name":"PostToolUseFailure","tool_name":"Bash","tool_input":{"command":"gh pr create --fill"},"error":"Exit code 1"}' | "$NODE" "$UPDATE" post
 check "comeback: a failed one is not"         '[ "$(eval "$FIELD comeback")" = "$COMEBACK" ]'
+check "comebacks: counted, two so far"        '[ "$(eval "$FIELD comebacks")" = 2 ]'
 printf '%s' '{"session_id":"testsess","hook_event_name":"PostToolUse","tool_name":"Read","tool_input":{"file_path":"/tmp/proj/a"}}' | "$NODE" "$UPDATE" post
 # The edits ring: absolute paths of edits that went through, newest last, one per path.
 printf '%s' '{"session_id":"testsess","tool_name":"Edit","tool_input":{"file_path":"/tmp/proj/a.swift"}}' | "$NODE" "$UPDATE" post

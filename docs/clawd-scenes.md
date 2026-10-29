@@ -5,7 +5,7 @@ Clawd shows what a Claude session is doing, and what it is waiting for. There ar
 you, sleep, and a sad moment when a turn fails.
 
 <p align="center">
-  <img src="assets/clawd-scenes.gif" width="760" alt="Twelve island pills, each with Clawd doing something different: thinking with dots above his head, reading a book, sweeping a magnifier, typing on a laptop, hammering on an anvil, sending waves from an antenna, walking beside a little Clawd, squashing a box shut, walking, a raised hand with an amber exclamation mark, a raised hand with a blue question mark, and asleep">
+  <img src="assets/clawd-scenes.gif" width="760" alt="Fifteen island pills, each with Clawd doing something different: thinking with dots above his head, reading a book, sweeping a magnifier, typing on a laptop, hammering on an anvil, holding a test tube, sweating with drops beside his head, sending waves from an antenna, walking beside a little Clawd, squashing a box shut, walking, a raised hand with an amber exclamation mark, a raised hand with a blue question mark, asleep, and sad with a tear">
 </p>
 
 | Scene | When | What he does |

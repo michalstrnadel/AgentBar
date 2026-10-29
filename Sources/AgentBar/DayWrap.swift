@@ -201,6 +201,9 @@ struct DayWrap: Equatable {
     var handsOffSeconds: TimeInterval = 0
     /// The busy time those figures are measured against.
     var handsOffOf: TimeInterval = 0
+    /// Test runs that went green after a red one, and pull requests opened —
+    /// each session's own count (`comebacks`), summed.
+    var comebacks = 0
     /// The most sessions running at once, and the first moment it happened.
     var peak = 0
     var peakAt: TimeInterval = 0
@@ -239,6 +242,7 @@ struct DayWrap: Equatable {
             && a.receipt == b.receipt && a.crossings == b.crossings && a.stacks == b.stacks
             && a.nightSeconds == b.nightSeconds && a.nightTogether == b.nightTogether
             && a.handsOffLongest == b.handsOffLongest && a.handsOffSeconds == b.handsOffSeconds
+            && a.comebacks == b.comebacks
     }
 
     /// Where bin `i` starts.
@@ -440,6 +444,9 @@ struct DayWrap: Equatable {
         }
         w.crossings = Flyby.pairs(events: events)
 
+        // A session's count only grows, so its newest line holds the whole of it.
+        w.comebacks = Dictionary(records.compactMap { r in r.comebacks.map { (r.sessionId, $0) } },
+                                 uniquingKeysWith: max).values.reduce(0, +)
         w.persona = persona(for: w, calendar: calendar)
         return w
     }
@@ -593,6 +600,12 @@ struct DayWrap: Equatable {
                            reason: "Agents worked \(HistoryDigest.duration(w.handsOffSeconds)) of it "
                                + "with nothing from you.",
                            symbol: "hand.raised.slash.fill")
+        }
+        if w.comebacks >= 3 {
+            return Persona(title: "The Comeback Kid",
+                           reason: "Tests went from red to green, or a pull request went up, "
+                               + "\(w.comebacks) times \(day).",
+                           symbol: "arrow.uturn.up.circle.fill")
         }
         let night = nightShare(w, calendar)
         if w.agentSeconds >= 1_800, night >= 0.3 {

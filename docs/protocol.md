@@ -181,6 +181,9 @@ Rules:
   the value moving forward means anything. A frontend MUST NOT celebrate one it
   sees on a row's first read (that is history), and SHOULD throttle what it does
   (AgentBar: confetti in the island, at most once per session per 15 minutes).
+- `comebacks` (optional): how many comebacks the session has had in all, an integer
+  that only grows. Kept across prompts; Your Day sums the newest count of each
+  session (history's `comebacks`).
 - `edits` (optional): `[{path, ts}]`, the files the session changed lately — an
   `Edit`, `Write`, `MultiEdit` or `NotebookEdit` that went through, absolute paths
   only (≤ 1024 chars), one entry per path (a new edit moves it to the end), newest
@@ -386,8 +389,9 @@ any account of a day's work. Hence one append-only JSON Lines file.
   "spans": [[1784844010, 1784844300], [1784844500, 1784844790]],
                                // OPTIONAL: when the session was working (thinking or
                                //   tool), as [start, end] pairs in Unix seconds.
-  "costUsd": 4.2183            // OPTIONAL: what the session had cost, US dollars at
+  "costUsd": 4.2183,           // OPTIONAL: what the session had cost, US dollars at
                                //   API prices (the Claude Code mod's `cost_usd`).
+  "comebacks": 2               // OPTIONAL: the row's `comebacks` when it was written.
 }
 ```
 
