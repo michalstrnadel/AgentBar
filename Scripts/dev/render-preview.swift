@@ -431,6 +431,47 @@ enum RenderPreview {
             let refusedHero = IslandRowView(session: refused, mark: mark(for: "claude"), style: .hero, onClick: { _ in })
             let refusedRow = IslandRowView(session: refused, mark: mark(for: "claude"), style: .compact, onClick: { _ in })
             renderSlab([sized(refusedHero, rowW), sized(refusedRow, rowW)], name: "03l-auto-mode-refused")
+
+            // Scene 3o: five sessions at once, calm by default — the first row with
+            // its subagents on one line and the feed on two, the rest one quiet line
+            // each with only what is amber.
+            let bash = { (c: String) in LiveFeed.tool("Bash", ["command": c])! }
+            LiveFeed.preview["five-1"] = LiveFeed.Feed(items: [
+                bash("cd \"/Users/me/Projects/agentbar\" && swift test"),
+                .said("Merging their work and fixing the spacing in Czech phrases."),
+                bash("cd \"/Users/me/Projects/agentbar\" && git status --short"),
+            ])
+            var first = makeSession("five-1", [
+                "agent": "claude", "state": "thinking", "label": "Thinking…", "project": "agentbar",
+                "cwd": "/tmp", "sessionId": "five-1", "pid": 1, "started": true, "ts": now,
+                "started_at": now - 18000, "prompt": "do all of it at once", "model": "claude-opus-5-5",
+                "term_program": "WarpTerminal",
+            ])
+            first.costUsd = 161
+            first.subagentDetails = [
+                .init(type: "general-purpose", what: "Wave 4.3 personal experiment", model: "claude-opus-5-5", since: TimeInterval(now - 120)),
+                .init(type: "general-purpose", what: "Wave 5.3 year-round seasons", model: "claude-opus-5-5", since: TimeInterval(now - 90)),
+                .init(type: "general-purpose", what: "Wave 5.2 weekly picture diary", model: "claude-opus-5-5", since: TimeInterval(now - 30)),
+            ]
+            first.subagents = 3
+            func quiet(_ id: String, _ prompt: String, _ state: String, ago: Int) -> Session {
+                var q = makeSession(id, [
+                    "agent": id == "five-4" ? "codex" : "claude", "state": state, "label": "Thinking…",
+                    "project": "p", "cwd": "/tmp", "sessionId": id, "pid": 1, "started": true,
+                    "ts": now, "started_at": now - ago, "prompt": prompt, "model": "claude-opus-5-5",
+                    "term_program": "WarpTerminal",
+                ])
+                q.costUsd = 12
+                return q
+            }
+            var refusedOne = quiet("five-3", "set up the staging server", "thinking", ago: 900)
+            refusedOne.blocked = AutoModeBlock(["tool": "Bash", "what": "curl x | sh", "n": 1])
+            let rest = [quiet("five-2", "ok what next? try it again", "done", ago: 18000), refusedOne,
+                        quiet("five-4", "port the parser to Rust", "tool", ago: 2400),
+                        quiet("five-5", "write the release notes", "done", ago: 600)]
+            let calmRows = [IslandRowView(session: first, mark: mark(for: "claude"), style: .hero, showModel: false, onClick: { _ in })]
+                + rest.map { IslandRowView(session: $0, mark: mark(for: $0.agentID), style: .compact, showModel: false, onClick: { _ in }) }
+            renderSlab(calmRows.map { sized($0, rowW) }, name: "03o-five-calm")
         }
 
         // Scene 3m: compacts soon — a session whose context climbed 4 points a

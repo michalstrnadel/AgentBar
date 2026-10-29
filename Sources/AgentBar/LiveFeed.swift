@@ -167,7 +167,7 @@ enum LiveFeed {
         let arg: String
         switch name {
         case "Bash":
-            arg = s("command").split(separator: "\n").first.map(String.init) ?? ""
+            arg = withoutCd(s("command").split(separator: "\n").first.map(String.init) ?? "")
         case "Read", "Edit", "Write", "MultiEdit", "NotebookEdit":
             arg = (s("file_path").isEmpty ? s("notebook_path") : s("file_path")).split(separator: "/").last.map(String.init) ?? ""
         case "Grep", "Glob":
@@ -186,6 +186,34 @@ enum LiveFeed {
             return name.isEmpty ? nil : .tool(short, "")
         }
         return .tool(name, ApprovalRequest.oneLine(arg).prefixed(70))
+    }
+
+    /// The command without the `cd <dir> &&` agents put in front of it, so the part
+    /// that does something is what fits: `cd "/Users/…/AgentBar" && swift test` is
+    /// `swift test`. A `cd` that is the whole command stays.
+    static func withoutCd(_ command: String) -> String {
+        var c = Substring(command.trimmingCharacters(in: .whitespaces))
+        let pattern = #"^cd\s+("[^"]*"|'[^']*'|[^\s;&|]+)\s*(&&|;)\s*"#
+        while let r = c.range(of: pattern, options: .regularExpression), r.upperBound < c.endIndex {
+            c = c[r.upperBound...]
+        }
+        return String(c)
+    }
+
+    /// What the island shows unless asked for more: the newest step and the newest
+    /// thing it said, and a command's output only when it failed — two lines, three
+    /// with a failure, instead of a log to read through.
+    static func calm(_ feed: Feed) -> Feed {
+        let lastTool = feed.items.lastIndex { if case .tool = $0 { return true }; return false }
+        let lastSaid = feed.items.lastIndex { if case .said = $0 { return true }; return false }
+        let keep = [lastTool, lastSaid].compactMap { $0 }.sorted()
+        let items = keep.map { feed.items[$0] }
+        guard var out = feed.output, out.isError, let at = keep.firstIndex(of: out.after) else {
+            return Feed(items: items)
+        }
+        out.after = at
+        out.lines = Array(out.lines.suffix(2))
+        return Feed(items: items, output: out)
     }
 
     /// The last sentence of what the agent said, one line, at most 140 characters.

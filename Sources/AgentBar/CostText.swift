@@ -29,6 +29,15 @@ enum SubagentLine {
         return parts.joined(separator: " · ")
     }
 
+    /// All of them on one line: the newest one's task in its own words (its kind
+    /// when it gave none), the others as a count — "find the merge +2". Kind, model
+    /// and time are in the tooltip. nil when there are none.
+    static func summary(_ agents: [ModReport.Subagent], now: TimeInterval) -> String? {
+        guard let newest = agents.last else { return nil }
+        let line = newest.what.isEmpty ? newest.type : newest.what
+        return agents.count > 1 ? line + "  +\(agents.count - 1)" : line
+    }
+
     /// "claude-haiku-5-5" → "haiku"; anything else as it came.
     static func shortModel(_ id: String) -> String? {
         guard !id.isEmpty else { return nil }

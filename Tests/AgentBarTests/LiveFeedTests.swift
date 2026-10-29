@@ -111,4 +111,40 @@ import Testing
         #expect(LiveFeed.lastWords(text) == "And this is the end.")
         #expect(LiveFeed.lastWords("a\nb") == "a b")
     }
+
+    // MARK: - Calm by default
+
+    @Test func theCdAgentsPutInFrontIsLeftOut() {
+        #expect(LiveFeed.withoutCd(#"cd "/Users/me/My Repo" && swift test"#) == "swift test")
+        #expect(LiveFeed.withoutCd("cd /a; cd b && make") == "make")
+        #expect(LiveFeed.withoutCd("cd '/x y' && git status") == "git status")
+        #expect(LiveFeed.withoutCd("cd /tmp") == "cd /tmp")
+        #expect(LiveFeed.withoutCd("ls && cd x") == "ls && cd x")
+        #expect(LiveFeed.tool("Bash", ["command": "cd \"/r\" && npm test\nmore"]) == .tool("Bash", "npm test"))
+    }
+
+    @Test func calmKeepsTheNewestStepAndWordsAndOnlyAFailure() {
+        let items: [LiveFeed.Item] = [.tool("Read", "A.swift"), .tool("Bash", "swift test"),
+                                      .said("Running them."), .tool("Edit", "B.swift")]
+        let ok = LiveFeed.calm(.init(items: items, output: .init(lines: ["a", "b", "c"], isError: false, after: 1)))
+        #expect(ok.items == [.said("Running them."), .tool("Edit", "B.swift")])
+        #expect(ok.output == nil)
+        let failedLast: [LiveFeed.Item] = [.said("Building."), .tool("Bash", "npm run build")]
+        let bad = LiveFeed.calm(.init(items: failedLast, output: .init(lines: ["x", "y", "z"], isError: true, after: 1)))
+        #expect(bad.items == failedLast)
+        #expect(bad.output == .init(lines: ["y", "z"], isError: true, after: 1))
+        // A failure under a step that is no longer the newest goes with it.
+        let gone = LiveFeed.calm(.init(items: items, output: .init(lines: ["x"], isError: true, after: 1)))
+        #expect(gone.output == nil)
+        #expect(LiveFeed.calm(.init(items: [])).isEmpty)
+    }
+
+    @Test func subagentsShareOneLine() {
+        let a = ModReport.Subagent(type: "Explore", what: "find it", model: "")
+        let b = ModReport.Subagent(type: "code-reviewer", what: "review", model: "")
+        #expect(SubagentLine.summary([], now: 0) == nil)
+        #expect(SubagentLine.summary([a], now: 0) == "find it")
+        #expect(SubagentLine.summary([a, b, a], now: 0) == "find it  +2")
+        #expect(SubagentLine.summary([ModReport.Subagent(type: "Explore")], now: 0) == "Explore")
+    }
 }

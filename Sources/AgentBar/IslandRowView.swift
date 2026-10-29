@@ -21,7 +21,10 @@ final class IslandRowView: NSView {
 
     static let markBox: CGFloat = 20
 
-    init(session: Session, mark: NSImage?, style: Style, onClick: @escaping (Session) -> Void) {
+    /// `showModel` is false when every listed session runs the same model: then the
+    /// chip tells no row from another and only adds weight.
+    init(session: Session, mark: NSImage?, style: Style, showModel: Bool = true,
+         onClick: @escaping (Session) -> Void) {
         self.session = session
         self.style = style
         self.onClick = onClick
@@ -37,7 +40,7 @@ final class IslandRowView: NSView {
         setAccessibilityRole(.button)
         setAccessibilityLabel(SessionRowView.plainTitle(SessionRowView.content(for: session)))
 
-        let chips = NSStackView(views: Self.chips(session, compact: style == .compact))
+        let chips = NSStackView(views: Self.chips(session, compact: style == .compact, showModel: showModel))
         chips.orientation = .horizontal
         chips.spacing = 5
         chips.setContentHuggingPriority(.required, for: .horizontal)
@@ -139,18 +142,18 @@ final class IslandRowView: NSView {
             plan.setAccessibilityLabel("\(todo.done) of \(todo.total) steps done" + (todo.now.isEmpty ? "" : ", now \(todo.now)"))
             column.append(plan)
         }
-        // Each subagent at work, in its own few words: "↳ Explore · list files · haiku · 2m".
-        // Only what the mod reports; three at most, the count chip says the rest.
-        if session.state.isWorking || session.state == .done {
-            let now = Date().timeIntervalSince1970
-            for a in session.subagentDetails.suffix(3) {
-                let line = NSTextField(labelWithString: "↳ " + SubagentLine.text(a, now: now))
-                line.font = .monospacedSystemFont(ofSize: 10.5, weight: .regular)
-                line.textColor = IslandInk.quiet
-                line.lineBreakMode = .byTruncatingTail
-                line.maximumNumberOfLines = 1
-                column.append(line)
-            }
+        // The subagents at work, on one line: the newest one's task, the rest
+        // counted ("↳ find the merge  +2"). Each in full is the line's tooltip.
+        if session.state.isWorking || session.state == .done,
+           let text = SubagentLine.summary(session.subagentDetails, now: Date().timeIntervalSince1970) {
+            let line = NSTextField(labelWithString: "↳ " + text)
+            line.font = .monospacedSystemFont(ofSize: 10.5, weight: .regular)
+            line.textColor = IslandInk.quiet
+            line.lineBreakMode = .byTruncatingTail
+            line.maximumNumberOfLines = 1
+            line.toolTip = session.subagentDetails.map { SubagentLine.text($0, now: Date().timeIntervalSince1970) }
+                .joined(separator: "\n")
+            column.append(line)
         }
         // The turn's recent tool steps under the live status — a quiet breadcrumb
         // (island plan, Phase 3.2). Only while working, and only once there is
@@ -426,15 +429,18 @@ final class IslandRowView: NSView {
         }
     }
 
-    /// Agent name, model, where the session lives, and for how long — the facts
-    /// that tell two otherwise identical rows apart. Elapsed stays a plain quiet
-    /// number, not a chip, the way the reference panels keep it.
-    private static func chips(_ s: Session, compact: Bool) -> [NSView] {
+    /// Only what tells this row apart or wants a look, so five sessions still read
+    /// at a glance. The mascot already says which agent it is, so its name is not a
+    /// chip; the terminal is where a click goes, not news. A compact row keeps only
+    /// what is amber; the first row adds the quiet facts (model when it differs,
+    /// cost). Elapsed stays a plain quiet number.
+    private static func chips(_ s: Session, compact: Bool, showModel: Bool = true) -> [NSView] {
         let agent = s.agent
-        var out = [chip(agent.name, tint: agent.brand)]
-        if let m = s.modelChip { out.append(chip(m, tint: NSColor.white.withAlphaComponent(0.85))) }
+        var out: [NSView] = []
+        if !compact, showModel, let m = s.modelChip { out.append(chip(m, tint: NSColor.white.withAlphaComponent(0.85))) }
         // Next to the model, whose window it is: only once it is worth knowing.
-        if let ctx = ContextGauge.text(s.contextPercent) {
+        if let ctx = ContextGauge.text(s.contextPercent),
+           !compact || ContextGauge.level(s.contextPercent, forecast: ContextTrend.shared.forecast(for: s)) != .notice {
             let soon = ContextTrend.shared.forecast(for: s)
             let c = chip(ctx, tint: ContextGauge.islandTint(ContextGauge.level(s.contextPercent, forecast: soon)))
             c.toolTip = ContextGauge.detail(s.contextPercent, forecast: soon)
@@ -442,8 +448,9 @@ final class IslandRowView: NSView {
             c.setAccessibilityLabel(ContextGauge.spoken(s.contextPercent, forecast: soon))
             out.append(c)
         }
-        // Work it handed off and is still waiting on: how many, and of what kind.
-        if s.subagentCount > 0 {
+        // Work it handed off and is still waiting on: how many, and of what kind —
+        // only where the first row's subagent line does not already say so.
+        if s.subagentCount > 0, !compact, s.subagentDetails.isEmpty {
             let n = s.subagentCount
             let c = chip(n == 1 ? "1 subagent" : "\(n) subagents", tint: NSColor.white.withAlphaComponent(0.85))
             let kinds = Array(NSOrderedSet(array: s.subagentTypes)) as? [String] ?? []
@@ -471,7 +478,7 @@ final class IslandRowView: NSView {
             c.setAccessibilityLabel(b.text)
             out.append(c)
         }
-        if let cost = CostText.short(s.costUsd) {
+        if let cost = CostText.short(s.costUsd), !compact || CostBudget.note(s.costUsd) != nil {
             // Over the budget the person set: amber, and the tooltip says whose
             // line it crossed. It only flags; nothing stops the session.
             let over = CostBudget.note(s.costUsd)
@@ -487,8 +494,6 @@ final class IslandRowView: NSView {
             out.append(chip("Desktop", tint: .white))
         } else if s.entrypoint == "antigravity-app" {
             out.append(chip(agent.name == "Antigravity" ? "App" : agent.name, tint: .white))
-        } else if let term = TerminalApp.known.first(where: { $0.termProgram == s.termProgram }) {
-            out.append(chip(term.name, tint: .white))
         }
         if let quiet = QuietWatch.quietMinutes(s) {
             let c = chip(QuietWatch.label(quiet), tint: IconRenderer.amberDot)

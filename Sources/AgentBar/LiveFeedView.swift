@@ -39,7 +39,7 @@ final class LiveFeedView: NSView {
 
     init?(session: Session) {
         guard Self.enabled, session.state.isWorking else { return nil }
-        let feed = LiveFeed.read(session)
+        let feed = LiveFeed.calm(LiveFeed.read(session))
         guard !feed.isEmpty else { return nil }
         self.session = session
         self.feed = feed
@@ -63,7 +63,7 @@ final class LiveFeedView: NSView {
 
     private func refresh() {
         guard window?.isVisible == true else { return }
-        let next = LiveFeed.read(session)
+        let next = LiveFeed.calm(LiveFeed.read(session))
         guard next != feed, !next.isEmpty else { return }
         feed = next
         updateAccessibility()

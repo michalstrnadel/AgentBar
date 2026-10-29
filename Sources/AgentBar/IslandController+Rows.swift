@@ -17,12 +17,15 @@ extension IslandController {
             out.append(l)
             awayRecapShownOpen = true
         }
+        // One model across every row says nothing per row: its chip goes.
+        let models = Set(visible.prefix(Self.maxRows).map { $0.modelChip ?? "" })
+        let showModel = models.count > 1
         for (i, s) in visible.prefix(Self.maxRows).enumerated() {
             // The list leads with whatever needs the user, so the first row is the
             // hero — boxed, with the mark; the rest stay one quiet line each.
             let style: IslandRowView.Style = i == 0 ? .hero : .compact
             let mark = IconRenderer.shared.sprite(for: s.agent).restingColor
-            let row = IslandRowView(session: s, mark: mark, style: style) { [weak self] session in
+            let row = IslandRowView(session: s, mark: mark, style: style, showModel: showModel) { [weak self] session in
                 self?.click(session)
             }
             personality.attach(row.mascot, session: s.id)
