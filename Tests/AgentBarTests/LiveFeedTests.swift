@@ -147,4 +147,11 @@ import Testing
         #expect(SubagentLine.summary([a, b, a], now: 0) == "find it  +2")
         #expect(SubagentLine.summary([ModReport.Subagent(type: "Explore")], now: 0) == "Explore")
     }
+
+    @Test func theModelChipOnlyWhenTwoRowsNameDifferentModels() {
+        #expect(!IslandController.modelsDiffer(["opus-5-5", nil, nil]))
+        #expect(!IslandController.modelsDiffer(["opus-5-5", "opus-5-5"]))
+        #expect(IslandController.modelsDiffer(["opus-5-5", nil, "sonnet-5-5"]))
+        #expect(!IslandController.modelsDiffer([]))
+    }
 }

@@ -3,6 +3,11 @@ import Cocoa
 /// What the open panel lists: a row per session, the approval and question
 /// cards under the sessions that raised them, and the pill's echo of an answer.
 extension IslandController {
+    /// Two rows name different models — the only case where the chip tells them apart.
+    static func modelsDiffer(_ chips: [String?]) -> Bool {
+        Set(chips.compactMap { $0 }).count > 1
+    }
+
     func rows() -> [NSView] {
         var out: [NSView] = []
         let visible = visibleSessions
@@ -17,9 +22,9 @@ extension IslandController {
             out.append(l)
             awayRecapShownOpen = true
         }
-        // One model across every row says nothing per row: its chip goes.
-        let models = Set(visible.prefix(Self.maxRows).map { $0.modelChip ?? "" })
-        let showModel = models.count > 1
+        // One model across every row says nothing per row: its chip goes. Rows that
+        // report no model do not count as a second one.
+        let showModel = Self.modelsDiffer(visible.prefix(Self.maxRows).map(\.modelChip))
         for (i, s) in visible.prefix(Self.maxRows).enumerated() {
             // The list leads with whatever needs the user, so the first row is the
             // hero — boxed, with the mark; the rest stay one quiet line each.
