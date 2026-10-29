@@ -70,3 +70,19 @@ import Testing
         #expect(last?.reason == "why")
     }
 }
+
+/// The agent's own task list, as the row carries it.
+@Suite struct TaskProgressTests {
+    @Test func readsTheCountAndTheStep() {
+        let t = TaskProgress(["done": 3, "total": 7, "now": "Running\ntests"])
+        #expect(t?.text == "3/7 · Running tests")
+        #expect(t?.fraction == 3.0 / 7.0)
+    }
+
+    @Test func nonsenseIsNoProgress() {
+        #expect(TaskProgress(["done": 1, "total": 0]) == nil)
+        #expect(TaskProgress(["done": -1, "total": 3]) == nil)
+        #expect(TaskProgress("3/7") == nil)
+        #expect(TaskProgress(["done": 9, "total": 3])?.done == 3)
+    }
+}

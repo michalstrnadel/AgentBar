@@ -47,6 +47,8 @@ struct Session {
     /// The kinds of the subagents working for it, newest last (`subagentRuns`,
     /// from the hook). `subagents` above is the mod's count when it runs.
     var subagentTypes: [String] = []
+    /// The agent's own task list, counted (`TaskProgress`); nil when it keeps none.
+    var todo: TaskProgress?
     /// How many subagents are working, by whichever source saw more.
     var subagentCount: Int { max(subagents, subagentTypes.count) }
     var modSeen = false
@@ -107,6 +109,7 @@ struct Session {
         recap       = o["recap"] as? String ?? ""
         activity    = (o["activity"] as? [String] ?? []).prefix(5).map { String($0.prefix(40)) }
         url         = o["url"] as? String ?? ""
+        todo = TaskProgress(o["todo"])
         subagentTypes = (o["subagentRuns"] as? [[String: Any]] ?? []).suffix(8).compactMap {
             ($0["type"] as? String).map { String(Self.displayName($0).prefix(30)) }
         }.filter { !$0.isEmpty }

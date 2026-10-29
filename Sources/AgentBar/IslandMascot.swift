@@ -440,6 +440,24 @@ final class IslandMascotView: NSView {
     /// inside a second. No hop of its own — `MascotDriver` already hops the mark on
     /// every finish, and a second hop stacked on that one would jump it clean out
     /// of the pill.
+    /// A new request just arrived: the mascot comes in from the side with it and
+    /// lands, a hop and a settle — the pill saying "this one is new" without
+    /// opening anything.
+    func carryIn() {
+        guard !bounds.isEmpty else { return }
+        let slide = CAKeyframeAnimation(keyPath: "transform.translation.x")
+        slide.values = [16, -2, 0]
+        slide.keyTimes = [0, 0.7, 1]
+        let hop = CAKeyframeAnimation(keyPath: "transform.translation.y")
+        hop.values = [0, 5, 0, 1.5, 0]
+        hop.keyTimes = [0, 0.35, 0.7, 0.85, 1]
+        let group = CAAnimationGroup()
+        group.animations = [slide, hop]
+        group.duration = 0.45
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        imageLayer.add(group, forKey: "carry")
+    }
+
     func celebrate() {
         guard let host = layer else { return }
         let mark = imageLayer.frame

@@ -244,6 +244,19 @@ function run() {
   } else if (event !== "prompt" && ring.length) {
     out.activity = ring;
   }
+  // The agent's own task list, counted: Claude Code rewrites it whole with
+  // TodoWrite, so each call is the truth. Carried on every other event, dropped
+  // by a new prompt (a new task starts without the old list).
+  const todos = event === "pre" && p.tool_name === "TodoWrite" && p.tool_input
+    && Array.isArray(p.tool_input.todos) ? p.tool_input.todos.filter((t) => t && typeof t === "object") : null;
+  if (todos && todos.length) {
+    const active = todos.find((t) => t.status === "in_progress");
+    const said = active && (typeof active.activeForm === "string" ? active.activeForm : active.content);
+    out.todo = { done: todos.filter((t) => t.status === "completed").length, total: Math.min(todos.length, 200),
+                 ...(typeof said === "string" && said.trim() ? { now: oneLine(said).slice(0, 60) } : {}) };
+  } else if (event !== "prompt" && prev.todo && typeof prev.todo === "object") {
+    out.todo = prev.todo;
+  }
   // Subagents working for this session, newest last: Claude Code puts agent_id
   // and agent_type on every tool event fired from inside one. There is no
   // SubagentStart here on purpose (an event an older Claude Code does not know

@@ -108,6 +108,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     private var queueRecorder: ShortcutRecorder!
     private var holdBox: NSSwitch!
     private var hapticsBox: NSSwitch!
+    private var lookingBox: NSSwitch!
     private var soundsBox: NSSwitch!
     private var volumeSlider: NSSlider!
     private var testButton: NSButton!
@@ -333,6 +334,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
     /// business, and what it means is the rest of this file's.
     private func buildControls() {
         soundsBox = SettingsChrome.toggle(target: self, action: #selector(toggleSounds))
+        lookingBox = SettingsChrome.toggle(target: self, action: #selector(toggleLooking))
         volumeSlider = NSSlider(value: 0.5, minValue: 0, maxValue: 1,
                                 target: self, action: #selector(volumeChanged(_:)))
         volumeSlider.isContinuous = true
@@ -535,6 +537,10 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
                                        + "question, or finishes. Never while one is working.",
                                        control: soundsBox),
                     SettingsChrome.customRow(volumeRow),
+                    SettingsChrome.row("Quiet while I'm looking at it",
+                                       "No cue and no banner for a session whose iTerm2 or "
+                                       + "Terminal tab is in front of you.",
+                                       control: lookingBox),
                     // Quiet on purpose: one row and one line, in the card it
                     // belongs to, rather than a section of its own for something
                     // most people never touch.
@@ -838,6 +844,7 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         queueRecorder.reload()
         holdBox.state = HoldButton.enabled ? .on : .off
         hapticsBox.state = Haptics.enabled ? .on : .off
+        lookingBox.state = LookingAt.enabled ? .on : .off
         soundsBox.state = SoundCenter.enabled ? .on : .off
         volumeSlider.doubleValue = SoundCenter.volume
         hideIslandBox.state = IslandVisibility.Prefs.hideWhenEmpty ? .on : .off
@@ -889,6 +896,11 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
 
     @objc private func toggleHold() {
         UserDefaults.standard.set(holdBox.state == .on, forKey: HoldButton.enabledKey)
+        onChange?()
+    }
+
+    @objc private func toggleLooking() {
+        UserDefaults.standard.set(lookingBox.state == .on, forKey: LookingAt.prefKey)
         onChange?()
     }
 

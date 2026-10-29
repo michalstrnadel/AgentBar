@@ -45,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // there is no session for `agentbar://focus` to find.
             defer { URLCommands.storesReady() }
             self.mascot.update(sessions: DemoApproval.shared.merged(sessions), systemColor: IconColor.system)
+            LookingAt.shared.update(sessions)
             SoundCenter.shared.observe(sessions)
             // Takes the git baseline a session's record is later measured against.
             // A session that appears and ends inside one tick gets none, which is
@@ -124,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         KeepAwake.shared.start()
 
         controller.start()
+        LookingAt.shared.start()
         store.start()
         requestStore.start()
         SoundCenter.shared.start()

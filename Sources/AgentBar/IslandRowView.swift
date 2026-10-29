@@ -128,6 +128,17 @@ final class IslandRowView: NSView {
             column.append(you)
         }
         column.append(status)
+        // The agent's own plan, counted: "3/7 · Running tests". The bar under the
+        // box says the same at a glance (`draw`).
+        if session.state.isWorking, let todo = session.todo {
+            let plan = NSTextField(labelWithString: todo.text)
+            plan.font = .monospacedSystemFont(ofSize: 10.5, weight: .medium)
+            plan.textColor = IslandInk.quiet
+            plan.lineBreakMode = .byTruncatingTail
+            plan.maximumNumberOfLines = 1
+            plan.setAccessibilityLabel("\(todo.done) of \(todo.total) steps done" + (todo.now.isEmpty ? "" : ", now \(todo.now)"))
+            column.append(plan)
+        }
         // The turn's recent tool steps under the live status — a quiet breadcrumb
         // (island plan, Phase 3.2). Only while working, and only once there is
         // more than the current step to show; head-truncated so the newest steps
@@ -448,10 +459,27 @@ final class IslandRowView: NSView {
             NSColor.white.withAlphaComponent(hovered ? 0.085 : 0.055).setFill()
             NSBezierPath(roundedRect: bounds, xRadius: 10, yRadius: 10).fill()
         case .compact:
-            guard hovered else { return }
-            NSColor.white.withAlphaComponent(0.07).setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 7, yRadius: 7).fill()
+            if hovered {
+                NSColor.white.withAlphaComponent(0.07).setFill()
+                NSBezierPath(roundedRect: bounds, xRadius: 7, yRadius: 7).fill()
+            }
         }
+        drawProgress()
+    }
+
+    /// Two points along the bottom edge: how much of its own plan the agent has
+    /// done. Only while it works — a finished plan is the recap's to report.
+    private func drawProgress() {
+        guard session.state.isWorking, let todo = session.todo else { return }
+        let inset: CGFloat = style == .hero ? 10 : 4
+        let track = NSRect(x: inset, y: 1, width: bounds.width - inset * 2, height: 2)
+        NSColor.white.withAlphaComponent(0.10).setFill()
+        NSBezierPath(roundedRect: track, xRadius: 1, yRadius: 1).fill()
+        guard todo.done > 0 else { return }
+        var fill = track
+        fill.size.width = max(2, track.width * todo.fraction)
+        NSColor(srgbRed: 0.45, green: 0.72, blue: 1, alpha: 0.85).setFill()
+        NSBezierPath(roundedRect: fill, xRadius: 1, yRadius: 1).fill()
     }
 }
 

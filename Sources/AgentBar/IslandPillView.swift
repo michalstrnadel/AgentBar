@@ -50,6 +50,12 @@ final class IslandPillView: NSView {
         return window.convertPoint(toScreen: markView.convert(local, to: nil))
     }
 
+    /// A request just arrived (`IslandMascotView.carryIn`).
+    func carryIn() {
+        guard !markView.isHidden else { return }
+        markView.carryIn()
+    }
+
     /// A long task just finished — see `MascotPersonality.Celebrations` for which.
     func celebrate() {
         guard !markView.isHidden else { return }

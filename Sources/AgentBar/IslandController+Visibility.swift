@@ -31,6 +31,7 @@ extension IslandController {
             away = nowAway
             rebuild(animated: true)
         }
+        tickAwayRecap()
         guard flash == nil else { personality.rest(); return }
         let shown = panel.isVisible && !hiding
         let mouse = NSEvent.mouseLocation
@@ -116,6 +117,25 @@ extension IslandController {
         // those clicks is worse than no pill. Only the open panel takes the mouse.
         panel.ignoresMouseEvents = mode == .collapsed && !held
         layout(animated: animated)
+    }
+
+    /// Every couple of seconds, not every poll: the idle clock is an IOKit read.
+    private func tickAwayRecap() {
+        awayTicks += 1
+        guard awayTicks % 16 == 0 else { return }
+        if awayRecapShownOpen, mode == .collapsed {
+            awayRecapShownOpen = false
+            awayWatch.seen()
+            rebuild(animated: true)
+            return
+        }
+        guard AwayWatch.enabled else { return }
+        let now = Date().timeIntervalSince1970
+        let changed = awayWatch.tick(idle: InputIdle.seconds(), now: now) { [requests] since in
+            AwayRecap.make(since: since, until: now, history: HistoryStore.cached(),
+                           ledger: DecisionLedger.cached(), requests: requests)
+        }
+        if changed { rebuild(animated: true) }
     }
 
     func hover(_ inside: Bool) {

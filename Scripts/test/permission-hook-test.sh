@@ -353,6 +353,14 @@ check "subagents: kept across main-thread tools" 'grep -q "\"id\":\"a-1\"" "$STA
 printf '{"session_id":"testsess","cwd":"/tmp/proj"}' | "$NODE" "$UPDATE" stop
 check "subagents: cleared at the turn end" '! grep -q "subagentRuns" "$STATE"'
 
+# 15e. TodoWrite is counted into the row and carried until the next prompt
+printf '%s' '{"session_id":"testsess","tool_name":"TodoWrite","tool_input":{"todos":[{"content":"a","status":"completed","activeForm":"Doing a"},{"content":"b","status":"in_progress","activeForm":"Running tests"},{"content":"c","status":"pending","activeForm":"c"}]}}' | "$NODE" "$UPDATE" pre
+check "todo: counted"                 'grep -q "\"todo\":{\"done\":1,\"total\":3,\"now\":\"Running tests\"}" "$STATE"'
+printf '{"session_id":"testsess","tool_name":"Bash"}' | "$NODE" "$UPDATE" post
+check "todo: carried across tools"    'grep -q "\"total\":3" "$STATE"'
+printf '{"session_id":"testsess","prompt":"another task"}' | "$NODE" "$UPDATE" prompt
+check "todo: dropped by a new prompt" '! grep -q "\"todo\"" "$STATE"'
+
 # 15d. missing/unreadable transcript: stop still lands, just without a recap
 printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"/nonexistent/x.jsonl"}' | "$NODE" "$UPDATE" stop
 check "recap: missing transcript ok"  'grep -q "\"state\":\"done\"" "$STATE" && ! grep -q "\"recap\"" "$STATE"'
