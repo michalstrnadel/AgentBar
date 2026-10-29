@@ -288,7 +288,9 @@ final class IslandController: NSObject {
         // counts as gone too: its ts changed, and choices made on the old shape
         // must not answer the new one.
         let live = Set(requests.map(\.fileName))
+        var arrived = false
         for r in requests where requestIdentity[r.fileName] != r.identity {
+            arrived = true
             requestIdentity[r.fileName] = r.identity
             questionSelections[r.fileName] = nil
             questionSteps[r.fileName] = nil
@@ -313,6 +315,9 @@ final class IslandController: NSObject {
         // way out lets the finish pass unmarked.
         if celebrate, mode == .collapsed, flash == nil, !hidden, panel.isVisible, !hiding {
             pill.celebrate()
+        } else if arrived, IslandMascot.plays, mode == .collapsed, flash == nil, !hidden,
+                  panel.isVisible, !hiding {
+            pill.carryIn()
         }
     }
 
