@@ -41,7 +41,7 @@ do, or a rule you wrote yourself, and every answer is written down.
 | **Settings ▸ Agents ▸ Show changes…** | Every write AgentBar made into an agent's settings, as a unified diff, with the copy it kept beside the file |
 | Flip an agent's switch off in **Settings ▸ Agents** | Shows what it will take out of that agent's settings, then removes only AgentBar's own entries — and leaves them out from then on |
 | `agentbar report --agent aider --name Aider --state tool --label Editing --pid $$` | Any tool you run joins the bar under its own name and mark — wrap it in a few lines, no Swift |
-| **Your Day…** in the menu or the island's ⋯ | Your day — or week — with your agents on one card: who you were today, agent time, the hours, your top agent, what changed, your answers; copy it, post it, or save it as a video |
+| **Your Day…** in the menu or the island's ⋯ | Your day, week or month with your agents on one card: who you were, agent time, the hours (a skyline for a week or a month), your top agent, what changed, your answers; copy it, post it, save it as a video, or print it as a receipt |
 | Click the cup in the island's footer | **Keep Mac Awake** while your agents work: the Mac stays up while a session runs and sleeps five minutes after its last turn. Right-click or hold for 15 or 30 minutes, an hour, two, until a time, or until you say. The time left counts down beside the cup and at the top of its menu, where Add 15 Minutes stretches a timed choice. The keyboard goes dark while you're away (and the screen can lock, if you switch that on), it can sleep the Mac when the agents finish, and Settings ▸ Awake Triggers starts it by itself when an agent works, on the charger, with a display, while an app runs, or while an app asks the Mac to stay awake (an export, a download). With the lid closed it keeps going, and when it ends the Mac goes to sleep instead of staying up in your bag |
 | Drag a screenshot or a file onto a session in the island | Its path lands in that agent's prompt — pasted into the right tab, never with Return |
 | Let a quota window run hot | The meter says when it runs out at this pace — "out ~15:40" — when that is before it resets |
@@ -335,7 +335,8 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
   downloaded, checked against the running app's own signing certificate, and
   installed automatically once nothing is waiting on you and you have stepped away.
   Switch it off in Settings ▸ General to install from **Check for Updates…** instead.
-- **Take a break** — the joystick beside ⋯ on the island offers two small games.
+- **Take a break** — the joystick beside ⋯ on the island offers two small games
+  and **the Office**, every session at its own desk.
   **Space Bugs** is an arcade shooter: Clawd against a formation of bugs, with a
   score, a best and a few tokens to catch. It steps aside the moment an agent needs
   you — the request shows in its place, and **Back to the break** picks up where you
@@ -366,12 +367,14 @@ don't use. To undo a single change, copy the `.agentbar-bak-…` file back over 
 
 **Your Day…** — in the menu bar's menu and the island's ⋯ — puts your day with
 your agents on one card, the way a year-in-music recap does, built to be read in a
-glance and made to be shared. **This week** switches it to the last seven days.
+glance and made to be shared. **Week** and **Month** switch it to the last seven or
+thirty days.
 
 - **Agent time** first, as the one big number — the time agents were actually
   *working*, not how long their windows were open — and **who you were today** under it
-  as a sentence — The Orchestrator, The Marathoner, The Night Owl, The Delegator,
-  The Quick Draw… — with the number that earned it.
+  as a sentence — The Orchestrator, The Night-Shift Conductor, The Marathoner, The
+  Delegator, Hands-Off, The Comeback Kid, The Night Owl, The Quick Draw… — with the
+  number that earned it.
 - **The day as bars**, hour by hour, in the colour of the agent that had each
   hour, with **your peak** — the most agents at once — marked by a thin line, and
   **you** underneath: a dot for every hour you typed prompts or answered requests,
@@ -405,6 +408,14 @@ glance and made to be shared. **This week** switches it to the last seven days.
   Day says so ("Codex and Claude both edited auth.swift, 4 min apart"), and while
   both are live each row carries an amber chip — "also edited by Codex · 3m". Only
   a chip; nothing opens or stops.
+- **Replay**: **Replay the Longest Run…** in the Share menu, or **Replay Last Turn…**
+  on a Claude Code session's right-click menu, plays a turn back as a small level in
+  the same window — a station per step, a pit Clawd hops for each error, a gate
+  where it waited on you, a flag at the end — with play, scrub and the same Share
+  menu (image, video, GIF). What the agent said stays out of an export unless you
+  include it.
+- **New on the card**: the high score (most agents at once) and the longest
+  hands-off stretch.
 - `agentbar://day`, `agentbar://week` and `agentbar://month` open it from Shortcuts
   or Raycast.
 
@@ -452,6 +463,13 @@ Two small games live in the island, one click away on the joystick beside ⋯. T
 open only when you ask, pause the moment you click elsewhere, and step aside the
 instant an agent needs you.
 
+Next to them is **the Office**: every session at its own desk in a little pixel
+room — who is working, who is done and asleep, subagents as small crabs beside
+their desk, and a **raised hand** on the one waiting for you. Click a desk to jump
+to that terminal; click a raised hand and the office closes onto its request. It
+answers nothing, and since the hand is the signal, it stays open when one of its
+desks starts waiting.
+
 <p align="center">
   <img src="docs/assets/space-bugs.gif?v=2026-10-06" width="360" alt="Space Bugs in the island: Clawd's ship at the bottom firing up at a swaying formation of blue, yellow and purple bugs, with the score, best, wave, ships and tokens in a column on the right">
   <img src="docs/assets/bug-hunt.gif?v=2026-10-06" width="360" alt="Bug Hunt: a beagle walks in and jumps into the grass, bugs fly across a blue sky, a crosshair shoots them down, and the beagle pops up from the grass holding the catch; the round, shells, hit bar and score run along the bottom">
@@ -459,13 +477,13 @@ instant an agent needs you.
 
 ## Clawd's scenes
 
-Clawd shows what Claude is doing, and what it's waiting for. There are **twelve
+Clawd shows what Claude is doing, and what it's waiting for. There are **fifteen
 scenes**, each chosen from what the session reports and none of them made up. Each plays to the end of its
 loop before the next starts, so he doesn't flicker when Claude moves between thinking
 and tools.
 
 <p align="center">
-  <img src="docs/assets/clawd-scenes.gif?v=2026-10-29" width="760" alt="Fifteen island pills, each with Clawd doing something different: thinking with dots above his head, reading a book, sweeping a magnifier, typing on a laptop, hammering on an anvil, holding a test tube, sweating with drops beside his head, sending waves from an antenna, walking beside a little Clawd, squashing a box shut, walking, a raised hand with an amber exclamation mark, a raised hand with a blue question mark, asleep, and sad with a tear with a z drifting up">
+  <img src="docs/assets/clawd-scenes.gif?v=2026-10-29" width="760" alt="Fifteen island pills, each with Clawd doing something different: thinking with dots above his head, reading a book, sweeping a magnifier, typing on a laptop, hammering on an anvil, holding a test tube, sweating with drops beside his head, sending waves from an antenna, walking beside a little Clawd, squashing a box shut, walking, a raised hand with an amber exclamation mark, a raised hand with a blue question mark, asleep with a z drifting up, and sad with a tear">
 </p>
 
 | Claude is… | Clawd… |
@@ -475,6 +493,8 @@ and tools.
 | searching (`Grep`, `Glob`) | sweeps a magnifier |
 | editing (`Edit`, `Write`) | types on a laptop |
 | running a command (`Bash`) | hammers on an anvil |
+| running tests (a command with `test`, `tests` or `pytest` in it) | holds up a test tube, a bubble rising |
+| failing three tool calls in a row | sweats |
 | on the web (`WebFetch`, `WebSearch`) | sends waves from an antenna |
 | delegating to a subagent | works beside a little Clawd |
 | compacting its context | squashes a box shut |
@@ -482,10 +502,19 @@ and tools.
 | waiting for your approval | raises a hand, with an amber **!** |
 | asking you a question | raises a hand, with a blue **?** |
 | quiet for 10 minutes | falls asleep, z's drifting up |
+| ending a turn in an error, or losing a subagent | is sad for a moment, a tear on his cheek |
 
 They are drawn as text art in the source and rendered at runtime, in both colour
 modes. At rest the menu bar never moves, so there Clawd sleeps as a still picture;
-only the island, with the mascot's personality on, lets him breathe. [How they were made, and how to add one →](docs/clawd-scenes.md)
+only the island, with the mascot's personality on, lets him breathe.
+
+**He's alive, too.** While a session waits on you he looks toward the terminal
+window it lives in. He walks faster when an agent is busy and stops to think when
+it stalls (the menu bar keeps that pace too — it is information, not ornament). A
+small backpack on the pill fills as the context nears compaction. And one thing
+earns a celebration: tests going from red to green, or a pull request opened — a
+hop and a little confetti in the island, once, never on an ordinary finish, never
+with Reduce Motion on. [How they were made, and how to add one →](docs/clawd-scenes.md)
 
 ## Requirements
 
@@ -840,7 +869,7 @@ the notch:
 In Island-only mode the menu bar item is hidden, so the panel's **⋯** button carries
 everything the menu bar's own menu ends with — Icon Color, Sounds, Appearance,
 Diagnostics, Settings, updates, Send Feedback and Quit — and starts with Today,
-Your Day…, New Task… and Take a break. Both menus are drawn from one list, so
+Your Day…, New Task…, Take a break and the Office. Both menus are drawn from one list, so
 neither can lose a row the other has.
 
 ### Appearance
