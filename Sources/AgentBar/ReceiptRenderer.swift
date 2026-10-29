@@ -250,16 +250,18 @@ enum ReceiptRenderer {
         return out
     }
 
-    /// The slip as a bitmap, as tall as its lines.
-    static func bitmap(_ w: DayWrap) -> NSBitmapImageRep? {
+    /// The slip as a bitmap, as tall as its lines; `scale` 2 draws it for a
+    /// Retina screen or a film.
+    static func bitmap(_ w: DayWrap, scale: CGFloat = 1) -> NSBitmapImageRep? {
         let lines = lines(w)
         let size = CGSize(width: width, height: height(lines))
-        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width),
-                                         pixelsHigh: Int(size.height), bitsPerSample: 8,
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * scale),
+                                         pixelsHigh: Int(size.height * scale), bitsPerSample: 8,
                                          samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                          colorSpaceName: .calibratedRGB, bytesPerRow: 0, bitsPerPixel: 0),
               let g = NSGraphicsContext(bitmapImageRep: rep) else { return nil }
         let cg = g.cgContext
+        cg.scaleBy(x: scale, y: scale)
         WrapExport.drawFlipped(cg, size: size) {
             S.fill(CGRect(origin: .zero, size: size), S.paper)
             layout(lines, draw: true)
