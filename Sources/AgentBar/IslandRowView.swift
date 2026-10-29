@@ -37,7 +37,7 @@ final class IslandRowView: NSView {
         setAccessibilityRole(.button)
         setAccessibilityLabel(SessionRowView.plainTitle(SessionRowView.content(for: session)))
 
-        let chips = NSStackView(views: Self.chips(session))
+        let chips = NSStackView(views: Self.chips(session, compact: style == .compact))
         chips.orientation = .horizontal
         chips.spacing = 5
         chips.setContentHuggingPriority(.required, for: .horizontal)
@@ -173,6 +173,16 @@ final class IslandRowView: NSView {
             line.lineBreakMode = .byTruncatingTail
             line.maximumNumberOfLines = 1
             line.toolTip = bg.detail.isEmpty ? nil : bg.detail
+            column.append(line)
+        }
+        // Auto mode refused something: the turn went on, so only this line says so.
+        if let b = session.blocked {
+            let line = NSTextField(labelWithString: b.text)
+            line.font = .monospacedSystemFont(ofSize: 10.5, weight: .medium)
+            line.textColor = IconRenderer.legibleOnDark(IconRenderer.amberDot)
+            line.lineBreakMode = .byTruncatingTail
+            line.maximumNumberOfLines = 1
+            line.toolTip = b.detail.isEmpty ? nil : b.detail
             column.append(line)
         }
         // "You: …" asked; "Claude: …" answers — the pair reads as the exchange.
@@ -403,7 +413,7 @@ final class IslandRowView: NSView {
     /// Agent name, model, where the session lives, and for how long — the facts
     /// that tell two otherwise identical rows apart. Elapsed stays a plain quiet
     /// number, not a chip, the way the reference panels keep it.
-    private static func chips(_ s: Session) -> [NSView] {
+    private static func chips(_ s: Session, compact: Bool) -> [NSView] {
         let agent = s.agent
         var out = [chip(agent.name, tint: agent.brand)]
         if let m = s.modelChip { out.append(chip(m, tint: NSColor.white.withAlphaComponent(0.85))) }
@@ -433,6 +443,14 @@ final class IslandRowView: NSView {
             let n = s.failedSubagents
             let c = chip(n == 1 ? "1 subagent failed" : "\(n) subagents failed", tint: IconRenderer.amberDot)
             c.toolTip = "A subagent's turn ended in an error or was cancelled"
+            out.append(c)
+        }
+        // A compact row has no room for the hero's line, so the refusal is a chip.
+        if compact, let b = s.blocked {
+            let c = chip(b.count > 1 ? "\(b.count) refused" : "refused", tint: IconRenderer.amberDot)
+            c.toolTip = b.text + (b.detail.isEmpty ? "" : "\n" + b.detail)
+            c.setAccessibilityElement(true)
+            c.setAccessibilityLabel(b.text)
             out.append(c)
         }
         if let cost = CostText.short(s.costUsd) {

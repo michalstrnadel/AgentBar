@@ -277,7 +277,7 @@ struct SharedFixtureTests {
             let fromFixture = rows.map { r in
                 HookWiring.Event(event: r["event"] as? String ?? "", script: r["script"] as? String ?? "",
                                  arg: r["arg"] as? String, matcher: r["matcher"] as? Bool ?? false,
-                                 timeout: r["timeout"] as? Int)
+                                 timeout: r["timeout"] as? Int, since: r["since"] as? String)
             }
             #expect(fromFixture == HookWiring.events(for: agent), "\(agent): the event table")
         }

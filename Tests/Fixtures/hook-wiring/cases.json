@@ -57,6 +57,14 @@
         "arg": "compact",
         "matcher": false,
         "timeout": null
+      },
+      {
+        "event": "PermissionDenied",
+        "script": "claude/update.js",
+        "arg": "denied",
+        "matcher": true,
+        "timeout": null,
+        "since": "2.1.89"
       }
     ],
     "codex": [
@@ -478,6 +486,28 @@
       "config": "{\"hooks\": { // mine\n}",
       "expect": {
         "status": "unparseable"
+      }
+    },
+    {
+      "name": "claude: with PermissionDenied, as a Claude Code 2.1.89 or later gets it",
+      "agent": "claude",
+      "config": "{\n  \"model\": \"opus\",\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" start\"\n          }\n        ]\n      }\n    ],\n    \"SessionEnd\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" end\"\n          }\n        ]\n      }\n    ],\n    \"UserPromptSubmit\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" prompt\"\n          }\n        ]\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" pre\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" post\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PermissionRequest\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/permission.js\\\"\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" stop\"\n          }\n        ]\n      }\n    ],\n    \"PreCompact\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" compact\"\n          }\n        ]\n      }\n    ],\n    \"PermissionDenied\": [\n      {\n        \"matcher\": \"*\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" denied\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+      "expect": {
+        "status": "ok",
+        "missing": [],
+        "misplaced": []
+      }
+    },
+    {
+      "name": "claude: PermissionDenied running the Stop handler",
+      "agent": "claude",
+      "config": "{\n  \"model\": \"opus\",\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" start\"\n          }\n        ]\n      }\n    ],\n    \"SessionEnd\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/lifecycle.js\\\" end\"\n          }\n        ]\n      }\n    ],\n    \"UserPromptSubmit\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" prompt\"\n          }\n        ]\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" pre\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" post\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"PermissionRequest\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/permission.js\\\"\"\n          }\n        ],\n        \"matcher\": \"*\"\n      }\n    ],\n    \"Stop\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" stop\"\n          }\n        ]\n      }\n    ],\n    \"PreCompact\": [\n      {\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" compact\"\n          }\n        ]\n      }\n    ],\n    \"PermissionDenied\": [\n      {\n        \"matcher\": \"*\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"\\\"/usr/local/bin/node\\\" \\\"/Users/x/.agentbar/hooks/claude/update.js\\\" stop\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+      "expect": {
+        "status": "warn",
+        "missing": [],
+        "misplaced": [
+          "PermissionDenied"
+        ]
       }
     },
     {

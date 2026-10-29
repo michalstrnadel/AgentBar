@@ -22,6 +22,7 @@ the authoritative map of what AgentBar consumes and why. Sources:
 | `Stop` | `done` | dimmed dot | turn finished, waiting for the next prompt |
 | `PreCompact` (`manual` or `auto`) | `thinking` | brand dot, **"Compacting…"**; the bar and the island pill hold the word "Compacting" instead of rotating verbs | Not a state of its own: a label on `thinking` (docs/protocol.md unchanged). `update.js compact` keeps what the row said in `resume`. |
 | `SessionStart` (`source: "compact"`) | what it was before `PreCompact` | as before | Ends the compaction: `lifecycle.js` restores `state`, `label` and `recap` from `resume` and drops it, so a manual `/compact` after a finished turn lands on `done` again. `PostCompact` is deliberately not registered — this start follows every compaction, and an event name an older Claude Code does not know is a settings file it may refuse. |
+| `PermissionDenied` (auto mode refused a call; wired only for Claude Code 2.1.89 and later) | `thinking` | the row says **"auto mode refused Bash · curl … \| sh"** in amber, the classifier's reason in its tooltip, until the next prompt | `update.js denied` writes `blocked` and prints nothing: `{retry: true}` would be an answer. Not wired when the installed version is older or unknown — an event an older build does not know is a settings file it may refuse. |
 | `SessionEnd` | (row removed) | — | `lifecycle.js end` deletes the state file |
 
 ## Events deliberately not consumed

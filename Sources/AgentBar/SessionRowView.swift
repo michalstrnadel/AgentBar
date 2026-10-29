@@ -67,6 +67,10 @@ final class SessionRowView: NSView {
         if s.state == .done, let bg = s.background {
             detail = bg.text
         }
+        // A refusal by auto mode outranks both: the agent did not get what it tried.
+        if let b = s.blocked, s.state != .permission, s.state != .question {
+            detail = b.text
+        }
         // Accurate as of the render; a menu stays open too briefly to need ticking.
         return Content(dot: dot, name: name, detail: detail, elapsed: s.elapsed ?? "",
                        agent: agent, agentID: s.agentID,

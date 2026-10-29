@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Claude Code hook -> ~/.agentbar/state.d/<session_id>.json
-// Usage: node update.js <prompt|pre|post|stop>   (hook JSON on stdin)
+// Usage: node update.js <prompt|pre|post|stop|compact|fail|denied>   (hook JSON on stdin)
 // Permission state is owned solely by permission.js: it writes richer labels and,
 // unlike Notification events, can never land late and overwrite a newer state.
 // Event-to-state mapping ported from AI Status Notifier (proven in daily use).
@@ -197,6 +197,10 @@ function run() {
       if (p.recoverable === true) { state = "thinking"; label = "Thinking…"; }
       else { state = "error"; label = ""; }
       break;
+    // PermissionDenied: auto mode's classifier refused a tool call. The model is
+    // told and carries on, so the turn goes on; what was refused is kept below.
+    // Nothing is printed: `{retry: true}` would be an answer, and this hook gives none.
+    case "denied": state = "thinking"; label = "Thinking…"; break;
     default: return;
   }
 
@@ -301,6 +305,25 @@ function run() {
     out.subagentRuns = next.slice(-8);
   } else if (event !== "prompt" && event !== "stop" && runs.length) {
     out.subagentRuns = runs;
+  }
+  // What auto mode refused this turn, newest only, with how many: a session that
+  // keeps getting refused is one the person wants to look at. Carried until the
+  // next prompt, which starts a task that has not been refused anything yet.
+  if (event === "denied") {
+    const i = p.tool_input && typeof p.tool_input === "object" ? p.tool_input : {};
+    const what = typeof i.command === "string" ? i.command.split("\n")[0]
+      : typeof i.file_path === "string" ? path.basename(i.file_path)
+      : typeof i.url === "string" ? i.url : typeof i.pattern === "string" ? i.pattern : "";
+    const before = prev.blocked && typeof prev.blocked === "object" ? Number(prev.blocked.n) || 0 : 0;
+    out.blocked = {
+      tool: oneLine(String(p.tool_name || "")).slice(0, 40),
+      what: oneLine(what).slice(0, 80),
+      reason: oneLine(String(p.reason || "")).slice(0, 200),
+      n: Math.min(before + 1, 99),
+      ts,
+    };
+  } else if (event !== "prompt" && prev.blocked && typeof prev.blocked === "object") {
+    out.blocked = prev.blocked;
   }
   // What the agent last said, for done rows. Only "stop" carries it — every other
   // event omits the field (out is built fresh, not {...prev}), so the next prompt

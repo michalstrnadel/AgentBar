@@ -1615,7 +1615,10 @@ function watch(argv) {
 // this table and the app's to the same values, and the verdicts too.
 // [event, script under ~/.agentbar/hooks, arg (null: none), matcher, timeout (agent's unit)]
 const HOOK_WIRING = (() => {
-  const ev = (event, script, arg, matcher = false, timeout = null) => ({ event, script, arg, matcher, timeout });
+  // `since`: wired only for a Claude Code known to be at least this version, and
+  // never called missing (HookWiring.Event.since).
+  const ev = (event, script, arg, matcher = false, timeout = null, since = null) =>
+    ({ event, script, arg, matcher, timeout, ...(since ? { since } : {}) });
   return {
     claude: [
       ev("SessionStart", "claude/lifecycle.js", "start"),
@@ -1627,6 +1630,8 @@ const HOOK_WIRING = (() => {
       ev("PermissionRequest", "claude/permission.js", null, true, 630),
       ev("Stop", "claude/update.js", "stop"),
       ev("PreCompact", "claude/update.js", "compact"),
+      // Auto mode's classifier refused a call; observed only, update.js prints nothing.
+      ev("PermissionDenied", "claude/update.js", "denied", true, null, "2.1.89"),
     ],
     // Through codex/hook.js, which sets AGENTBAR_AGENT (Codex handlers have no `env`).
     // Codex clamps SessionEnd to 3s; PermissionRequest outlasts permission.js's 600s.
@@ -1782,7 +1787,7 @@ function wiringVerdict(agent, text) {
     if (needed.some((e) => e.event === entry.event && matches(entry.words, e))) satisfied.add(entry.event);
     else misplaced.add(entry.event);
   }
-  const missing = needed.map((e) => e.event).filter((e) => !satisfied.has(e));
+  const missing = needed.filter((e) => !e.since).map((e) => e.event).filter((e) => !satisfied.has(e));
   const stray = [...misplaced].filter((e) => !satisfied.has(e)).sort();
   const status = !ours ? "fail" : missing.length || stray.length ? "warn" : "ok";
   return { status, ours, missing, misplaced: stray };
@@ -2970,7 +2975,9 @@ function installHooks({ only = null, args = [] } = {}) {
       const kept = rules.filter((rule) => !((rule.hooks || []).some((h) => String(h.command || "").includes("/.agentbar/hooks/claude/"))));
       if (kept.length) hooks[ev] = kept; else delete hooks[ev];
     }
+    const ccVersion = claudeVersion();
     for (const e of HOOK_WIRING.claude) {
+      if (e.since && (!ccVersion || compareVersions(ccVersion, e.since) < 0)) continue;
       const entry = { type: "command", command: wiringCommand(e, hooksDir, node) };
       if (e.timeout) entry.timeout = e.timeout;
       const rule = { hooks: [entry] };

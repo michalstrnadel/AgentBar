@@ -25,6 +25,10 @@ enum HookWiring {
         /// Installer detail, in the agent's own unit (Claude and Codex: seconds;
         /// Qwen and Gemini: milliseconds; Copilot: `timeoutSec`).
         var timeout: Int?
+        /// Wired only for a Claude Code known to be at least this version, and never
+        /// called missing: an event an older build does not know is a settings file
+        /// it may refuse, so an unknown version gets the table without it.
+        var since: String?
     }
 
     /// Where every script lives; what says a command is AgentBar's.
@@ -48,6 +52,9 @@ enum HookWiring {
         // follows every compaction already ends it, and an event name an older
         // Claude Code does not know is a settings file it may refuse.
         .init(event: "PreCompact", script: "claude/update.js", arg: "compact"),
+        // Auto mode's classifier refused a call (Claude Code 2.1.89). Observed only:
+        // update.js prints nothing, and `{retry: true}` would be an answer.
+        .init(event: "PermissionDenied", script: "claude/update.js", arg: "denied", matcher: true, since: "2.1.89"),
     ]
 
     /// Codex speaks Claude's hook dialect, so these are the `claude/` scripts, reached
@@ -131,6 +138,13 @@ enum HookWiring {
 
     static func events(for agent: String) -> [Event] { agents[agent] ?? [] }
 
+    /// Whether the installer writes this event for an agent at `version`.
+    static func wires(_ e: Event, version: String?) -> Bool {
+        guard let since = e.since else { return true }
+        guard let version, !version.isEmpty else { return false }
+        return ClaudeModWiring.compare(version, since) != .orderedAscending
+    }
+
     /// The command line for one event: `"<node>" "<hooks>/<script>" <arg>`, or the
     /// script alone when it runs through its own shebang.
     static func command(_ e: Event, hooksDir: String, node: String?) -> String {
@@ -191,7 +205,7 @@ enum HookWiring {
             }
         }
         return Verdict(ours: ours,
-                       missing: needed.map(\.event).filter { !satisfied.contains($0) },
+                       missing: needed.filter { $0.since == nil }.map(\.event).filter { !satisfied.contains($0) },
                        misplaced: misplaced.subtracting(satisfied).sorted())
     }
 

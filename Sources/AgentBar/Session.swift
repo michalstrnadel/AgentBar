@@ -51,6 +51,8 @@ struct Session {
     var todo: TaskProgress?
     /// What the last turn left running in the background; nil when nothing.
     var background: BackgroundWork?
+    /// What auto mode refused this turn; nil when nothing.
+    var blocked: AutoModeBlock?
     /// How many subagents are working, by whichever source saw more.
     var subagentCount: Int { max(subagents, subagentTypes.count) }
     /// What the mod knows about each of them: kind, task, model, since when.
@@ -118,6 +120,7 @@ struct Session {
         url         = o["url"] as? String ?? ""
         todo = TaskProgress(o["todo"])
         background = BackgroundWork(o["background"], wakeups: o["wakeups"])
+        blocked = AutoModeBlock(o["blocked"])
         subagentTypes = (o["subagentRuns"] as? [[String: Any]] ?? []).suffix(8).compactMap {
             ($0["type"] as? String).map { String(Self.displayName($0).prefix(30)) }
         }.filter { !$0.isEmpty }

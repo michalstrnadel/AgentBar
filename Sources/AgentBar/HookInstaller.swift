@@ -569,7 +569,7 @@ enum HookInstaller {
 
         // The events and scripts are `HookWiring.claude`, the table Diagnostics checks
         // a config against.
-        for e in HookWiring.claude {
+        for e in HookWiring.claude where HookWiring.wires(e, version: pass.ctx.claudeVersion) {
             var rules = hooks[e.event] as? [[String: Any]] ?? []
             let cmd = HookWiring.command(e, hooksDir: hooksDir.path, node: node)
             var hookEntry: [String: Any] = ["type": "command", "command": cmd]

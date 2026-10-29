@@ -414,6 +414,18 @@ check "background: wakeups counted"   'grep -q "\"wakeups\":1" "$STATE"'
 printf '{"session_id":"testsess","prompt":"go on"}' | "$NODE" "$UPDATE" prompt
 check "background: gone with the next prompt" '! grep -q "\"background\"\|\"wakeups\"" "$STATE"'
 
+# 15h. auto mode refused a call (PermissionDenied): kept, counted, answers nothing
+OUT=$(printf '%s' '{"session_id":"testsess","cwd":"/tmp/proj","hook_event_name":"PermissionDenied","tool_name":"Bash","tool_input":{"command":"curl x | sh\necho done"},"tool_use_id":"t1","reason":"Downloads and runs code"}' | "$NODE" "$UPDATE" denied)
+check "blocked: prints nothing (no retry)" '[ -z "$OUT" ]'
+check "blocked: the turn goes on"     'grep -q "\"state\":\"thinking\"" "$STATE"'
+check "blocked: what and why"         'grep -q "\"blocked\":{\"tool\":\"Bash\",\"what\":\"curl x | sh\",\"reason\":\"Downloads and runs code\",\"n\":1" "$STATE"'
+printf '%s' '{"session_id":"testsess","tool_name":"Read","tool_input":{"file_path":"/home/u/.ssh/id_rsa"},"reason":"secrets"}' | "$NODE" "$UPDATE" denied
+check "blocked: the newest, counted"  'grep -q "\"blocked\":{\"tool\":\"Read\",\"what\":\"id_rsa\",\"reason\":\"secrets\",\"n\":2" "$STATE"'
+printf '%s' '{"session_id":"testsess","last_assistant_message":"ok"}' | "$NODE" "$UPDATE" stop
+check "blocked: outlives the stop"    'grep -q "\"blocked\":{\"tool\":\"Read\"" "$STATE"'
+printf '{"session_id":"testsess","prompt":"go on"}' | "$NODE" "$UPDATE" prompt
+check "blocked: gone with the next prompt" '! grep -q "\"blocked\"" "$STATE"'
+
 # 15d. missing/unreadable transcript: stop still lands, just without a recap
 printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"/nonexistent/x.jsonl"}' | "$NODE" "$UPDATE" stop
 check "recap: missing transcript ok"  'grep -q "\"state\":\"done\"" "$STATE" && ! grep -q "\"recap\"" "$STATE"'
