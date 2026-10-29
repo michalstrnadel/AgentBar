@@ -365,9 +365,11 @@ any account of a day's work. Hence one append-only JSON Lines file.
                                //   numbers. Absent = nobody could measure it.
   "change": { "files": 7, "added": 210, "removed": 80, "base": "3a30264" },
                                // OPTIONAL: what moved in the repo while it ran.
-  "spans": [[1784844010, 1784844300], [1784844500, 1784844790]]
+  "spans": [[1784844010, 1784844300], [1784844500, 1784844790]],
                                // OPTIONAL: when the session was working (thinking or
                                //   tool), as [start, end] pairs in Unix seconds.
+  "costUsd": 4.2183            // OPTIONAL: what the session had cost, US dollars at
+                               //   API prices (the Claude Code mod's `cost_usd`).
 }
 ```
 
@@ -396,6 +398,10 @@ Rules:
   that does not track them (the Linux CLI) MUST carry forward the newest `spans`
   the file already holds for that session, and omit the key only when there are
   none — a line without them would erase them, since the last line wins.
+- `costUsd` follows the same rule: absent means *not measured*, never free, and a
+  writer that cannot measure it (the Linux CLI) MUST carry forward the newest value
+  the file holds for that session. Readers MUST treat a value that is negative, not
+  finite, or a million or more as absent.
 
 ### `weight` — what the session cost
 

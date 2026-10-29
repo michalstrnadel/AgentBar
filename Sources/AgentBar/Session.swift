@@ -63,6 +63,12 @@ struct Session {
     var failedSubagents = 0
     /// What the session has cost so far (the mod's `cost_usd`); nil when unknown.
     var costUsd: Double?
+    /// The files it edited lately, newest last (`edits`, a ring of 20 the Claude
+    /// Code hook keeps): absolute paths and when. Read only by `Flyby`.
+    var edits: [WorkSpans.Edit] = []
+    /// Another live session edited one of those files within minutes of this one
+    /// (`Flyby.live`, set by `SessionStore`). An amber chip, and nothing else.
+    var crossedBy: Flyby.Live?
     var modSeen = false
     /// The row is waiting because a mod is holding a call, not because Claude Code
     /// asked: there is no request to answer from here, only a pane in the terminal.
@@ -125,9 +131,24 @@ struct Session {
         background = BackgroundWork(o["background"], wakeups: o["wakeups"])
         blocked = AutoModeBlock(o["blocked"])
         if agentID == "claude" { refused = AutoModeBlock.refusals(o["refused"], fallbackTs: ts) }
+        edits = Self.edits(o["edits"])
         subagentTypes = (o["subagentRuns"] as? [[String: Any]] ?? []).suffix(8).compactMap {
             ($0["type"] as? String).map { String(Self.displayName($0).prefix(30)) }
         }.filter { !$0.isEmpty }
+    }
+
+    /// The `edits` ring, read the way everything in `state.d` is: anybody may write
+    /// it, so only absolute paths of a sane length with a plausible time, the
+    /// newest 20.
+    static func edits(_ raw: Any?) -> [WorkSpans.Edit] {
+        guard let rows = raw as? [[String: Any]] else { return [] }
+        return rows.suffix(20).compactMap { r in
+            guard let path = r["path"] as? String, path.hasPrefix("/"), path.count <= 1_024,
+                  !path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+            else { return nil }
+            let ts = plausibleTime(r["ts"])
+            return ts > 0 ? WorkSpans.Edit(ts: ts, path: path) : nil
+        }
     }
 
     /// Who this row belongs to: a known agent, or a generic one named by the row.

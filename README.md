@@ -389,7 +389,19 @@ glance and made to be shared. **This week** switches it to the last seven days.
   everything you export** unless you tick **Include Project Names** in that menu.
 - It never opens by itself. It builds once when it opens, then holds still — a click
   or Space builds it again, Esc closes — and Reduce Motion shows it finished.
-- `agentbar://day` and `agentbar://week` open it from Shortcuts or Raycast.
+- **A week or a month is a skyline**: a column a day, as tall as that day's agent
+  time and stacked in the agents' colours, with your prompts as dots on the roofs.
+- **Trust Receipt**: **Save Receipt…** or **Copy Receipt** in the Share menu prints
+  the same recap as a till slip — tool calls by name, what you approved and denied,
+  what your rules answered and auto mode stopped, the riskiest command that was
+  stopped (read off the ledger's first 60 characters, so its reach is a lower
+  bound), and the cost where the Claude Code mod measured it.
+- **Crossed paths**: when two sessions edit the same file within ten minutes, Your
+  Day says so ("Codex and Claude both edited auth.swift, 4 min apart"), and while
+  both are live each row carries an amber chip — "also edited by Codex · 3m". Only
+  a chip; nothing opens or stops.
+- `agentbar://day`, `agentbar://week` and `agentbar://month` open it from Shortcuts
+  or Raycast.
 
 ## Keep Mac Awake
 

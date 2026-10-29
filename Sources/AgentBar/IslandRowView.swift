@@ -478,6 +478,16 @@ final class IslandRowView: NSView {
             c.setAccessibilityLabel(b.text)
             out.append(c)
         }
+        // Another live session edited the same file minutes apart (`Flyby`). Only a
+        // chip: it opens nothing and stops nothing.
+        if let x = s.crossedBy {
+            let now = Date().timeIntervalSince1970
+            let c = chip(x.chip(now: now), tint: IconRenderer.amberDot)
+            c.toolTip = x.tooltip(now: now)
+            c.setAccessibilityElement(true)
+            c.setAccessibilityLabel(x.tooltip(now: now))
+            out.append(c)
+        }
         if let cost = CostText.short(s.costUsd), !compact || CostBudget.note(s.costUsd) != nil {
             // Over the budget the person set: amber, and the tooltip says whose
             // line it crossed. It only flags; nothing stops the session.

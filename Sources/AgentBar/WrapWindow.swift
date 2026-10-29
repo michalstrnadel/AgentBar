@@ -22,10 +22,18 @@ final class WrapWindow: NSObject, NSWindowDelegate {
 
     private(set) var range: DayWrap.Range = .today
 
+    /// More rows for the Share menu, built from the recap on screen — the hook a
+    /// later feature (Replay of the longest run, `DayWrap.Longest.sessionId`)
+    /// hangs its item on without this window knowing what it does. Each item is
+    /// still only a click the person makes; nothing here opens on its own.
+    var moreItems: ((DayWrap) -> [NSMenuItem])?
+
+    private static let ranges: [DayWrap.Range] = [.today, .week, .month]
+
     func show(_ range: DayWrap.Range = .today) {
         if window == nil { build() }
         self.range = range
-        rangeControl.selectedSegment = range == .today ? 0 : 1
+        rangeControl.selectedSegment = Self.ranges.firstIndex(of: range) ?? 0
         reload()
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
@@ -77,12 +85,14 @@ final class WrapWindow: NSObject, NSWindowDelegate {
 
         // The bar: which recap on the left, what to do with it on the right — two
         // buttons, with every way out of the window behind the second.
-        rangeControl = NSSegmentedControl(labels: ["Today", "This Week"], trackingMode: .selectOne,
+        rangeControl = NSSegmentedControl(labels: ["Today", "Week", "Month"], trackingMode: .selectOne,
                                           target: self, action: #selector(rangeChanged))
         rangeControl.segmentStyle = .rounded
         rangeControl.controlSize = .regular
-        rangeControl.setWidth(76, forSegment: 0)
-        rangeControl.setWidth(88, forSegment: 1)
+        rangeControl.setWidth(58, forSegment: 0)
+        rangeControl.setWidth(54, forSegment: 1)
+        rangeControl.setWidth(58, forSegment: 2)
+        rangeControl.setToolTip("The last 30 days", forSegment: 2)
 
         copyButton = NSButton(title: "Copy", target: self, action: #selector(copyCard))
         copyButton.bezelStyle = .rounded
@@ -151,6 +161,15 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         item("Save Video…", #selector(saveVideo), "film")
         item("Save GIF…", #selector(saveGIF), "sparkles.rectangle.stack")
         menu.addItem(.separator())
+        // The Trust Receipt: the same recap as a till slip — what the agents did,
+        // what was decided, what was stopped.
+        item("Save Receipt…", #selector(saveReceipt), "doc.plaintext")
+        item("Copy Receipt", #selector(copyReceipt), "doc.on.doc")
+        if let more = moreItems?(player.wrap), !more.isEmpty {
+            menu.addItem(.separator())
+            more.forEach(menu.addItem)
+        }
+        menu.addItem(.separator())
         let names = NSMenuItem(title: "Include Project Names", action: #selector(toggleNames), keyEquivalent: "")
         names.target = self
         names.state = includeNames ? .on : .off
@@ -167,7 +186,8 @@ final class WrapWindow: NSObject, NSWindowDelegate {
     func windowDidMiniaturize(_ notification: Notification) { player.stop() }
 
     @objc private func rangeChanged() {
-        range = rangeControl.selectedSegment == 0 ? .today : .week
+        range = Self.ranges.indices.contains(rangeControl.selectedSegment)
+            ? Self.ranges[rangeControl.selectedSegment] : .today
         reload()
     }
 
@@ -206,6 +226,25 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         }
     }
 
+    @objc private func saveReceipt() {
+        guard ready else { return }
+        let wrap = exported
+        save(name: fileName("png", " receipt"), type: .png) { url in
+            guard let rep = ReceiptRenderer.bitmap(wrap), let data = WrapExport.png(rep) else {
+                throw WrapExport.ExportError("the receipt could not be drawn")
+            }
+            try data.write(to: url)
+        }
+    }
+
+    @objc private func copyReceipt() {
+        guard ready, let rep = ReceiptRenderer.bitmap(exported), let data = WrapExport.png(rep) else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setData(data, forType: .png)
+        say("Receipt copied — paste it anywhere.")
+    }
+
     @objc private func saveVideo() {
         guard ready else { return }
         let wrap = exported
@@ -237,7 +276,7 @@ final class WrapWindow: NSObject, NSWindowDelegate {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         let day = f.string(from: Date(timeIntervalSince1970: player.wrap.end))
-        return "AgentBar \(range == .today ? "day" : "week") \(day)\(suffix).\(ext)"
+        return "AgentBar \(range == .today ? "day" : range.rawValue) \(day)\(suffix).\(ext)"
     }
 
     /// A save panel, then the work off the main thread, then what happened.

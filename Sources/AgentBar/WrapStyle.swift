@@ -47,6 +47,16 @@ enum WrapStyle {
         return lum > 0.8 ? secondary : c
     }
 
+    /// `a` moved `t` of the way to `b`, in sRGB: the skyline's side and roof
+    /// tones, flat shades of the agent's own colour rather than gradients.
+    static func mix(_ a: NSColor, _ b: NSColor, _ t: CGFloat) -> NSColor {
+        let x = a.usingColorSpace(.sRGB) ?? a, y = b.usingColorSpace(.sRGB) ?? b
+        return NSColor(srgbRed: x.redComponent + (y.redComponent - x.redComponent) * t,
+                       green: x.greenComponent + (y.greenComponent - x.greenComponent) * t,
+                       blue: x.blueComponent + (y.blueComponent - x.blueComponent) * t,
+                       alpha: x.alphaComponent)
+    }
+
     // MARK: - Motion
 
     static func clamp(_ x: Double) -> Double { min(1, max(0, x)) }

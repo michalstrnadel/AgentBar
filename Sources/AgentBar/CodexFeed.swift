@@ -160,6 +160,67 @@ enum CodexFeed {
         return url
     }
 
+    // MARK: - Edits, for Flyby
+
+    /// The files a rollout's `apply_patch` calls touched, and when: absolute, the
+    /// patch's relative paths resolved against `cwd`. Direct calls and those inside
+    /// an `exec` cell alike; a call whose line has no time is left out. Pure.
+    static func edits<S: Sequence>(_ lines: S, cwd: String) -> [WorkSpans.Edit] where S.Element == Substring {
+        var out: [WorkSpans.Edit] = []
+        for line in lines where line.contains("apply_patch") {
+            guard let data = line.data(using: .utf8),
+                  let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let p = o["payload"] as? [String: Any], p["type"] as? String == "custom_tool_call",
+                  let ts = (o["timestamp"] as? String).flatMap(WeightReader.parseISO)?.timeIntervalSince1970
+            else { continue }
+            let input = p["input"] as? String ?? ""
+            guard p["name"] as? String == "apply_patch" || input.contains("tools.apply_patch(") else { continue }
+            for file in matches(#"\*\*\* (?:Add|Update|Delete) File: ([^\n\\"]+)"#, in: input) {
+                let path = file.hasPrefix("/") ? file
+                    : cwd.isEmpty ? "" : (cwd as NSString).appendingPathComponent(file)
+                if !path.isEmpty { out.append(WorkSpans.Edit(ts: ts, path: (path as NSString).standardizingPath)) }
+            }
+        }
+        return out
+    }
+
+    private static let editsLock = NSLock()
+    private static var editsCache: [String: (mtime: Date, edits: [WorkSpans.Edit])] = [:]
+
+    /// A Codex session's edits, from its whole rollout — for Your Day, off the main
+    /// queue. Only the lines that name `apply_patch` are decoded; memoised on mtime.
+    static func edits(sessionId: String, cwd: String) -> [WorkSpans.Edit] {
+        let id = sessionId.hasPrefix("codex-") ? String(sessionId.dropFirst(6)) : sessionId
+        guard !id.isEmpty, let url = WeightReader.rollout(id: id),
+              let mtime = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+        else { return [] }
+        editsLock.lock()
+        let hit = editsCache[url.path]
+        editsLock.unlock()
+        if let hit, hit.mtime == mtime { return hit.edits }
+        guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return [] }
+        let needle = Array("apply_patch".utf8)
+        var lines: [Substring] = []
+        data.withUnsafeBytes { (buf: UnsafeRawBufferPointer) in
+            guard let base = buf.baseAddress else { return }
+            var start = 0
+            while start < buf.count {
+                let nl = memchr(base + start, 10, buf.count - start).map { base.distance(to: UnsafeRawPointer($0)) }
+                    ?? buf.count
+                let line = UnsafeRawBufferPointer(rebasing: buf[start..<nl])
+                if WorkSpans.ClaudeScan.contains(line, needle), let s = String(bytes: line, encoding: .utf8) {
+                    lines.append(Substring(s))
+                }
+                start = nl + 1
+            }
+        }
+        let found = edits(lines, cwd: cwd)
+        editsLock.lock()
+        editsCache[url.path] = (mtime, found)
+        editsLock.unlock()
+        return found
+    }
+
     // MARK: - Helpers
 
     private static func firstLine(_ s: String) -> String {

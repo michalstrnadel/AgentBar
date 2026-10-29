@@ -3,6 +3,26 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- **Your Day has a month.** A third range, the last thirty days (`agentbar://month`),
+  and a week or a month is now a skyline: a flat column a day, stacked in the
+  agents' colours, with your prompts as dots on the roofs.
+- **Trust Receipt.** Save Receipt… and Copy Receipt in Your Day's Share menu print
+  the recap as a till slip: tool calls by name, what you approved and denied, what
+  your rules answered and auto mode stopped, the riskiest stopped command (its reach
+  a lower bound, since the ledger keeps its first 60 characters) and the cost where
+  it was measured. Project names, the command and file names stay out unless
+  Include Project Names is on. The card's answers tile is now **Trust**.
+- **Crossed paths.** Two sessions editing one file within ten minutes are a moment
+  in Your Day, and an amber chip on both live rows ("also edited by Codex · 3m"),
+  in the island and in `agentbar status`.
+- **New on the card:** the high score (most agents at once), the longest hands-off
+  stretch, and two personas — the Night-Shift Conductor and Hands-Off.
+- `history.jsonl` keeps what a session cost (`costUsd`).
+
 ## 1.63.0 - 2026-10-29
 
 ### Added

@@ -10,8 +10,30 @@ import Foundation
 /// behind it gets no row, and nothing is ever estimated to fill a gap.
 struct DayWrap: Equatable {
     enum Range: String, Equatable, CaseIterable {
-        case today, week
-        var title: String { self == .today ? "Your day" : "Your week" }
+        case today, week, month
+        var title: String {
+            switch self {
+            case .today: return "Your day"
+            case .week: return "Your week"
+            case .month: return "Your month"
+            }
+        }
+        /// How many days it covers, ending today.
+        var days: Int {
+            switch self {
+            case .today: return 1
+            case .week: return 7
+            case .month: return 30
+            }
+        }
+        /// "today", "this week", "this month" — the end of a persona's sentence.
+        var phrase: String {
+            switch self {
+            case .today: return "today"
+            case .week: return "this week"
+            case .month: return "this month"
+            }
+        }
     }
 
     struct AgentShare: Equatable {
@@ -33,6 +55,9 @@ struct DayWrap: Equatable {
         /// The prompt the run started from, or its last label — "" when neither.
         let task: String
         let seconds: TimeInterval
+        /// Which session, and when the stretch began — for going back to it.
+        var sessionId = ""
+        var from: TimeInterval = 0
     }
 
     struct Waits: Equatable {
@@ -45,6 +70,55 @@ struct DayWrap: Equatable {
         var autoRefused = DecisionLedger.AutoRefusals()
         var fastest: TimeInterval?
         var median: TimeInterval?
+    }
+
+    /// The Trust Receipt: what the agents did and what was decided about it, as
+    /// a till would print it. Every count is measured or absent, like the card's.
+    struct Receipt: Equatable {
+        /// Tool calls by name, most first — from the sessions whose transcript
+        /// says (`toolsMeasured`), never estimated for the rest.
+        var tools: [ToolCount] = []
+        var toolCalls = 0
+        var toolsMeasured = 0
+        /// What the sessions cost at API prices, summed over the `costMeasured`
+        /// ones that carry a number (`HistoryStore.Record.costUsd`).
+        var cost: Double = 0
+        var costMeasured = 0
+        /// Your own answers: yes (`allow`, `always`) and no.
+        var approvals = 0
+        var denials = 0
+        /// What Claude Code refused by its own settings — a deny rule, the mode —
+        /// before anybody was asked. Auto mode's refusals are `Waits.autoRefused`.
+        var claudeStopped = 0
+        /// The most far-reaching command that was stopped — by you, a rule, or
+        /// auto mode. Nil when nothing stopped reached anything.
+        var riskiest: Riskiest?
+    }
+
+    struct ToolCount: Equatable {
+        let name: String
+        let count: Int
+    }
+
+    /// A stopped Bash command and what `BlastRadius` says it could reach. Read off
+    /// the ledger's `display`, which is cut at about 60 characters, so the reach
+    /// is a lower bound: the part that was cut could only have reached further.
+    struct Riskiest: Equatable {
+        var command: String
+        /// `BlastRadius` labels, most severe first: "pipes into a shell", "network".
+        let reaches: [String]
+        let severity: BlastRadius.Severity
+        /// The ledger kept only the start of the command.
+        let cut: Bool
+        /// Who stopped it: "you", "your rule", "auto mode", "a Claude Code rule", "a hook", "Claude Code".
+        let by: String
+        let ts: TimeInterval
+    }
+
+    /// One agent's share of a day, for the skyline's stacked columns.
+    struct Slice: Equatable {
+        let agent: String
+        let seconds: TimeInterval
     }
 
     struct Persona: Equatable {
@@ -107,14 +181,33 @@ struct DayWrap: Equatable {
         let waited: TimeInterval
         let byRule: Bool
     }
+    /// Two sessions that edited one file minutes apart (`Flyby`), oldest first.
+    var crossings: [Flyby.Crossing] = []
+    var receipt = Receipt()
+    /// Each bin's agent time by agent, in the order of `agents` — the skyline's
+    /// stacks. Empty bins are empty arrays.
+    var stacks: [[Slice]] = []
+    /// Agent time between 22:00 and 05:00 local, and how much of it had two or
+    /// more agents at work at once (`nightPeak` at most).
+    var nightSeconds: TimeInterval = 0
+    var nightTogether: TimeInterval = 0
+    var nightPeak = 0
+    /// Of the sessions whose prompts are known (Claude Code's transcript): the
+    /// longest stretch agents worked with no prompt or answer from you, and all
+    /// the work done more than ten minutes after you last touched anything.
+    var handsOffLongest: TimeInterval = 0
+    var handsOffAt: TimeInterval = 0
+    var handsOffSeconds: TimeInterval = 0
+    /// The busy time those figures are measured against.
+    var handsOffOf: TimeInterval = 0
     /// The most sessions running at once, and the first moment it happened.
     var peak = 0
     var peakAt: TimeInterval = 0
     var firstStart: TimeInterval = 0
     var lastEnd: TimeInterval = 0
-    /// Week only: the day with the most agent time.
+    /// Week and month: the day with the most agent time.
     var bestDay: (start: TimeInterval, seconds: TimeInterval)? {
-        guard range == .week, let i = bins.indices.max(by: { bins[$0] < bins[$1] }),
+        guard range != .today, let i = bins.indices.max(by: { bins[$0] < bins[$1] }),
               bins[i] > 0 else { return nil }
         return (binStart(i), bins[i])
     }
@@ -142,6 +235,9 @@ struct DayWrap: Equatable {
             && a.agentSeconds == b.agentSeconds && a.agents == b.agents && a.projects == b.projects
             && a.longest == b.longest && a.waits == b.waits && a.peak == b.peak
             && a.persona == b.persona && a.bins == b.bins && a.keptAwake == b.keptAwake
+            && a.receipt == b.receipt && a.crossings == b.crossings && a.stacks == b.stacks
+            && a.nightSeconds == b.nightSeconds && a.nightTogether == b.nightTogether
+            && a.handsOffLongest == b.handsOffLongest && a.handsOffSeconds == b.handsOffSeconds
     }
 
     /// Where bin `i` starts.
@@ -154,15 +250,16 @@ struct DayWrap: Equatable {
     // MARK: - Building
 
     /// The span a range covers: today from local midnight, a week as the seven days
-    /// ending today. Both end at `now` — a recap is of what has happened.
+    /// ending today, a month as the thirty. All end at `now` — a recap is of what
+    /// has happened.
     static func span(_ range: Range, now: TimeInterval, calendar: Calendar = .current)
     -> (start: TimeInterval, end: TimeInterval) {
         let midnight = calendar.startOfDay(for: Date(timeIntervalSince1970: now))
         switch range {
         case .today:
             return (midnight.timeIntervalSince1970, now)
-        case .week:
-            let first = calendar.date(byAdding: .day, value: -6, to: midnight) ?? midnight
+        case .week, .month:
+            let first = calendar.date(byAdding: .day, value: -(range.days - 1), to: midnight) ?? midnight
             return (first.timeIntervalSince1970, now)
         }
     }
@@ -171,6 +268,7 @@ struct DayWrap: Equatable {
                      history: [HistoryStore.Record],
                      ledger: [DecisionLedger.Record],
                      work: [String: WorkSpans.Read] = [:],
+                     edits: [String: [WorkSpans.Edit]] = [:],
                      awake: [AwakeLog.Stretch] = [],
                      now: TimeInterval = Date().timeIntervalSince1970,
                      calendar: Calendar = .current) -> DayWrap {
@@ -210,16 +308,24 @@ struct DayWrap: Equatable {
         for s in spans { edges.append((s.from, 1)); edges.append((s.to, -1)) }
         // An end before a start at the same instant: back-to-back is not overlap.
         edges.sort { a, b in a.t == b.t ? a.d < b.d : a.t < b.t }
-        var running = 0, openedAt: TimeInterval = 0
+        var running = 0, openedAt: TimeInterval = 0, last: TimeInterval = 0
         for (t, d) in edges {
+            // Between two edges the count holds: two or more at night is the
+            // night shift, and it counts only the night part of the stretch.
+            if running >= 2, t > last {
+                let night = nightSeconds(from: last, to: t, calendar)
+                if night > 0 { w.nightTogether += night; w.nightPeak = max(w.nightPeak, running) }
+            }
+            last = t
             if running == 0, d > 0 { openedAt = t }
             running += d
             if running > w.peak { w.peak = running; w.peakAt = t }
             if running == 0 { w.busySeconds += t - openedAt }
         }
+        w.nightSeconds = spans.reduce(0) { $0 + nightSeconds(from: $1.from, to: $1.to, calendar) }
 
         // Bins, with each one's dominant agent.
-        let count = range == .today ? 24 : 7
+        let count = range == .today ? 24 : range.days
         w.bins = Array(repeating: 0, count: count)
         var perBin = Array(repeating: [String: TimeInterval](), count: count)
         for s in spans {
@@ -257,12 +363,21 @@ struct DayWrap: Equatable {
         w.projects = Array(byProject.values
             .sorted { order($0.seconds, $0.sessions, $0.name, $1.seconds, $1.sessions, $1.name) }
             .prefix(3))
+        // The skyline's stacks, each bin in the order of the agents above, so a
+        // colour sits at the same height in every column.
+        let rank = Dictionary(uniqueKeysWithValues: w.agents.enumerated().map { ($1.id, $0) })
+        w.stacks = perBin.map { bin in
+            bin.filter { $0.value > 0 }
+                .sorted { (rank[$0.key] ?? .max, $0.key) < (rank[$1.key] ?? .max, $1.key) }
+                .map { Slice(agent: $0.key, seconds: $0.value) }
+        }
 
         // The longest single stretch of work, not the longest-open window.
         if let s = spans.max(by: { ($0.to - $0.from) < ($1.to - $1.from) }) {
             let task = !s.r.prompt.isEmpty ? s.r.prompt : s.r.label
             w.longest = Longest(agent: s.r.agent, project: s.r.project,
-                                task: oneLine(task), seconds: s.to - s.from)
+                                task: oneLine(task), seconds: s.to - s.from,
+                                sessionId: s.r.sessionId, from: s.from)
         }
 
         for c in records.compactMap(\.change) {
@@ -304,8 +419,119 @@ struct DayWrap: Equatable {
         }
         for r in mine { if let i = bin(r.ts) { w.youBins[i] += 1 } }
 
+        // Hands off: only where your side is known — the sessions whose transcript
+        // has your prompts — or a Codex day would read as a day you were away.
+        let known = spans.filter { work[$0.r.sessionId] != nil }
+        var touches = mine.map(\.ts).filter { $0 >= start && $0 <= end }
+        for (id, read) in work where ids.contains(id) { touches += read.prompts.filter { $0 >= start && $0 <= end } }
+        if !known.isEmpty, !touches.isEmpty {
+            let h = handsOff(WorkSpans.joined(known.map { WorkSpans.Span(start: $0.from, end: $0.to) }, gap: 0),
+                             touches: touches.sorted())
+            (w.handsOffLongest, w.handsOffAt, w.handsOffSeconds, w.handsOffOf) = h
+        }
+
+        w.receipt = receipt(records: records, inRange: inRange, mine: mine, work: work)
+        var events: [Flyby.EditEvent] = []
+        for r in records {
+            for e in (work[r.sessionId]?.edits ?? []) + (edits[r.sessionId] ?? []) where e.ts >= start && e.ts <= end {
+                events.append(Flyby.EditEvent(ts: e.ts, path: e.path, session: r.sessionId, agent: r.agent))
+            }
+        }
+        w.crossings = Flyby.pairs(events: events)
+
         w.persona = persona(for: w, calendar: calendar)
         return w
+    }
+
+    /// How long you can be gone before the work is yours no more: ten minutes
+    /// after your last prompt or answer, the agents are on their own.
+    static let awayAfter: TimeInterval = 10 * 60
+
+    /// The longest stretch of `busy` with no touch inside it (and where it began),
+    /// the busy time more than `awayAfter` past the last touch, and all the busy time.
+    static func handsOff(_ busy: [WorkSpans.Span], touches: [TimeInterval])
+    -> (longest: TimeInterval, at: TimeInterval, away: TimeInterval, of: TimeInterval) {
+        var longest: TimeInterval = 0, at: TimeInterval = 0, away: TimeInterval = 0, of: TimeInterval = 0
+        for b in busy {
+            of += b.seconds
+            // Cut the stretch at every touch inside it.
+            var cuts = [b.start] + touches.filter { $0 > b.start && $0 < b.end } + [b.end]
+            cuts = Array(Set(cuts)).sorted()
+            for (p0, p1) in zip(cuts, cuts.dropFirst()) {
+                if p1 - p0 > longest { longest = p1 - p0; at = p0 }
+                let lastTouch = touches.last { $0 <= p0 }
+                let from = lastTouch.map { max(p0, $0 + awayAfter) } ?? p0
+                away += max(0, p1 - from)
+            }
+        }
+        return (longest, at, away, of)
+    }
+
+    /// The receipt's lines, from the records and the ledger already in range.
+    static func receipt(records: [HistoryStore.Record], inRange: [DecisionLedger.Record],
+                        mine: [DecisionLedger.Record], work: [String: WorkSpans.Read]) -> Receipt {
+        var r = Receipt()
+        var tools: [String: Int] = [:]
+        for rec in records {
+            guard let t = work[rec.sessionId]?.tools, !t.isEmpty else { continue }
+            r.toolsMeasured += 1
+            for (k, v) in t { tools[k, default: 0] += v }
+        }
+        r.tools = tools.map { ToolCount(name: $0.key, count: $0.value) }
+            .sorted { ($0.count, $1.name) > ($1.count, $0.name) }
+        r.toolCalls = tools.values.reduce(0, +)
+        for rec in records { if let c = rec.costUsd { r.cost += c; r.costMeasured += 1 } }
+        r.approvals = mine.filter { $0.decision == "allow" || $0.decision == "always" }.count
+        r.denials = mine.filter { $0.decision == "deny" }.count
+        r.claudeStopped = inRange.filter { $0.via == "claude" && $0.decision == "deny" && !$0.isAutoRefusal }.count
+        r.riskiest = riskiest(inRange)
+        return r
+    }
+
+    /// The stopped Bash command that reached furthest: highest `BlastRadius`
+    /// severity, then the most kinds of reach, then the earliest. Only a command
+    /// that reached something — a stopped `ls` is not a risk.
+    static func riskiest(_ ledger: [DecisionLedger.Record]) -> Riskiest? {
+        var best: (Riskiest, Int)?
+        for r in ledger where r.decision == "deny" {
+            guard r.tool == "Bash" || r.display.hasPrefix("Bash: ") else { continue }
+            var command = r.display.hasPrefix("Bash: ") ? String(r.display.dropFirst(6)) : r.display
+            let cut = command.hasSuffix("…") || r.display.count >= 60
+            if command.hasSuffix("…") { command = String(command.dropLast()) }
+            command = command.trimmingCharacters(in: .whitespaces)
+            guard !command.isEmpty else { continue }
+            // The cut-off chip says the ledger was short, not that the command was.
+            let chips = BlastRadius.ordered(BlastRadius.commandChips(command, cwd: r.cwd))
+                .filter { $0.kind != .truncated }
+            guard !chips.isEmpty else { continue }
+            let by = r.isAutoRefusal ? "auto mode" : r.via == "rule" ? "your rule"
+                : r.via == "claude" ? (r.by == "hook" ? "a hook" : r.by == "rule" ? "a Claude Code rule" : "Claude Code")
+                : "you"
+            let found = Riskiest(command: command, reaches: chips.map(\.label),
+                                 severity: BlastRadius.severity(of: chips), cut: cut, by: by, ts: r.ts)
+            if let (b, n) = best {
+                if (found.severity, chips.count) < (b.severity, n) { continue }
+                if (found.severity, chips.count) == (b.severity, n), found.ts >= b.ts { continue }
+            }
+            best = (found, chips.count)
+        }
+        return best?.0
+    }
+
+    /// The part of `[from, to]` between 22:00 and 05:00 local.
+    static func nightSeconds(from: TimeInterval, to: TimeInterval, _ calendar: Calendar) -> TimeInterval {
+        guard to > from else { return 0 }
+        var total: TimeInterval = 0
+        var t = from
+        while t < to {
+            let date = Date(timeIntervalSince1970: t)
+            let hour = calendar.component(.hour, from: date)
+            let next = calendar.dateInterval(of: .hour, for: date).map { $0.end.timeIntervalSince1970 } ?? t + 3_600
+            let upto = min(to, max(next, t + 1))
+            if hour >= 22 || hour < 5 { total += upto - t }
+            t = upto
+        }
+        return total
     }
 
     /// This Mac's recap: the history and the ledger, plus each Claude session's
@@ -315,10 +541,19 @@ struct DayWrap: Equatable {
         let history = HistoryStore.read()
         let (start, end) = span(range, now: now, calendar: calendar)
         var work: [String: WorkSpans.Read] = [:]
-        for r in history where r.agent == "claude" && r.endedAt >= start && r.endedAt <= end {
-            if let read = WorkSpans.claude(sessionId: r.sessionId, cwd: r.cwd) { work[r.sessionId] = read }
+        var edits: [String: [WorkSpans.Edit]] = [:]
+        for r in history where r.endedAt >= start && r.endedAt <= end {
+            switch r.agent {
+            case "claude":
+                if let read = WorkSpans.claude(sessionId: r.sessionId, cwd: r.cwd) { work[r.sessionId] = read }
+            case "codex":
+                let e = CodexFeed.edits(sessionId: r.sessionId, cwd: r.cwd)
+                if !e.isEmpty { edits[r.sessionId] = e }
+            default:
+                break
+            }
         }
-        return make(range, history: history, ledger: DecisionLedger.read(), work: work,
+        return make(range, history: history, ledger: DecisionLedger.read(), work: work, edits: edits,
                     awake: AwakeLog.read(), now: now, calendar: calendar)
     }
 
@@ -328,12 +563,18 @@ struct DayWrap: Equatable {
     /// the rarest to the most ordinary, so a remarkable day is never called ordinary;
     /// each reason quotes the number that earned it.
     static func persona(for w: DayWrap, calendar: Calendar = .current) -> Persona {
-        let day = w.range == .today ? "today" : "this week"
+        let day = w.range.phrase
         if w.peak >= 3 {
             return Persona(title: "The Orchestrator",
                            reason: "\(w.peak) agents working at once at \(clock(w.peakAt, calendar))"
-                               + (w.range == .week ? " on \(weekday(w.peakAt, calendar))." : "."),
+                               + (w.range != .today ? " on \(weekday(w.peakAt, calendar))." : "."),
                            symbol: "square.stack.3d.up.fill")
+        }
+        if w.nightTogether >= 30 * 60, w.nightSeconds >= 3_600 {
+            return Persona(title: "The Night-Shift Conductor",
+                           reason: "\(w.nightPeak) agents at once after 10 pm, "
+                               + "for \(HistoryDigest.duration(w.nightTogether)).",
+                           symbol: "moon.fill")
         }
         if let l = w.longest, l.seconds >= 2 * 3_600 {
             return Persona(title: "The Marathoner",
@@ -345,6 +586,12 @@ struct DayWrap: Equatable {
             return Persona(title: "The Delegator",
                            reason: "Your rules answered \(w.waits.byRules) of \(decided) questions \(day).",
                            symbol: "checkmark.seal.fill")
+        }
+        if w.handsOffSeconds >= 3_600, w.handsOffSeconds >= 0.5 * w.handsOffOf {
+            return Persona(title: "Hands-Off",
+                           reason: "Agents worked \(HistoryDigest.duration(w.handsOffSeconds)) of it "
+                               + "with nothing from you.",
+                           symbol: "hand.raised.slash.fill")
         }
         let night = nightShare(w, calendar)
         if w.agentSeconds >= 1_800, night >= 0.3 {
@@ -415,7 +662,16 @@ struct DayWrap: Equatable {
         }
         if let l = longest {
             w.longest = Longest(agent: l.agent, project: l.project.isEmpty ? "" : "a project",
-                                task: "", seconds: l.seconds)
+                                task: "", seconds: l.seconds, sessionId: l.sessionId, from: l.from)
+        }
+        // A command line and a file path both name things: the reach and the
+        // agents stay, the words go.
+        w.receipt.riskiest?.command = ""
+        w.crossings = crossings.map { c in
+            func bare(_ e: Flyby.EditEvent) -> Flyby.EditEvent {
+                Flyby.EditEvent(ts: e.ts, path: "", session: e.session, agent: e.agent)
+            }
+            return Flyby.Crossing(path: "", first: bare(c.first), second: bare(c.second))
         }
         return w
     }
