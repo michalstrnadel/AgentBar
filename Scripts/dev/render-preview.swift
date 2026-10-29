@@ -306,6 +306,35 @@ enum RenderPreview {
             renderSlab([sized(hero, rowW), wrap], name: "03i-blast-radius-hold")
         }
 
+        // Scene 3j: a working session with its plan counted and subagents out, and
+        // an MCP request from one of them showing its arguments.
+        do {
+            let working = makeSession("hero-work", [
+                "agent": "claude", "state": "tool", "label": "Running command",
+                "project": "auth-api", "cwd": "/tmp", "sessionId": "hero-work", "pid": 1,
+                "started": true, "ts": now, "started_at": now - 900,
+                "prompt": "ship the auth fix", "model": "claude-opus-5", "term_program": "iTerm.app",
+                "todo": ["done": 3, "total": 7, "now": "Running the test suite"],
+                "subagentRuns": [["id": "a", "type": "Explore", "ts": now],
+                                 ["id": "b", "type": "code-reviewer", "ts": now]],
+                "activity": ["Reading", "Editing", "Running command"],
+            ])
+            let hero = IslandRowView(session: working, mark: mark(for: "claude"),
+                                     style: .hero, onClick: { _ in })
+            let mcp = makeRequest("hero-work-p1", [
+                "sessionId": "hero-work", "agent": "claude", "toolName": "mcp__github__create_issue",
+                "display": "github: create_issue",
+                "toolInputPretty": "{\"repo\":\"acme/auth-api\",\"title\":\"Token refresh fails after 401\",\"labels\":[\"bug\"]}",
+                "agentId": "b", "agentType": "code-reviewer",
+                "pid": 1, "hookPid": 1, "ts": now, "cwd": "/tmp",
+            ])
+            let card = IslandApprovalView(request: mcp, deferTitle: "Answer in terminal",
+                                          width: cardW, onChoose: { _ in })
+            let wrap = NSStackView(views: [card])
+            wrap.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 0)
+            renderSlab([sized(hero, rowW), wrap], name: "03j-plan-subagents-mcp")
+        }
+
         // Scene 3h: the rule sheet for a denial that tells the agent why.
         do {
             var prefill = RuleSheet.Prefill(decision: "deny", shape: "bash:npm", cwd: "",
