@@ -124,6 +124,10 @@ Rules:
   writer doesn't know what was said. `activity` follows the same reset rule: it is
   the ring of the *current* task's tool steps (≤ 5 short labels, oldest → newest,
   consecutive duplicates collapsed), and a new prompt starts it clean.
+- `todo` (optional): `{done, total, now?}`, the agent's own task list counted —
+  Claude Code's `TodoWrite`, which rewrites the list whole each time. `now` is the
+  step in progress in the agent's words (≤ 60 chars). Carried across events and
+  dropped by a new prompt.
 - `subagentRuns` (optional): `[{id, type, ts}]`, the subagents working for this
   session, newest last, at most 8. A writer adds or refreshes one on each tool event
   that carries `agent_id` (`type` from `agent_type`, `"subagent"` when absent),
