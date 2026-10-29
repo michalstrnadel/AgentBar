@@ -31,7 +31,7 @@ const TOOL_LABELS = {
   NotebookEdit: "Editing", Read: "Reading", Grep: "Searching", Glob: "Searching",
   WebFetch: "Browsing web", WebSearch: "Searching web", Task: "Delegating",
   Agent: "Delegating", // Task's name since Claude Code 2.1.63
-  TodoWrite: "Planning",
+  TodoWrite: "Planning", TaskCreate: "Planning", TaskUpdate: "Planning",
   // Qwen Code tool ids (Gemini CLI heritage: lowercase snake_case).
   run_shell_command: "Running command", write_file: "Writing", edit: "Editing",
   replace: "Editing", read_file: "Reading", read_many_files: "Reading",
@@ -254,8 +254,37 @@ function run() {
     const said = active && (typeof active.activeForm === "string" ? active.activeForm : active.content);
     out.todo = { done: todos.filter((t) => t.status === "completed").length, total: Math.min(todos.length, 200),
                  ...(typeof said === "string" && said.trim() ? { now: oneLine(said).slice(0, 60) } : {}) };
-  } else if (event !== "prompt" && prev.todo && typeof prev.todo === "object") {
+  } else if (event !== "prompt" && prev.todo && typeof prev.todo === "object" && !prev.tasks) {
     out.todo = prev.todo;
+  }
+  // Since 2.1.233 Claude Code keeps the list with TaskCreate / TaskUpdate instead
+  // (TodoWrite is off by default), one task per call, so the list is rebuilt here
+  // from what each call did. Read after the call: a create's id is only in its
+  // result, and an update that failed changed nothing. The list outlives a turn,
+  // like Claude Code's own; a new prompt drops it only once every task is done.
+  let tasks = Array.isArray(prev.tasks)
+    ? prev.tasks.filter((t) => t && typeof t.id === "string").slice(-50) : null;
+  if (event === "post" && p.tool_input && typeof p.tool_input === "object") {
+    const i = p.tool_input, r = p.tool_response && typeof p.tool_response === "object" ? p.tool_response : {};
+    const words = (t) => oneLine(String(t || "")).slice(0, 60);
+    if (p.tool_name === "TaskCreate" && r.task && typeof r.task.id === "string") {
+      tasks = [...(tasks || []).filter((t) => t.id !== r.task.id),
+               { id: r.task.id.slice(0, 40), s: "pending", a: words(i.activeForm || i.subject) }].slice(-50);
+    } else if (p.tool_name === "TaskUpdate" && typeof i.taskId === "string" && tasks && r.success !== false) {
+      tasks = i.status === "deleted" ? tasks.filter((t) => t.id !== i.taskId)
+        : tasks.map((t) => t.id !== i.taskId ? t : {
+            ...t,
+            s: ["pending", "in_progress", "completed"].includes(i.status) ? i.status : t.s,
+            a: i.activeForm || i.subject ? words(i.activeForm || i.subject) : t.a,
+          });
+    }
+  }
+  if (tasks && event === "prompt" && tasks.every((t) => t.s === "completed")) tasks = null;
+  if (tasks && tasks.length) {
+    out.tasks = tasks;
+    const active = tasks.find((t) => t.s === "in_progress");
+    out.todo = { done: tasks.filter((t) => t.s === "completed").length, total: tasks.length,
+                 ...(active && active.a ? { now: active.a } : {}) };
   }
   // Subagents working for this session, newest last: Claude Code puts agent_id
   // and agent_type on every tool event fired from inside one. There is no

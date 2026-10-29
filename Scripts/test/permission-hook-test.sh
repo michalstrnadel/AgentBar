@@ -361,6 +361,23 @@ check "todo: carried across tools"    'grep -q "\"total\":3" "$STATE"'
 printf '{"session_id":"testsess","prompt":"another task"}' | "$NODE" "$UPDATE" prompt
 check "todo: dropped by a new prompt" '! grep -q "\"todo\"" "$STATE"'
 
+# 15f. TaskCreate / TaskUpdate (TodoWrite's successor, on by default since 2.1.233):
+# the list is rebuilt from each call's result, and outlives a turn until it is done
+printf '%s' '{"session_id":"testsess","tool_name":"TaskCreate","tool_input":{"subject":"Write tests","description":"x","activeForm":"Writing tests"},"tool_response":{"task":{"id":"1","subject":"Write tests"}}}' | "$NODE" "$UPDATE" post
+printf '%s' '{"session_id":"testsess","tool_name":"TaskCreate","tool_input":{"subject":"Ship it","description":"x"},"tool_response":{"task":{"id":"2","subject":"Ship it"}}}' | "$NODE" "$UPDATE" post
+check "tasks: counted from creates"   'grep -q "\"todo\":{\"done\":0,\"total\":2}" "$STATE"'
+printf '%s' '{"session_id":"testsess","tool_name":"TaskUpdate","tool_input":{"taskId":"1","status":"in_progress"},"tool_response":{"success":true,"taskId":"1","updatedFields":["status"]}}' | "$NODE" "$UPDATE" post
+check "tasks: the one in progress says what it does" 'grep -q "\"now\":\"Writing tests\"" "$STATE"'
+printf '%s' '{"session_id":"testsess","tool_name":"TaskUpdate","tool_input":{"taskId":"1","status":"completed"},"tool_response":{"success":false,"taskId":"1","updatedFields":[]}}' | "$NODE" "$UPDATE" post
+check "tasks: a failed update changes nothing" 'grep -q "\"done\":0" "$STATE"'
+printf '%s' '{"session_id":"testsess","tool_name":"TaskUpdate","tool_input":{"taskId":"1","status":"completed"},"tool_response":{"success":true,"taskId":"1","updatedFields":["status"]}}' | "$NODE" "$UPDATE" post
+printf '{"session_id":"testsess","prompt":"keep going"}' | "$NODE" "$UPDATE" prompt
+check "tasks: an unfinished list outlives the prompt" 'grep -q "\"done\":1,\"total\":2" "$STATE"'
+printf '%s' '{"session_id":"testsess","tool_name":"TaskUpdate","tool_input":{"taskId":"2","status":"deleted"},"tool_response":{"success":true,"taskId":"2","updatedFields":["status"]}}' | "$NODE" "$UPDATE" post
+check "tasks: a deleted task leaves the count" 'grep -q "\"done\":1,\"total\":1" "$STATE"'
+printf '{"session_id":"testsess","prompt":"next thing"}' | "$NODE" "$UPDATE" prompt
+check "tasks: a finished list is dropped by the next prompt" '! grep -q "\"tasks\"\|\"todo\"" "$STATE"'
+
 # 15d. missing/unreadable transcript: stop still lands, just without a recap
 printf '{"session_id":"testsess","cwd":"/tmp/proj","transcript_path":"/nonexistent/x.jsonl"}' | "$NODE" "$UPDATE" stop
 check "recap: missing transcript ok"  'grep -q "\"state\":\"done\"" "$STATE" && ! grep -q "\"recap\"" "$STATE"'

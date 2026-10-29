@@ -8,7 +8,9 @@ All notable changes to AgentBar are documented here. This project follows
 ### Added
 
 - **The agent's plan, counted.** While Claude Code works through its task list,
-  its island row shows "3/7 · Running tests" and a thin bar along the bottom.
+  its island row shows "3/7 · Running tests" and a thin bar along the bottom —
+  from the task tools Claude Code uses by default now (`TaskCreate`,
+  `TaskUpdate`) as well as the older `TodoWrite`.
 - **What happened while you were away.** Back after two minutes or more, the pill
   says "away · 1 waiting · 3 done" for a minute and a half, and the open island
   leads with the whole of it — what finished, failed, waits on you and what your

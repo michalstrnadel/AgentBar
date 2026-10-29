@@ -125,9 +125,16 @@ Rules:
   the ring of the *current* task's tool steps (≤ 5 short labels, oldest → newest,
   consecutive duplicates collapsed), and a new prompt starts it clean.
 - `todo` (optional): `{done, total, now?}`, the agent's own task list counted —
-  Claude Code's `TodoWrite`, which rewrites the list whole each time. `now` is the
-  step in progress in the agent's words (≤ 60 chars). Carried across events and
-  dropped by a new prompt.
+  Claude Code's `TodoWrite`, which rewrites the list whole each time, or — the
+  default since Claude Code 2.1.233 — the list `TaskCreate` / `TaskUpdate` build
+  one task at a time (see `tasks`). `now` is the step in progress in the agent's
+  words (≤ 60 chars). Carried across events; a `TodoWrite` list is dropped by a
+  new prompt, a task list only once every task in it is done.
+- `tasks` (optional): `[{id, s, a}]`, the writer's own copy of the task list it
+  counts `todo` from — id, status (`pending` | `in_progress` | `completed`) and the
+  agent's words for it (≤ 60 chars), at most 50. Read after each call (`post`): a
+  create's id is only in its result, a failed update changes nothing, a `deleted`
+  status removes the task. Frontends read `todo`, not this.
 - `subagentRuns` (optional): `[{id, type, ts}]`, the subagents working for this
   session, newest last, at most 8. A writer adds or refreshes one on each tool event
   that carries `agent_id` (`type` from `agent_type`, `"subagent"` when absent),
