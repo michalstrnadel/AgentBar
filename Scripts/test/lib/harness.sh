@@ -51,7 +51,9 @@ ANSWER_TIMEOUT=30
 # Bounded poll for the request file instead of a fixed sleep; sets $REQ.
 wait_req() {
   for _ in $(seq 100); do
-    REQ="$(ls "$HOME/.agentbar/requests.d/" 2>/dev/null | head -1)"
+    # Only a finished request: the hook writes `<name>.<pid>.tmp` and renames it, and
+    # a listing taken between the two names a file that is gone a moment later.
+    REQ="$(ls "$HOME/.agentbar/requests.d/" 2>/dev/null | grep '\.json$' | head -1)"
     [ -n "$REQ" ] && return 0
     sleep 0.1
   done
