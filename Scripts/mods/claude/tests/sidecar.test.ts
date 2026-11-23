@@ -8,6 +8,10 @@ const S0 = Math.floor(START / 1000)
 const check = (tool: string, input: Record<string, unknown>, id: string) =>
   ({ tool, input, tool_use_id: id }) as never
 
+// A mod seated beneath the one under test (the `append` tier is inside `user`).
+const beneath = (register: (on: any) => void) =>
+  ({ name: 'beneath', tier: 'append', register: register as never }) as const
+
 const end = (id = 'sess-1') =>
   ({ reason: 'other', sessionId: id, resume: { id } }) as never
 
@@ -187,9 +191,14 @@ describe('what a decision row says', () => {
     expect(ids[199]).toBe('id204')
   })
 
-  test('a deny from a hook beneath tool.call is written as by: hook', async ($, on) => {
-    const world = worldOf(on)
+  // Another mod beneath this one is an inline plugin in the `append` tier: since
+  // 2.1.330 the kit raises PreToolUse and tool.check beneath every plugin's
+  // tool.call hook and above the test's own, so a test hook stands for the engine
+  // after the check, not for a mod that answers before it — as in a session.
+  test('a deny from a hook beneath tool.call is written as by: hook', { plugins: [beneath((on) => {
     on('tool.call', () => ({ deny: `Blast Radius held this command: ${'x'.repeat(400)}` }))
+  })] }, async ($, on) => {
+    const world = worldOf(on)
     await $.session.start(SESSION)
     await $.tool.call({ tool: 'Bash', command: 'rm -rf build', description: 'Clean', tool_use_id: 'toolu_held' } as never)
     await world.clock.advance(1000)
@@ -211,6 +220,10 @@ describe('what a decision row says', () => {
                             during?: (w: any) => void) => {
     const world = worldOf(on, { files })
     on('tool.check', () => ({ decision: 'ask', reason: 'mkdir needs approval' }))
+    // The kit asks the call's own tool.check again inside $.tool.call, as a
+    // background subagent's loop does, and no person can answer it there: the
+    // mode settling the ask is a PermissionRequest hook allowing it.
+    on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }) as never)
     on('tool.call', () => { during?.(world); return result })
     await $.session.start(SESSION)
     await $.tool.check(check('Bash', { command: 'mkdir out' }, 'toolu_auto'))
@@ -253,17 +266,21 @@ describe('what a decision row says', () => {
 
   // A mod beneath this one holding a command in its own pane: tool.call began and
   // tool.check never came. That is a wait on the person, reported as `held`.
-  test('a call held before tool.check is reported as held, and cleared when it ends', async ($, on) => {
+  // An inline plugin is loaded on its own, closures and all, so the hold lets go
+  // on the mocked clock rather than on a function the test keeps.
+  test('a call held before tool.check is reported as held, and cleared when it ends', { plugins: [beneath((on) => {
+    on('tool.call', ($: any) => new Promise(res => {
+      $.clock.after(10_000, () => res({ deny: 'Blast Radius held this command' }))
+    }) as never)
+  })] }, async ($, on) => {
     const world = worldOf(on)
-    let release: (v: unknown) => void = () => {}
-    on('tool.call', () => new Promise(res => { release = res }))
     await $.session.start(SESSION)
     const call = $.tool.call({ tool: 'Bash', command: 'rm -r build', tool_use_id: 'toolu_held2' } as never)
     await world.clock.advance(2000)
     expect(sidecarOf(world).held).toBeUndefined()
     await world.clock.advance(2000)
     expect(sidecarOf(world).held).toEqual({ tool: 'Bash', input: { command: 'rm -r build' }, since: S0 })
-    release({ deny: 'Blast Radius held this command' })
+    await world.clock.advance(6000)
     await call
     await world.clock.advance(1000)
     expect(sidecarOf(world).held).toBeUndefined()
