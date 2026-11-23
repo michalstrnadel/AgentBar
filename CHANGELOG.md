@@ -3,6 +3,14 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.65.1 - 2026-11-23
+
+### Changed
+
+- **A shared picture says where it came from.** Your Day's card, the Trust Receipt
+  and a Replay now print `github.com/michalstrnadel/AgentBar` in their footer: a
+  screenshot carries no link, so the address has to be in the pixels.
+
 ## 1.65.0 - 2026-11-23
 
 ### Added
