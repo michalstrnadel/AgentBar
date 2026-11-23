@@ -1,7 +1,7 @@
 # Roadmap
 
 Where AgentBar is going, what is being found out before it is built, and what is
-being built. Updated 2026-10-20. Every item links to its issue; the
+being built. Updated 2026-11-23. Every item links to its issue; the
 [`roadmap`](https://github.com/michalstrnadel/AgentBar/issues?q=label%3Aroadmap)
 label shows them all.
 
@@ -31,11 +31,15 @@ Status is why people install it. Approvals are why they keep it.
 
 **Outcome:** people who don't know the author install AgentBar and keep it.
 
-| Signal | 2026-10-16 | Target |
-|---|---|---|
-| GitHub stars | 9 | 100 |
-| Installs (release downloads + brew) | tens | 1 000 |
-| Issues opened by people we don't know | 0 | 10 |
+| Signal | 2026-10-16 | 2026-11-23 | Target |
+|---|---|---|---|
+| GitHub stars | 9 | 15 | 100 |
+| Installs (release downloads + brew) | tens | ~790 downloads, all releases (brew not counted) | 1 000 |
+| Issues opened by people we don't know | 0 | 0 | 10 |
+
+Downloads count every update an installed copy fetches, so they overstate people;
+the one cycle-over-cycle number that cannot be inflated by our own releases is
+stars.
 
 ### Discovery
 
@@ -51,13 +55,22 @@ Status is why people install it. Approvals are why they keep it.
 - **Community launch** — one rules-checked post per community, Hacker News last.
   [#25](https://github.com/michalstrnadel/AgentBar/issues/25)
 
-### Delivery — trust and reliability
+### Delivery — keeping up with the agents
 
-- **Keystroke approval for Codex and Copilot**: modifier hygiene, pacing, cold start.
-  [#1](https://github.com/michalstrnadel/AgentBar/issues/1)
+- Each agent's release can add a hook event AgentBar does not hear yet. Checked
+  against the installed builds on 2026-11-23 (Claude Code 2.1.330, codex-cli
+  0.157.0, Gemini CLI 0.50.0, Copilot CLI 1.0.85); codex-cli 0.171.0 is out and
+  not yet checked.
 
 ### Done this cycle
 
+- Claude Code's MCP input requests, API-error turn ends and subagent start/stop
+  are on the row (1.65.0).
+- Keystroke approval for Codex verified at a real prompt; Copilot answers by its
+  hook (1.65.0). [#1](https://github.com/michalstrnadel/AgentBar/issues/1)
+- 1.57.0–1.64.0: the approval card's blast radius and queue, MCP rules, task
+  progress, the away recap, Over the shoulder, a living Clawd, the Office, Replay
+  and the Trust Receipt.
 - Where users come from: a traffic archive and UTM links. [#21](https://github.com/michalstrnadel/AgentBar/issues/21)
 - README images that match today's app. [#23](https://github.com/michalstrnadel/AgentBar/issues/23)
 - "Never an implicit approval" as a tested contract, run on every release (1.56.0). [#31](https://github.com/michalstrnadel/AgentBar/issues/31)
