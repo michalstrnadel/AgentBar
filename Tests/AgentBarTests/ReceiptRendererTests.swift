@@ -49,7 +49,8 @@ import Testing
         #expect(all.contains("$ curl"))
         #expect(all.contains("COST, API PRICES"))
         #expect(all.contains("measured on 2 of"))
-        #expect(lines.last == .center("AgentBar · free and open source"))
+        #expect(lines.suffix(2) == [.center("AgentBar · free and open source"),
+                                    .center("github.com/michalstrnadel/AgentBar")])
     }
 
     /// Shared, it names no project, no command line and no file — the reach and

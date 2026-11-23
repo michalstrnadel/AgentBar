@@ -609,7 +609,7 @@ enum WrapRenderer {
         let x = f.m + 22 * px + 14 * f.u
         let line = NSMutableAttributedString(string: "AgentBar", attributes: [
             .font: S.font((f.square ? 22 : 26) * f.u, .semibold), .foregroundColor: S.ink.withAlphaComponent(CGFloat(a))])
-        line.append(NSAttributedString(string: "  ·  free and open source for macOS", attributes: [
+        line.append(NSAttributedString(string: "  ·  free for macOS  ·  \(S.homeURL)", attributes: [
             .font: font, .foregroundColor: S.secondary.withAlphaComponent(CGFloat(a))]))
         S.rich(line, x: x, y: base - font.pointSize * 1.05, width: f.inner)
     }

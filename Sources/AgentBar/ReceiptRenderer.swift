@@ -115,6 +115,7 @@ enum ReceiptRenderer {
         out.append(.clawd)
         out.append(.center("THANK YOU FOR WATCHING"))
         out.append(.center("AgentBar · free and open source"))
+        out.append(.center(S.homeURL))
         return out
     }
 

@@ -559,7 +559,7 @@ enum ReplayRenderer {
         let font = S.font((f.square ? 22 : 26) * f.u, .regular)
         let line = NSMutableAttributedString(string: "AgentBar", attributes: [
             .font: S.font((f.square ? 22 : 26) * f.u, .semibold), .foregroundColor: S.ink])
-        line.append(NSAttributedString(string: "  ·  free and open source for macOS", attributes: [
+        line.append(NSAttributedString(string: "  ·  free for macOS  ·  \(S.homeURL)", attributes: [
             .font: font, .foregroundColor: S.secondary]))
         S.rich(line, x: f.m + 22 * px + 14 * f.u, y: base - font.pointSize * 1.05, width: f.inner)
     }

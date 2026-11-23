@@ -16,6 +16,10 @@ enum WrapStyle {
     }
 
     // The card: paper, ink, and nothing that glows.
+    /// Where a picture someone shares leads back to: every card AgentBar renders
+    /// (Your Day, the receipt, a replay) prints it, since a screenshot carries no link.
+    static let homeURL = "github.com/michalstrnadel/AgentBar"
+
     static let paper = hex(0xF7F5F0)
     static let ink = hex(0x1D1D1F)
     static let secondary = hex(0x6E6E73)
