@@ -566,9 +566,9 @@ First launch installs hooks automatically for every supported tool you have —
 see the [agent table](#agent-support). New agent sessions appear in the bar from then on;
 ones already open started before the hooks and stay out of it until you start another.
 
-**What you'll see the first time:** Homebrew and the one-liner clear the download
-quarantine, so macOS opens the app without its "cannot verify" warning — that one
-appears only for a zip downloaded by hand (see [Troubleshooting](#troubleshooting)).
+**What you'll see the first time:** nothing from Gatekeeper. Releases are signed
+with AgentBar's Apple Developer ID and notarized by Apple (from 1.66.0), so the
+disk image, the zip, Homebrew and the one-liner all open the app without a warning.
 If your projects live in Documents, Desktop or Downloads, macOS asks once whether
 AgentBar may read them; that is for the git branch and changes shown on each row,
 and nothing leaves your Mac.
@@ -1006,15 +1006,12 @@ run on Linux and macOS — see [docs/testing.md](docs/testing.md).
   into your existing notify chain manually.
 - **Keystroke approval does nothing** — grant AgentBar the Accessibility permission
   (the menu item offers to open System Settings).
-- **macOS says it "cannot verify AgentBar is free of malware"** — the app is signed
-  with the project's own certificate, not notarized by Apple. Don't click *Move to
-  Trash*; click *Done*, then open **System Settings ▸ Privacy & Security**, scroll to
-  the line about AgentBar and click **Open Anyway** (macOS 15 and later; on macOS 14
-  and earlier, right-click the app ▸ Open works too). Or run
-  `xattr -dr com.apple.quarantine /Applications/AgentBar.app` and open it again.
-  The install script and the Homebrew cask do this for you; the dialog appears only
-  after downloading the zip by hand from Releases. To check that zip first, see
-  [Verifying a download](SECURITY.md#verifying-a-download).
+- **macOS says it "cannot verify AgentBar is free of malware"** — that is a
+  release from before 1.66.0, signed with the project's own certificate rather than
+  notarized. Download the current one from
+  [Releases](https://github.com/michalstrnadel/AgentBar/releases/latest): it is
+  notarized and opens without the dialog. A copy older than 1.65.1 cannot update
+  itself across that change, so it needs this one download by hand.
 - **`brew outdated` reports an old AgentBar version** — the in-app updater swaps
   `/Applications/AgentBar.app` without telling Homebrew, so brew's install record
   lags behind after an in-app update. Run `brew upgrade --cask agentbar` to

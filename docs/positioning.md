@@ -160,13 +160,11 @@ SSH-hosted sessions (CodeIsland does them too).
 
 Say these before a commenter does.
 
-- **Not notarized by Apple.** The app is signed with the project's own certificate;
-  the install script and the Homebrew cask strip the quarantine flag, and a zip
-  downloaded by hand meets "cannot verify AgentBar is free of malware". For a tool
-  whose pitch is the permission path, this is the first objection. CodeIsland *is*
-  notarized. Mitigation to cite: signed release provenance
-  (`gh attestation verify`, SECURITY.md ▸ Verifying a download), CodeQL, SBOM, the
-  updater pinning the first-installed certificate.
+- **Notarized since 1.66.0.** The objection used to be the first one — signed with
+  the project's own certificate, "cannot verify" on a hand download, where
+  CodeIsland was notarized. It no longer holds: Developer ID, notarized and stapled,
+  on top of release provenance (`gh attestation verify`), CodeQL, SBOM and the
+  updater pinning its signer.
 - **`curl | bash` install.** Same objection, same mitigation; Homebrew cask is the
   recommended path.
 - **Fewer agents than the biggest alternatives.** Nine wired agents plus cloud

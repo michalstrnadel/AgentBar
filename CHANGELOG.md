@@ -3,6 +3,17 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.66.0 - 2026-11-25
+
+### Changed
+
+- **Notarized by Apple.** AgentBar is now signed with its Apple Developer ID and
+  notarized, the app and the disk image both: download it, open it, and macOS
+  starts it without the "cannot verify the developer" dialog or a trip to Privacy
+  & Security. The install script and Homebrew no longer strip the quarantine flag,
+  because there is nothing left to get around. Copies on 1.65.1 update to this one
+  by themselves; an older copy has to be downloaded once more by hand.
+
 ## 1.65.1 - 2026-11-23
 
 ### Changed

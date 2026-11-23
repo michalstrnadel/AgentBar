@@ -43,6 +43,9 @@ jobs:
       id-token: write
       attestations: write
     env:
+      # Who signs a release: the Developer ID since 1.66.0, the first notarized
+      # one (verify-release.sh reads it; the disk image is held to it below).
+      AGENTBAR_SIGN_ID: "Developer ID Application: MICHAL STRNADEL (GP69592GM8)"
       GH_TOKEN: ${{ github.token }}
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
@@ -76,7 +79,7 @@ jobs:
           subject-path: rel/AgentBar.app.zip
       # The disk image the Download button points at, when the release has one
       # (from 1.48.0). It gets the same proof: the app inside it is the CI build,
-      # re-signed, and the image itself carries the project's signature.
+      # re-signed, and the image itself carries the release's signature.
       - name: Check the disk image holds the same app
         id: dmg
         run: |
@@ -86,7 +89,7 @@ jobs:
             exit 0
           fi
           codesign --verify rel/AgentBar.dmg
-          codesign -dvvv rel/AgentBar.dmg 2>&1 | grep -qx "Authority=AgentBar Local Signing"
+          codesign -dvvv rel/AgentBar.dmg 2>&1 | grep -qx "Authority=$AGENTBAR_SIGN_ID"
           mkdir "$PWD/dmg-mnt"
           hdiutil attach -quiet -readonly -nobrowse -mountpoint "$PWD/dmg-mnt" rel/AgentBar.dmg
           ditto -c -k --sequesterRsrc --keepParent "$PWD/dmg-mnt/AgentBar.app" dmg-app.zip

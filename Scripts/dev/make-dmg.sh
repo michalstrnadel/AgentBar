@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Packs a signed AgentBar.app into the disk image people download by hand:
 # the app on the left, Applications on the right, an arrow between them, and a
-# file on how to open it the first time (releases are signed, not notarized), under
-# the AgentBar wordmark with Clawd peeking up from the bottom.
+# file on how to open it the first time when the release is not notarized (up to
+# 1.65.1; a Developer ID release opens without one), under the AgentBar wordmark with Clawd peeking up from the bottom.
 #
 #   Scripts/dev/make-dmg.sh path/to/AgentBar.app [out.dmg]
 #
@@ -36,8 +36,10 @@ ditto "$app" "$stage/AgentBar.app"
 ln -s /Applications "$stage/Applications"
 swift "$root/Scripts/dev/dmg-background.swift" "$work" "$root" >/dev/null
 # How to get past Gatekeeper the first time, as a file beside the app rather than
-# small print on the picture.
-cat > "$stage/How to open AgentBar.txt" <<'TXT'
+# small print on the picture — only for an app signed with the project's own
+# certificate. A notarized one opens without a word, and a note telling people to
+# click "Open Anyway" would teach them a habit they should not have.
+[[ "$sign_id" == "Developer ID Application:"* ]] || cat > "$stage/How to open AgentBar.txt" <<'TXT'
 AgentBar — how to open it the first time
 
 1. Drag AgentBar onto Applications.

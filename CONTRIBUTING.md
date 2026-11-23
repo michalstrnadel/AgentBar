@@ -305,7 +305,7 @@ account; the tooling is ready for the day there is one, in this order:
    `Scripts/install.sh` to accept either signer (`… or …`) — the script refuses
    any download its requirement does not name — and release that as usual. Wait
    until most installs have updated — automatic updates make that days, not weeks.
-2. **First notarized release.** In step 3 above, replace the `codesign` line with
+2. **First notarized release.** *1.66.0, through `Scripts/dev/release.sh`, whose default signer is now `developer-id`.* In step 3 above, replace the `codesign` line with
    `Scripts/dev/notarize.sh AgentBar.app` (hardened runtime, the Apple Events
    entitlement in `Scripts/dev/AgentBar.entitlements`, notarytool, staple,
    Gatekeeper check). It refuses to run until step 1's line is in the source.

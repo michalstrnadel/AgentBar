@@ -184,9 +184,11 @@ Reports that break any of these guarantees are exactly what we want to hear abou
 
 ## Verifying a download
 
-The app is signed with the project's own certificate, not Apple's, so its
-signature proves the bundle was not changed after signing and nothing about where
-it came from — on its own. The in-app updater, which installs without a click,
+From 1.66.0 the app is signed with AgentBar's Apple Developer ID (team
+GP69592GM8) and notarized by Apple, so Gatekeeper opens it without a warning; up to
+1.65.1 it was signed with the project's own certificate. A signature proves the
+bundle was not changed after signing, and notarization that Apple scanned it — not
+that the code does what it says. The in-app updater, which installs without a click,
 leans on it differently: before a downloaded bundle replaces the running one, its
 signature must be valid for every architecture under strict validation and must
 satisfy the **running app's designated requirement** — for a release, its bundle
@@ -200,7 +202,9 @@ ad-hoc (a dev build without the local identity) has a requirement only it can
 satisfy, so it never installs an update by itself; its **Install & Relaunch** is
 the unchecked click it always was. Replacing the release certificate would make
 every installed copy refuse the next update, which would then have to be installed
-by hand. Provenance answers the part a signature cannot. From 1.28.1 on, every release asset is
+by hand — so 1.65.1 was a bridge: still signed with the old certificate, it also
+accepts the Developer ID (`UpdateSignature.successors`), and copies that reached it
+take 1.66.0 by themselves. Provenance answers the part a signature cannot. From 1.28.1 on, every release asset is
 attested after a check that it is exactly the bundle CI built from the tagged
 commit, with the signature replaced and nothing else:
 

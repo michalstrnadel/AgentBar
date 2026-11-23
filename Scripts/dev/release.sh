@@ -16,9 +16,9 @@ set -euo pipefail
 
 # Who signs. "local" is the project's own certificate (every release up to 1.65.1);
 # "developer-id" signs with the Apple Developer ID and notarizes the app and the
-# disk image. Copies older than 1.65.1 refuse a Developer ID update (UpdateSignature),
-# so this flips only once 1.65.1 has been out long enough to reach them.
-SIGNER="${AGENTBAR_SIGNER:-local}"
+# disk image — every release from 1.66.0 on. Copies older than 1.65.1 refuse a
+# Developer ID update (UpdateSignature) and have to be downloaded again by hand.
+SIGNER="${AGENTBAR_SIGNER:-developer-id}"
 LOCAL_ID="AgentBar Local Signing"
 DEVELOPER_ID="Developer ID Application: MICHAL STRNADEL (GP69592GM8)"
 NOTARY_PROFILE="${AGENTBAR_NOTARY_PROFILE:-agentbar-notary}"
