@@ -74,7 +74,11 @@ for _ in $(seq 60); do
 done
 [ -n "$RID" ] || fail "no CI run started for $SHA"
 for attempt in 1 2 3; do
-  gh run watch "$RID" -R "$REPO" --interval 30 >/dev/null 2>&1 || true
+  # `gh run watch` can return early (a dropped connection, a long queue), so the
+  # run is judged only once GitHub itself says it has completed.
+  until [ "$(gh run view "$RID" -R "$REPO" --json status -q .status 2>/dev/null)" = completed ]; do
+    gh run watch "$RID" -R "$REPO" --interval 30 >/dev/null 2>&1 || sleep 30
+  done
   CONCLUSION="$(gh run view "$RID" -R "$REPO" --json conclusion -q .conclusion)"
   [ "$CONCLUSION" = success ] && break
   # A failed test is a failed release; a job GitHub cancelled in its queue is not.
