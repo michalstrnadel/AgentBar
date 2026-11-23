@@ -55,6 +55,15 @@ stars.
 - **Community launch** — one rules-checked post per community, Hacker News last.
   [#25](https://github.com/michalstrnadel/AgentBar/issues/25)
 
+### Delivery — trust
+
+- **Notarized by Apple.** The Developer ID is in hand (2026-11-23). 1.65.1 is the
+  bridge every installed copy needs to accept the new signer; 1.66.0, the first
+  notarized release (app and disk image, stapled), follows once installs have
+  had time to reach it — prepared on the `notarized` branch. Then the cask and
+  install script stop stripping quarantine, and a shared DMG opens without a
+  warning.
+
 ### Delivery — keeping up with the agents
 
 - Each agent's release can add a hook event AgentBar does not hear yet. Checked
@@ -90,8 +99,6 @@ stars.
 
 - **Opt-in activation measurement** that keeps AgentBar local-first.
   [#32](https://github.com/michalstrnadel/AgentBar/issues/32) *(discovery)*
-- **Apple notarization.** Today the app is unsigned by Apple and the install step
-  explains the Gatekeeper prompt. Revisited once distribution shows people want it.
 - **Pro** — one-time or yearly, for local value only (longer history, a rule
   library). Not before the Now outcome is met.
 - **Team features** — only once a server does real work (shared history, routing
