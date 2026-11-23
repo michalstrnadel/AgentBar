@@ -10,6 +10,12 @@ All notable changes to AgentBar are documented here. This project follows
 - **A shared picture says where it came from.** Your Day's card, the Trust Receipt
   and a Replay now print `github.com/michalstrnadel/AgentBar` in their footer: a
   screenshot carries no link, so the address has to be in the pixels.
+- **Ready for notarized releases.** This version still comes signed with the
+  project's own certificate, and it also accepts an update signed with AgentBar's
+  Apple Developer ID. The next release will be notarized by Apple, so a download
+  opens without the "cannot verify" dialog. Update to this one first, or the
+  in-app update will refuse the notarized one, and you will have to download it
+  by hand.
 
 ## 1.65.0 - 2026-11-23
 

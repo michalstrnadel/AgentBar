@@ -10,8 +10,9 @@ TMP=""
 # Everything inside main() so a truncated download can never execute half a script.
 main() {
   local REPO="michalstrnadel/AgentBar"
-  # The certificate every release is signed with (`codesign -d -r- AgentBar.app`).
-  local REQUIREMENT='identifier "com.michalstrnadel.agentbar" and certificate root = H"939875ba4aeb9765f98c218fddd2eecf97f83b5f"'
+  # The certificates a release may be signed with (`codesign -d -r- AgentBar.app`):
+  # the project's own, and from the first notarized release on its Developer ID.
+  local REQUIREMENT='identifier "com.michalstrnadel.agentbar" and (certificate root = H"939875ba4aeb9765f98c218fddd2eecf97f83b5f" or (anchor apple generic and certificate leaf[subject.OU] = "GP69592GM8"))'
   local DEST
   if [ -n "${AGENTBAR_INSTALL_DIR:-}" ]; then
     DEST="$AGENTBAR_INSTALL_DIR"

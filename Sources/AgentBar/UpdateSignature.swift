@@ -77,7 +77,12 @@ enum UpdateSignature {
     /// Copies that installed the bridge accept the next release; from then on the
     /// running requirement is the Developer ID one and this list can empty again.
     /// Compiled into the binary, so nothing downloaded can add to it.
-    static let successors: [String] = []
+    ///
+    /// 1.65.1 is that bridge: the next signer is the project's Developer ID
+    /// (team GP69592GM8), from the first notarized release on.
+    static let successors: [String] = [
+        #"anchor apple generic and identifier "com.michalstrnadel.agentbar" and certificate leaf[subject.OU] = "GP69592GM8""#,
+    ]
 
     /// `text` as a requirement, or nil when it does not compile.
     static func requirement(_ text: String) -> SecRequirement? {
