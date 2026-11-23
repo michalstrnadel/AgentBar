@@ -459,6 +459,41 @@ check "refused: the newest 20"                '[ "$(eval "$REFUSED" | grep -o "\
 check "refused: no hook writes the ledger"    '[ ! -e "$HOME/.agentbar/decisions.jsonl" ]'
 printf '{"session_id":"testsess","prompt":"go on"}' | "$NODE" "$UPDATE" prompt
 
+# 15l. an MCP server asks for input (Elicitation): a question with its message,
+# nothing printed, and the call it interrupted comes back with ElicitationResult
+printf '%s' '{"session_id":"testsess","cwd":"/tmp/proj","tool_name":"mcp__gh__login"}' | "$NODE" "$UPDATE" pre
+OUT=$(printf '%s' '{"session_id":"testsess","hook_event_name":"Elicitation","mcp_server_name":"github","message":"Sign in to GitHub\nto continue","mode":"url"}' | "$NODE" "$UPDATE" elicit)
+check "elicit: prints nothing (answers nothing)" '[ -z "$OUT" ]'
+check "elicit: a question"            'grep -q "\"state\":\"question\"" "$STATE"'
+check "elicit: its message, one line" 'grep -q "\"label\":\"Sign in to GitHub to continue\"" "$STATE"'
+printf '%s' '{"session_id":"testsess","hook_event_name":"Elicitation","mcp_server_name":"github"}' | "$NODE" "$UPDATE" elicit
+check "elicit: no message names the server" 'grep -q "\"label\":\"github asks for input\"" "$STATE"'
+printf '%s' '{"session_id":"testsess","hook_event_name":"ElicitationResult","mcp_server_name":"github","action":"accept"}' | "$NODE" "$UPDATE" elicited
+check "elicited: back to the call"    'grep -q "\"state\":\"tool\"" "$STATE" && grep -q "\"label\":\"Using tool\"" "$STATE"'
+check "elicited: no resume left"      '! grep -q "\"resume\"" "$STATE"'
+printf '%s' '{"session_id":"testsess","action":"cancel"}' | "$NODE" "$UPDATE" elicited
+check "elicited: without a question, thinking" 'grep -q "\"state\":\"thinking\"" "$STATE"'
+
+# 15m. SubagentStart / SubagentStop: announced and taken off, the row's own state
+# and fields untouched; a stop for one the row does not list writes nothing
+printf '%s' '{"session_id":"testsess","tool_name":"Read"}' | "$NODE" "$UPDATE" pre
+printf '%s' '{"session_id":"testsess","agent_id":"s-1","agent_type":"Explore"}' | "$NODE" "$UPDATE" substart
+check "substart: listed before its first tool" 'grep -q "\"id\":\"s-1\",\"type\":\"Explore\"" "$STATE"'
+check "substart: the row keeps its state"      'grep -q "\"state\":\"tool\"" "$STATE" && grep -q "\"label\":\"Reading\"" "$STATE"'
+"$NODE" -e 'const fs=require("fs");const f=process.argv[1];const j=JSON.parse(fs.readFileSync(f));j.subagentRuns[0].ts-=600;fs.writeFileSync(f,JSON.stringify(j))' "$STATE"
+printf '%s' '{"session_id":"testsess","tool_name":"Grep"}' | "$NODE" "$UPDATE" pre
+check "substart: a quiet announced one stays"  'grep -q "\"id\":\"s-1\"" "$STATE"'
+printf '%s' '{"session_id":"testsess","agent_id":"s-1"}' | "$NODE" "$UPDATE" substop
+check "substop: taken off"            '! grep -q "subagentRuns" "$STATE"'
+check "substop: the row keeps its state" 'grep -q "\"label\":\"Searching\"" "$STATE"'
+BEFORE=$(cat "$STATE")
+printf '%s' '{"session_id":"testsess","agent_id":"nobody"}' | "$NODE" "$UPDATE" substop
+check "substop: unknown one writes nothing" '[ "$(cat "$STATE")" = "$BEFORE" ]'
+printf '%s' '{"session_id":"testsess","last_assistant_message":"ok"}' | "$NODE" "$UPDATE" stop
+printf '%s' '{"session_id":"testsess","agent_id":"late","agent_type":"x"}' | "$NODE" "$UPDATE" substart
+check "substart: not on a finished turn" '! grep -q "subagentRuns" "$STATE" && grep -q "\"recap\":\"ok\"" "$STATE"'
+printf '{"session_id":"testsess","prompt":"go on"}' | "$NODE" "$UPDATE" prompt
+
 # 15k. tests, failures and the comeback: a test command is labelled as one; a failed
 # call (PostToolUseFailure, on the "post" verb) counts a streak a success resets;
 # a test run going green after a red one, or a pull request opened, is a comeback.
@@ -721,6 +756,18 @@ printf '{"session_id":"failsess","cwd":"/tmp/proj"}' \
   | AGENTBAR_AGENT=qwen "$NODE" Scripts/hooks/claude/update.js fail
 check "fail: error state"           'grep -q "\"state\":\"error\"" "$HOME/.agentbar/state.d/failsess.json"'
 check "fail: not done"              '! grep -q "\"state\":\"done\"" "$HOME/.agentbar/state.d/failsess.json"'
+
+# 19a'. Claude Code's StopFailure says why: the reason is the label, the turn's
+# subagents are cleared like on Stop, and an unknown reason is no label at all
+printf '{"session_id":"cfail","cwd":"/tmp/proj","agent_id":"a","agent_type":"x","tool_name":"Read"}' \
+  | "$NODE" Scripts/hooks/claude/update.js pre
+printf '{"session_id":"cfail","hook_event_name":"StopFailure","error":"rate_limit","error_details":"429"}' \
+  | "$NODE" Scripts/hooks/claude/update.js fail
+check "stopfailure: error state"    'grep -q "\"state\":\"error\"" "$HOME/.agentbar/state.d/cfail.json"'
+check "stopfailure: why, as label"  'grep -q "\"label\":\"Rate limited\"" "$HOME/.agentbar/state.d/cfail.json"'
+check "stopfailure: subagents gone" '! grep -q "subagentRuns" "$HOME/.agentbar/state.d/cfail.json"'
+printf '{"session_id":"cfail","error":"something_new"}' | "$NODE" Scripts/hooks/claude/update.js fail
+check "stopfailure: unknown, no label" 'grep -q "\"label\":\"\"" "$HOME/.agentbar/state.d/cfail.json"'
 
 # 19b. Copilot's ErrorOccurred carries `recoverable`: an error the CLI intends to
 # retry is mid-turn noise, not the end of the turn. Qwen's StopFailure has no such

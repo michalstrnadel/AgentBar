@@ -101,8 +101,8 @@ Rules:
 - Hooks read the previous file (if any) and merge (`{...prev, ...}`), so fields a
   later event doesn't know (e.g. `entrypoint`) survive.
 - `state: "end"` is not written — the session's file is **deleted** instead.
-- `error` means the turn ended badly (Qwen's `StopFailure`, OpenCode's
-  `session.error`). It is a *finished* state like `done`, but frontends MUST NOT
+- `error` means the turn ended badly (Claude Code's and Qwen's `StopFailure`,
+  OpenCode's `session.error`). It is a *finished* state like `done`, but frontends MUST NOT
   celebrate it: no green tick, no done sound. `label` carries the reason when the
   agent gives one. Writers that can't tell success from failure keep using
   `done`; frontends that predate `error` decode it as `idle`, which is harmless.
@@ -162,11 +162,19 @@ Rules:
   root, not in `mods.d`, whose existence reads as the mod having been there).
   Concurrent `PermissionDenied` hooks race on the row like every other event, so a
   refusal can be lost; the ledger is not promised to hold every one.
-- `subagentRuns` (optional): `[{id, type, ts}]`, the subagents working for this
-  session, newest last, at most 8. A writer adds or refreshes one on each tool event
-  that carries `agent_id` (`type` from `agent_type`, `"subagent"` when absent),
+- `subagentRuns` (optional): `[{id, type, ts, open?}]`, the subagents working for
+  this session, newest last, at most 8. A writer adds or refreshes one on each tool
+  event that carries `agent_id` (`type` from `agent_type`, `"subagent"` when absent),
   drops entries older than 120 s, and clears the list on a new prompt and on the
-  turn's end.
+  turn's end (failed or not). Where the agent announces them (Claude Code's
+  `SubagentStart` / `SubagentStop`), a start adds one with `open: true`, which is
+  kept for up to 1800 s without news, and a stop removes it; both merge into the
+  row and never change its `state`.
+- `question` from an MCP server: Claude Code's `Elicitation` (a form, or a URL to
+  sign in at) turns the row into a `question` whose `label` is the server's message
+  (≤ 80 chars, or `"<server> asks for input"`), and `ElicitationResult` returns it
+  to the state it was in, kept meanwhile in `resume`. AgentBar's hook answers no
+  elicitation; the person does, in the terminal.
 - `fails` (optional): `{streak, at}`, tool calls that failed in a row (Claude Code's
   `PostToolUseFailure`, 2.1.119 and later; Qwen's and Copilot's too) and when the
   newest did, `streak` ≤ 99. A call that goes through drops it; an interrupt

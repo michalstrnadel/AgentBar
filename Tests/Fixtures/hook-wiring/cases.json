@@ -73,6 +73,46 @@
         "matcher": true,
         "timeout": null,
         "since": "2.1.119"
+      },
+      {
+        "event": "Elicitation",
+        "script": "claude/update.js",
+        "arg": "elicit",
+        "matcher": false,
+        "timeout": null,
+        "since": "2.1.76"
+      },
+      {
+        "event": "ElicitationResult",
+        "script": "claude/update.js",
+        "arg": "elicited",
+        "matcher": false,
+        "timeout": null,
+        "since": "2.1.76"
+      },
+      {
+        "event": "StopFailure",
+        "script": "claude/update.js",
+        "arg": "fail",
+        "matcher": false,
+        "timeout": null,
+        "since": "2.1.78"
+      },
+      {
+        "event": "SubagentStart",
+        "script": "claude/update.js",
+        "arg": "substart",
+        "matcher": false,
+        "timeout": null,
+        "since": "2.0.43"
+      },
+      {
+        "event": "SubagentStop",
+        "script": "claude/update.js",
+        "arg": "substop",
+        "matcher": false,
+        "timeout": null,
+        "since": "2.0.43"
       }
     ],
     "codex": [

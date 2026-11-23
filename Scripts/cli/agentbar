@@ -1705,6 +1705,14 @@ const HOOK_WIRING = (() => {
       // A failed call: the "post" verb, told apart by its event name (fails, tests).
       // 2.1.119 is the oldest changelog entry that names it.
       ev("PostToolUseFailure", "claude/update.js", "post", true, null, "2.1.119"),
+      // An MCP server asks for input: a question until ElicitationResult. Observed only.
+      ev("Elicitation", "claude/update.js", "elicit", false, null, "2.1.76"),
+      ev("ElicitationResult", "claude/update.js", "elicited", false, null, "2.1.76"),
+      // The turn ended on an API error: `error`, the reason as its label.
+      ev("StopFailure", "claude/update.js", "fail", false, null, "2.1.78"),
+      // Subagents announced rather than inferred from their tool events.
+      ev("SubagentStart", "claude/update.js", "substart", false, null, "2.0.43"),
+      ev("SubagentStop", "claude/update.js", "substop", false, null, "2.0.43"),
     ],
     // Through codex/hook.js, which sets AGENTBAR_AGENT (Codex handlers have no `env`).
     // Codex clamps SessionEnd to 3s; PermissionRequest outlasts permission.js's 600s.

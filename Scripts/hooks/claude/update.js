@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Claude Code hook -> ~/.agentbar/state.d/<session_id>.json
-// Usage: node update.js <prompt|pre|post|stop|compact|fail|denied>   (hook JSON on stdin)
+// Usage: node update.js <prompt|pre|post|stop|compact|fail|denied|elicit|elicited|substart|substop>
+//        (hook JSON on stdin)
 // Permission state is owned solely by permission.js: it writes richer labels and,
 // unlike Notification events, can never land late and overwrite a newer state.
 // Event-to-state mapping ported from AI Status Notifier (proven in daily use).
@@ -25,6 +26,19 @@ const event = process.argv[2] || "";
 // Written by the compact event, read by lifecycle.js and by the frontends
 // (Session.compactingLabel) — the three must agree on the exact string.
 const COMPACTING = "Compacting…";
+
+// Why a turn ended badly, in a few words (Claude Code's StopFailure `error`). An
+// id this table does not know gives no label rather than a guessed one.
+const FAILURE_LABELS = {
+  rate_limit: "Rate limited", authentication_failed: "Sign-in failed",
+  billing_error: "Billing problem", server_error: "API error",
+  overloaded: "API overloaded", invalid_request: "Invalid request",
+  max_output_tokens: "Output limit hit",
+};
+// How long a subagent stays listed with no news of it. One Claude Code announced
+// (SubagentStart) is known to be running until its SubagentStop, so it may think
+// quietly for a long while; one only seen through its tool events is not.
+const RUN_TTL = 120, OPEN_RUN_TTL = 1800;
 
 const TOOL_LABELS = {
   Bash: "Running command", Edit: "Editing", Write: "Writing", MultiEdit: "Editing",
@@ -177,6 +191,28 @@ function run() {
   let prev = {};
   try { prev = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch {}
 
+  // SubagentStart / SubagentStop (Claude Code 2.0.43+): they change who is working
+  // for the session, never the session's own state, so they merge into the row
+  // instead of rebuilding it — a permission card, a recap or a compaction's
+  // `resume` must survive a subagent coming or going. No row yet, or a stop for a
+  // subagent the row does not list (the turn's end already cleared it): nothing to say.
+  if (event === "substart" || event === "substop") {
+    const now = Math.floor(Date.now() / 1000);
+    const id = typeof p.agent_id === "string" ? p.agent_id.slice(0, 100) : "";
+    const live = liveRuns(prev, now);
+    let next = null;
+    if (id && event === "substart" && prev.state && !["done", "error", "idle"].includes(prev.state)) {
+      const type = typeof p.agent_type === "string" && p.agent_type ? oneLine(p.agent_type).slice(0, 60) : "subagent";
+      next = [...live.filter((r) => r.id !== id), { id, type, ts: now, open: true }].slice(-8);
+    } else if (id && event === "substop" && live.some((r) => r.id === id)) {
+      next = live.filter((r) => r.id !== id);
+    }
+    if (!next) process.exit(0);
+    const out = { ...prev, ts: now };
+    if (next.length) out.subagentRuns = next; else delete out.subagentRuns;
+    write(statePath, out);
+  }
+
   // A subagent's tool events carry the subagent's own cwd — a worktree under
   // .claude/worktrees/agent-…, when it was given one — and the row is the
   // session's, not the subagent's: its directory stays the session's own.
@@ -209,10 +245,31 @@ function run() {
     // Copilot alone says whether it intends to retry; a recoverable error is
     // mid-turn noise, and painting the row red for it would end the turn twice.
     // Qwen never carries the field, so the check leaves it exactly as it was.
+    // Claude Code's StopFailure (2.1.78+) says why in `error`: a rate limit, a
+    // failed sign-in, an overloaded API.
     case "fail":
       if (p.recoverable === true) { state = "thinking"; label = "Thinking…"; }
-      else { state = "error"; label = ""; }
+      else { state = "error"; label = FAILURE_LABELS[p.error] || ""; }
       break;
+    // Elicitation (2.1.76+): an MCP server asks the person for input — a form, or a
+    // URL to sign in at — and the session waits on them until it is answered. It is
+    // a question, not a permission: no hook here answers it (this one prints
+    // nothing), so the row hands over to the terminal. What it was doing before is
+    // kept in `resume`, so ElicitationResult puts the call back where it was.
+    case "elicit": {
+      const msg = typeof p.message === "string" ? oneLine(p.message).slice(0, 80) : "";
+      const server = typeof p.mcp_server_name === "string" ? oneLine(p.mcp_server_name).slice(0, 40) : "";
+      state = "question";
+      label = msg || (server ? server + " asks for input" : "Asks for input");
+      break;
+    }
+    case "elicited": {
+      const r = prev.state === "question" && prev.resume && typeof prev.resume === "object" ? prev.resume : null;
+      if (r && typeof r.state === "string" && !["question", "permission"].includes(r.state)) {
+        state = r.state; label = typeof r.label === "string" ? r.label : "";
+      } else { state = "thinking"; label = "Thinking…"; }
+      break;
+    }
     // PermissionDenied: auto mode's classifier refused a tool call. The model is
     // told and carries on, so the turn goes on; what was refused is kept below.
     // Nothing is printed: `{retry: true}` would be an answer, and this hook gives none.
@@ -318,15 +375,16 @@ function run() {
   // SubagentStart here on purpose (an event an older Claude Code does not know
   // is a settings file it may refuse), so a subagent counts as running while its
   // tools keep arriving, and the main turn's prompt or stop clears the list.
-  const runs = Array.isArray(prev.subagentRuns)
-    ? prev.subagentRuns.filter((r) => r && typeof r.id === "string" && ts - (Number(r.ts) || 0) < 120)
-    : [];
+  // Since 1.65.0 SubagentStart and SubagentStop are wired as well (above): they
+  // announce one before its first tool and take it off the moment it is done.
+  const runs = liveRuns(prev, ts);
   if ((event === "pre" || event === "post") && typeof p.agent_id === "string" && p.agent_id) {
     const type = typeof p.agent_type === "string" && p.agent_type ? oneLine(p.agent_type).slice(0, 60) : "subagent";
+    const was = runs.find((r) => r.id === p.agent_id.slice(0, 100));
     const next = runs.filter((r) => r.id !== p.agent_id.slice(0, 100));
-    next.push({ id: p.agent_id.slice(0, 100), type, ts });
+    next.push({ id: p.agent_id.slice(0, 100), type, ts, ...(was && was.open ? { open: true } : {}) });
     out.subagentRuns = next.slice(-8);
-  } else if (event !== "prompt" && event !== "stop" && runs.length) {
+  } else if (event !== "prompt" && event !== "stop" && event !== "fail" && runs.length) {
     out.subagentRuns = runs;
   }
   // What auto mode refused this turn, newest only, with how many: a session that
@@ -425,6 +483,11 @@ function run() {
   // a stale result.
   // The state to return to once compaction ends. A second PreCompact before that
   // end keeps the first one's record, or it would remember "Compacting…".
+  if (event === "elicit") {
+    // A second elicitation before the first is answered keeps the first record.
+    out.resume = prev.state === "question" && prev.resume && typeof prev.resume === "object"
+      ? prev.resume : { state: prev.state || "thinking", label: prev.label || "" };
+  }
   if (event === "compact") {
     const r = prev.resume && typeof prev.resume === "object" && prev.label === COMPACTING
       ? prev.resume
@@ -451,6 +514,19 @@ function run() {
     const crons = Array.isArray(p.session_crons) ? p.session_crons.length : 0;
     if (crons) out.wakeups = Math.min(crons, 99);
   }
+  write(statePath, out);
+}
+
+// The subagents a row still lists: well-formed, and heard from recently enough.
+function liveRuns(prev, now) {
+  return Array.isArray(prev.subagentRuns)
+    ? prev.subagentRuns.filter((r) => r && typeof r.id === "string"
+        && now - (Number(r.ts) || 0) < (r.open === true ? OPEN_RUN_TTL : RUN_TTL))
+    : [];
+}
+
+// Atomic: a temp file renamed over the row, so no reader ever sees half of one.
+function write(statePath, out) {
   try {
     fs.mkdirSync(stateDir, { recursive: true });
     const tmp = statePath + "." + process.pid + ".tmp";

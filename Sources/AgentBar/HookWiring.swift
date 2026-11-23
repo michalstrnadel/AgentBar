@@ -60,6 +60,17 @@ enum HookWiring {
         // The changelog never announces it; 2.1.119 is the oldest entry that names it
         // (its `duration_ms`), so that is the version it is known to exist at.
         .init(event: "PostToolUseFailure", script: "claude/update.js", arg: "post", matcher: true, since: "2.1.119"),
+        // An MCP server asks the person for input (a form, a sign-in URL): the row
+        // turns into a question until ElicitationResult. Observed only — update.js
+        // prints nothing, so the elicitation is still answered in the terminal.
+        .init(event: "Elicitation", script: "claude/update.js", arg: "elicit", since: "2.1.76"),
+        .init(event: "ElicitationResult", script: "claude/update.js", arg: "elicited", since: "2.1.76"),
+        // The turn ended on an API error (rate limit, sign-in, billing): `error`,
+        // with the reason as its label, never a green tick.
+        .init(event: "StopFailure", script: "claude/update.js", arg: "fail", since: "2.1.78"),
+        // Who works for the session, announced rather than inferred from tool events.
+        .init(event: "SubagentStart", script: "claude/update.js", arg: "substart", since: "2.0.43"),
+        .init(event: "SubagentStop", script: "claude/update.js", arg: "substop", since: "2.0.43"),
     ]
 
     /// Codex speaks Claude's hook dialect, so these are the `claude/` scripts, reached
