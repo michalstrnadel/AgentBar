@@ -18,6 +18,10 @@ agent, every session, in the menu bar or under the notch — so you answer in a 
 instead of hunting for the window. Nothing is answered behind your back: only you
 do, or a rule you wrote yourself, and every answer is written down.
 
+In short: **permission prompts and notifications for Claude Code, Codex, Copilot,
+Cursor and Gemini CLI on macOS**, in one native menu bar app, free and open source —
+with a CLI for Linux.
+
 ### Things to try
 
 | Do this | AgentBar does that |
@@ -81,6 +85,9 @@ curl -fsSL https://raw.githubusercontent.com/michalstrnadel/AgentBar/main/Script
    **✓ Always**, or **✕ Deny** right there. No terminal switch needed.
 
 That's the whole loop. More install options below; troubleshooting at the bottom.
+
+If it saves you a trip to the terminal, starring the repo is how the next person
+finds it.
 
 ### What the installer changes (and how to undo it)
 

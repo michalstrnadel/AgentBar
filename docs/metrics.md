@@ -62,6 +62,7 @@ https://michalstrnadel.com/agentbar?utm_source=<network>&utm_medium=social&utm_c
 | `reddit-<sub>` | Reddit, by subreddit in lowercase: `reddit-macapps`, `reddit-claudeai` |
 | `hn` | Hacker News |
 | `awesome-<list>` | An awesome list, by its repo name: `awesome-mac`, `awesome-claude-code` |
+| `github` | The repository's own website link (About ▸ Website), campaign `2026-11-repo-homepage` |
 
 Example: `https://michalstrnadel.com/agentbar?utm_source=reddit-macapps&utm_medium=social&utm_campaign=2026-10-keep-awake`
 
