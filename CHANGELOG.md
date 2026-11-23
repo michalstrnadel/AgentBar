@@ -3,6 +3,33 @@
 All notable changes to AgentBar are documented here. This project follows
 [Semantic Versioning](https://semver.org/).
 
+## 1.65.0 - 2026-11-23
+
+### Added
+
+- **An MCP server asking for input turns the row into a question.** When a server
+  wants a form filled or a sign-in (Claude Code's `Elicitation`, 2.1.76 and later),
+  the session waits on you, and the row now says so with the server's own message
+  instead of looking busy. Answering it puts the row back where it was. AgentBar
+  answers no elicitation; you do, in the terminal.
+- **A turn that dies on an API error says why.** Claude Code's `StopFailure`
+  (2.1.78 and later) ends the row in red with the reason ("failed — Rate limited",
+  "Sign-in failed", "Billing problem", "API overloaded"), never a green tick.
+- **Subagents are announced, not guessed.** `SubagentStart` and `SubagentStop`
+  list a subagent before its first tool and take it off the moment it finishes; a
+  quiet one thinking for a while no longer drops off the row after two minutes.
+
+### Changed
+
+- The new events are wired only for a Claude Code new enough to know them, like
+  `PermissionDenied` and `PostToolUseFailure`; an older one gets the table without
+  them. The macOS installer, the Linux `install-hooks` and both doctors read the
+  same table (`HookWiring`, `HOOK_WIRING`, `Tests/Fixtures/hook-wiring/cases.json`).
+- Keystroke approval for Codex is verified at a real codex-cli 0.157.0 escalation
+  prompt: Return confirms the preselected "Yes, proceed" once, never "don't ask
+  again" (#1). Codex answers through its `PermissionRequest` hook first; the
+  keystroke is the fallback for a session that started without it.
+
 ## 1.64.0 - 2026-10-29
 
 ### Added
