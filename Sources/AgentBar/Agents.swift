@@ -65,7 +65,11 @@ struct Agent {
               brand: NSColor(srgbRed: 0.063, green: 0.639, blue: 0.498, alpha: 1), // #10A37F
               artwork: .markFrames(codexMascotFramePNGs, fps: 11),
               open: .terminal,
-              approveKeys: [36], // Return — Codex prompts default to approve
+              // Return confirms the preselected "1. Yes, proceed (y)" — once, never
+              // "don't ask again". Measured on codex-cli 0.157.0 at a real escalation
+              // prompt (#1). Since 0.155 its PermissionRequest hook answers first;
+              // this is the fallback for a session that started without the hook.
+              approveKeys: [36],
               cli: "codex", takesPrompt: true),         // codex [OPTIONS] [PROMPT]
         Agent(id: "copilot", name: "Copilot",
               brand: NSColor(srgbRed: 0.510, green: 0.314, blue: 0.875, alpha: 1), // #8250DF
