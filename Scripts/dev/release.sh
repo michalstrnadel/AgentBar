@@ -118,10 +118,14 @@ if [ "$SIGNER" = developer-id ]; then
   echo "$OUT"
   grep -q "status: Accepted" <<<"$OUT" || fail "the disk image was not notarized"
   xcrun stapler staple "$DMG"
-  spctl -a -t open --context context:primary-signature -vv "$DMG" 2>&1 | grep -q "Notarized Developer ID" \
-    || fail "Gatekeeper does not take the disk image as notarized"
+  ASSESS="$(spctl -a -t open --context context:primary-signature -vv "$DMG" 2>&1 || true)"
+  grep -q "Notarized Developer ID" <<<"$ASSESS" || fail "Gatekeeper does not take the disk image as notarized"
 fi
-codesign -dvvv "$DMG" 2>&1 | grep -qx "Authority=$SIGN_ID" || fail "the disk image is not signed by $SIGN_ID"
+# Read into a variable first: grep -q stops reading at its match, and under
+# pipefail the SIGPIPE codesign then gets reads as a failure (verify-release.sh
+# says the same).
+DMG_SIG="$(codesign -dvvv "$DMG" 2>&1)"
+grep -qx "Authority=$SIGN_ID" <<<"$DMG_SIG" || fail "the disk image is not signed by $SIGN_ID"
 mkdir -p "$WORK/mnt"
 hdiutil attach -quiet -readonly -nobrowse -mountpoint "$WORK/mnt" "$DMG"
 ditto -c -k --sequesterRsrc --keepParent "$WORK/mnt/AgentBar.app" "$WORK/dmg-app.zip"
