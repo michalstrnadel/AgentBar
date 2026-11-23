@@ -202,6 +202,14 @@ so a release signed with any other identity is refused by every install
 all, and CI has no access to the certificate. So CI builds and verifies the
 universal bundle, and it is signed locally.
 
+**In one command.** After step 1 is committed, `Scripts/dev/release.sh "X.Y.Z — title"`
+runs steps 2–8 below and checks each one the way they say: CI on, push, this
+commit's push run green (cancelled macOS jobs rerun, a failed test stops it), sign,
+`verify-release.sh`, the disk image, the release, the cask, the attestations, CI
+off. `AGENTBAR_SIGNER=developer-id` signs with the Developer ID and notarizes the
+app and the image (see *Moving to a Developer ID*). The steps stay written out
+below because they are what the script does, and what to do by hand when it stops.
+
 1. Bump the version in all three places that carry it, date the `CHANGELOG.md`
    section, and check the three agree:
    - `VERSION` in `Scripts/build.sh` (the app);
@@ -289,7 +297,7 @@ downloaded by hand meets Gatekeeper's "cannot verify" dialog (the cask and the
 install script clear quarantine instead). Notarization needs an Apple Developer
 account; the tooling is ready for the day there is one, in this order:
 
-1. **Bridge release, old certificate.** Every copy in the field pins the old
+1. **Bridge release, old certificate.** *Done in 1.65.1 (team GP69592GM8).* Every copy in the field pins the old
    certificate (`UpdateSignature`) and would refuse a Developer ID release, with a
    click or without. Add the new signer to `UpdateSignature.successors`
    (`anchor apple generic and identifier "com.michalstrnadel.agentbar" and
