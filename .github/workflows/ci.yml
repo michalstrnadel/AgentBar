@@ -15,7 +15,7 @@ on:
 jobs:
   hook-tests:
     name: Hook protocol tests (macOS)
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
       - name: Run permission hook test suite
@@ -76,7 +76,7 @@ jobs:
 
   build:
     name: Build app (universal)
-    runs-on: macos-14
+    runs-on: macos-15
     # Provenance needs to mint an OIDC token and write an attestation; everything
     # else in this workflow reads.
     permissions:
